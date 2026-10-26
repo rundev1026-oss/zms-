@@ -56,6 +56,9 @@ export default function Home() {
       if (hash === 'admin' || hash === 'dashboard') {
         setPortalMode('admin');
         setCurrentView('dashboard');
+      } else if (hash === 'disbursements') {
+        setPortalMode('admin');
+        setCurrentView('disbursements');
       } else if (hash === 'about') {
         setPortalMode('public');
         setCurrentView('public-about');

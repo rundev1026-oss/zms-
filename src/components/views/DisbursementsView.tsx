@@ -31,7 +31,6 @@ import {
   Download,
   ExternalLink,
   ChevronRight,
-  UserCheck,
   HandCoins,
   History,
   Lock,
@@ -43,7 +42,16 @@ import {
   Edit3,
   CheckSquare,
   Square,
-  CheckCheck
+  CheckCheck,
+  MapPin,
+  User,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
+  LayoutGrid,
+  TableProperties,
+  ClipboardCheck,
+  ArrowRight
 } from 'lucide-react';
 
 export const OUTCOME_STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string }> = {
@@ -55,6 +63,36 @@ export const OUTCOME_STATUS_CONFIG: Record<string, { label: string; bg: string; 
   has_issues: { label: 'มีปัญหาหรือรอแก้ไข', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-300' },
   cancelled: { label: 'ยกเลิกพร้อมเหตุผล', bg: 'bg-stone-100', text: 'text-stone-700', border: 'border-stone-300' },
   draft: { label: 'บันทึกร่าง (ยังไม่ยืนยัน)', bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-dashed border-slate-300' },
+};
+
+export const getAsnafColor = (asnaf: string) => {
+  switch (asnaf?.toLowerCase()) {
+    case 'fakir': return { bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-300', dot: 'bg-rose-500' };
+    case 'miskin': return { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-300', dot: 'bg-amber-500' };
+    case 'gharimin': return { bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-500' };
+    case 'muallaf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-300', dot: 'bg-emerald-500' };
+    case 'ibnsabil': return { bg: 'bg-sky-50', text: 'text-sky-800', border: 'border-sky-300', dot: 'bg-sky-500' };
+    case 'fisabilillah': return { bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-300', dot: 'bg-purple-500' };
+    default: return { bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-300', dot: 'bg-slate-400' };
+  }
+};
+
+export const formatThaiDate = (dateStr?: string) => {
+  if (!dateStr) return '-';
+  if (dateStr.includes('ต.ค.') || dateStr.includes('/') || dateStr.includes('พ.ศ.')) {
+    return dateStr;
+  }
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = d.getDate();
+    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear() + 543;
+    return `${day} ${month} ${year}`;
+  } catch {
+    return dateStr;
+  }
 };
 
 interface DisbursementsViewProps {
@@ -76,6 +114,15 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
   const [assistanceStatusFilter, setAssistanceStatusFilter] = useState<string>('all');
   const [outcomeStatusFilter, setOutcomeStatusFilter] = useState<string>('all');
   const [asnafFilter, setAsnafFilter] = useState<string>('all');
+  const [assistanceTypeFilter, setAssistanceTypeFilter] = useState<string>('all');
+  const [dateStartFilter, setDateStartFilter] = useState<string>('');
+  const [dateEndFilter, setDateEndFilter] = useState<string>('');
+
+  // UI View Mode & Responsive Controls
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
+  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(true);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 12;
 
   // Modals
   const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
@@ -458,26 +505,48 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
     }
   };
 
+  // Dynamic unique assistance types
+  const availableAssistanceTypes = useMemo(() => {
+    const set = new Set<string>();
+    assistanceList.forEach((a) => {
+      if (a.assistanceType) set.add(a.assistanceType);
+    });
+    return Array.from(set);
+  }, [assistanceList]);
+
   // Filtered List
   const filteredList = useMemo(() => {
     return assistanceList.filter((item) => {
-      // Finance Status Filter
+      // 1. Finance Status Filter
       if (financeStatusFilter !== 'all' && item.financeStatus !== financeStatusFilter) {
         return false;
       }
-      // Assistance Status Filter
+      // 2. Assistance Status Filter
       if (assistanceStatusFilter !== 'all' && item.assistanceStatus !== assistanceStatusFilter) {
         return false;
       }
-      // Outcome Status Filter (Task 3)
+      // 3. Outcome Status Filter
       if (outcomeStatusFilter !== 'all' && item.outcomeStatus !== outcomeStatusFilter) {
         return false;
       }
-      // Asnaf Filter
+      // 4. Asnaf Filter
       if (asnafFilter !== 'all' && item.asnafCategory !== asnafFilter) {
         return false;
       }
-      // Search Term
+      // 5. Assistance Type Filter
+      if (assistanceTypeFilter !== 'all' && item.assistanceType !== assistanceTypeFilter) {
+        return false;
+      }
+      // 6. Date Range Filter
+      if (dateStartFilter) {
+        const itemDate = (item.appliedDate || item.actualAssistanceDate || item.approvedDate || '').slice(0, 10);
+        if (itemDate && itemDate < dateStartFilter) return false;
+      }
+      if (dateEndFilter) {
+        const itemDate = (item.appliedDate || item.actualAssistanceDate || item.approvedDate || '').slice(0, 10);
+        if (itemDate && itemDate > dateEndFilter) return false;
+      }
+      // 7. Search Term
       if (searchTerm.trim()) {
         const q = searchTerm.trim().toLowerCase();
         const match =
@@ -485,33 +554,58 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
           item.registrationNo.toLowerCase().includes(q) ||
           item.beneficiaryName.toLowerCase().includes(q) ||
           item.withdrawalNo.toLowerCase().includes(q) ||
-          item.assistanceType.toLowerCase().includes(q);
+          item.assistanceType.toLowerCase().includes(q) ||
+          (item.branchName && item.branchName.toLowerCase().includes(q)) ||
+          (item.area && item.area.toLowerCase().includes(q));
         if (!match) return false;
       }
       return true;
     });
-  }, [assistanceList, financeStatusFilter, assistanceStatusFilter, outcomeStatusFilter, asnafFilter, searchTerm]);
+  }, [
+    assistanceList,
+    financeStatusFilter,
+    assistanceStatusFilter,
+    outcomeStatusFilter,
+    asnafFilter,
+    assistanceTypeFilter,
+    dateStartFilter,
+    dateEndFilter,
+    searchTerm
+  ]);
 
-  // Summary Metrics
-  const metrics = useMemo(() => {
-    const totalCases = assistanceList.length;
-    const fullyHandedOver = assistanceList.filter((a) => a.financeStatus === 'fully_handed_over').length;
-    const partiallyHandedOver = assistanceList.filter((a) => a.financeStatus === 'partially_handed_over').length;
-    const notHandedOver = assistanceList.filter((a) => a.financeStatus === 'not_handed_over').length;
-    const assistanceCompleted = assistanceList.filter((a) => a.assistanceStatus === 'completed').length;
-    const totalHandedAmount = assistanceList.reduce((sum, a) => sum + (a.handedOverAmount || 0), 0);
-    const totalDisbursedAmount = assistanceList.reduce((sum, a) => sum + (a.disbursedAmount || 0), 0);
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / pageSize));
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredList.slice(start, start + pageSize);
+  }, [filteredList, currentPage, pageSize]);
 
-    return {
-      totalCases,
-      fullyHandedOver,
-      partiallyHandedOver,
-      notHandedOver,
-      assistanceCompleted,
-      totalHandedAmount,
-      totalDisbursedAmount,
-    };
-  }, [assistanceList]);
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchTerm,
+    financeStatusFilter,
+    assistanceStatusFilter,
+    outcomeStatusFilter,
+    asnafFilter,
+    assistanceTypeFilter,
+    dateStartFilter,
+    dateEndFilter
+  ]);
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setFinanceStatusFilter('all');
+    setAssistanceStatusFilter('all');
+    setOutcomeStatusFilter('all');
+    setAsnafFilter('all');
+    setAssistanceTypeFilter('all');
+    setDateStartFilter('');
+    setDateEndFilter('');
+    setCurrentPage(1);
+  };
 
   // Open Proof Preview Modal
   const handleOpenProof = (url: string, name?: string) => {
@@ -522,270 +616,571 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-teal-900 via-teal-800 to-[#0b2545] p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
+      {/* 1. Header */}
+      <div className="bg-gradient-to-r from-teal-900 via-teal-800 to-[#0b2545] p-5 sm:p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 w-96 bg-white/5 transform skew-x-12 pointer-events-none" />
         
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-white/10 text-teal-200 border border-white/20 flex items-center justify-center font-bold">
-                <Wallet className="w-5 h-5 text-teal-300" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/10 text-teal-200 border border-white/20 flex items-center justify-center font-bold shadow-inner shrink-0">
+                <Wallet className="w-6 h-6 text-teal-300" />
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-                  บันทึกการช่วยเหลือ & ตรวจสอบการส่งมอบเงิน
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  บันทึกการช่วยเหลือ
                 </h1>
-                <p className="text-xs text-teal-200">
-                  เชื่อมโยงข้อมูลการเบิกเงินสดและการส่งมอบเงินจากฝ่ายการเงินกับบันทึกการช่วยเหลือในพื้นที่
+                <p className="text-xs sm:text-sm text-teal-200/90 font-medium mt-0.5">
+                  จัดการรายการช่วยเหลือผู้มีสิทธิ์รับซะกาต ตรวจสอบสถานะ และบันทึกผลการช่วยเหลือ
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="px-3.5 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs text-teal-100 flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-emerald-300" />
-              <span>
-                ผู้ใช้งาน: <strong>{currentUser.name}</strong> ({currentUser.role === 'officer' ? 'ผู้ดูแลเคส' : currentUser.role})
-              </span>
-            </div>
+          <div className="flex items-center gap-2">
             <button
               onClick={fetchAssistanceList}
               disabled={isLoading}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-semibold text-white transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs sm:text-sm font-semibold text-white transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
               title="รีเฟรชข้อมูล"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              รีเฟรช
+              <span>รีเฟรชข้อมูล</span>
             </button>
           </div>
         </div>
 
-        {/* Security & Segregation Notice */}
-        <div className="mt-4 pt-3 border-t border-white/10 text-[11px] text-teal-200/90 flex items-center gap-2">
+        {/* Security & Access Notice */}
+        <div className="mt-4 pt-3 border-t border-white/10 text-[11px] sm:text-xs text-teal-200/90 flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-teal-300 shrink-0" />
           <span>
-            <strong>หลักการตรวจสอบสิทธิ์:</strong> ผู้ดูแลเคสเห็นเฉพาะเคสที่ได้รับมอบหมาย • ข้อมูลการเงินจากฝ่ายการเงินเป็นแบบอ่านอย่างเดียว (Read-Only) • ห้ามแก้ไขยอดเงินโดยตรง หากพบข้อมูลไม่ตรงกันให้กดปุ่ม <strong>"แจ้งยอดไม่ตรง"</strong>
+            <strong>หลักเกณฑ์ความปลอดภัย:</strong> เจ้าหน้าที่เห็นเฉพาะเคสที่ได้รับมอบหมาย • ข้อมูลการเงินเป็นแบบอ่านอย่างเดียว • หากพบข้อมูลไม่ตรงกันให้กด <strong>"แจ้งยอดไม่ตรง"</strong> เพื่อส่งเรื่องตรวจสอบ
           </span>
         </div>
       </div>
 
-      {/* 5 KPI Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-1">
-          <span className="text-[11px] font-semibold text-slate-500 block">คำร้องทั้งหมดในสิทธิ์</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900">{metrics.totalCases}</span>
-            <span className="text-[10px] text-slate-400 font-mono">เคส</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-xs space-y-1">
-          <span className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" /> การเงิน: ส่งมอบครบ
-          </span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-emerald-950">{metrics.fullyHandedOver}</span>
-            <span className="text-[10px] text-emerald-700 font-bold">พร้อมจ่าย</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-xs space-y-1">
-          <span className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-amber-500" /> การเงิน: ส่งมอบบางส่วน
-          </span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-amber-950">{metrics.partiallyHandedOver}</span>
-            <span className="text-[10px] text-amber-700 font-bold">แบ่งจ่าย</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-          <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-slate-400" /> การเงิน: ยังไม่ส่งมอบ
-          </span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-700">{metrics.notHandedOver}</span>
-            <span className="text-[10px] text-slate-400 font-bold">รอการเงิน</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-teal-200 bg-teal-50/20 shadow-xs space-y-1 col-span-2 sm:col-span-1">
-          <span className="text-[11px] font-semibold text-teal-800 flex items-center gap-1">
-            <CheckCircle className="w-3.5 h-3.5 text-teal-600" /> ช่วยเหลือเสร็จสิ้น
-          </span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-teal-950">{metrics.assistanceCompleted}</span>
-            <span className="text-[10px] text-teal-700 font-bold">ปิดเคสแล้ว</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+      {/* 3. Search & Filter Bar (Section 2: จัดวางเป็นระเบียบ พับเก็บได้บนจอเล็ก) */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden">
+        {/* Filter Bar Header / Quick Search */}
+        <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
+          {/* Search Input */}
+          <div className="relative flex-1 max-w-lg">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="ค้นหาเลขคำร้อง, ทะเบียน, ชื่อ, ใบสำคัญ..."
+              placeholder="ค้นหาชื่อผู้รับ, เลขที่คำร้อง (APP-...), ทะเบียน (REG-...), หรือพื้นที่..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-teal-600 transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm font-medium focus:bg-white focus:outline-teal-600 transition-all text-slate-800"
             />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
-          {/* Finance Status Filter */}
-          <div>
-            <select
-              value={financeStatusFilter}
-              onChange={(e) => setFinanceStatusFilter(e.target.value)}
-              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:bg-white"
-            >
-              <option value="all">สถานะการเงิน: ทั้งหมด</option>
-              <option value="fully_handed_over">การเงิน: ส่งมอบครบแล้ว</option>
-              <option value="partially_handed_over">การเงิน: ส่งมอบบางส่วน</option>
-              <option value="not_handed_over">การเงิน: ยังไม่ส่งมอบ</option>
-            </select>
-          </div>
-
-          {/* Assistance Status Filter */}
-          <div>
-            <select
-              value={assistanceStatusFilter}
-              onChange={(e) => setAssistanceStatusFilter(e.target.value)}
-              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:bg-white"
-            >
-              <option value="all">สถานะการช่วยเหลือ: ทั้งหมด</option>
-              <option value="not_started">การช่วยเหลือ: ยังไม่เริ่ม</option>
-              <option value="in_progress">การช่วยเหลือ: กำลังดำเนินการ</option>
-              <option value="wait_confirmation">การช่วยเหลือ: รอยืนยันผล</option>
-              <option value="completed">การช่วยเหลือ: เสร็จสิ้น</option>
-            </select>
-          </div>
-
-          {/* Task 3: Outcome Status Filter */}
-          <div>
-            <select
-              value={outcomeStatusFilter}
-              onChange={(e) => setOutcomeStatusFilter(e.target.value)}
-              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:bg-white"
-            >
-              <option value="all">ผลการช่วยเหลือ: ทั้งหมด (7 สถานะ)</option>
-              <option value="not_started">ยังไม่เริ่มดำเนินการ</option>
-              <option value="in_progress">กำลังดำเนินการ</option>
-              <option value="partially_assisted">ช่วยเหลือบางส่วน (แบ่งงวด)</option>
-              <option value="wait_proof_verification">รอตรวจสอบหลักฐาน</option>
-              <option value="completed">ช่วยเหลือเสร็จสิ้น</option>
-              <option value="has_issues">มีปัญหาหรือรอแก้ไข</option>
-              <option value="cancelled">ยกเลิกพร้อมเหตุผล</option>
-            </select>
-          </div>
-
-          {/* Asnaf Filter */}
-          <div>
-            <select
-              value={asnafFilter}
-              onChange={(e) => setAsnafFilter(e.target.value)}
-              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:bg-white"
-            >
-              <option value="all">หมวดอัสนัฟ: ทั้งหมด</option>
-              <option value="fakir">ผู้ยากไร้ (Faqir)</option>
-              <option value="miskin">ผู้ขัดสน (Miskin)</option>
-              <option value="gharimin">มีหนี้สินล้นพ้นตัว (Gharimin)</option>
-              <option value="muallaf">ผู้เข้ารับอิสลามใหม่ (Muallaf)</option>
-              <option value="ibnsabil">ผู้เดินทางขาดแคลน (Ibn Sabil)</option>
-              <option value="fisabilillah">ในหนทางของอัลลอฮ์ (Fisabilillah)</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
-          <span>พบผลลัพธ์ <strong>{filteredList.length}</strong> รายการ</span>
-          {(searchTerm || financeStatusFilter !== 'all' || assistanceStatusFilter !== 'all' || outcomeStatusFilter !== 'all' || asnafFilter !== 'all') && (
+          {/* Quick controls: View Mode toggle & Filter toggle */}
+          <div className="flex items-center gap-2 justify-between md:justify-end">
             <button
-              onClick={() => {
-                setSearchTerm('');
-                setFinanceStatusFilter('all');
-                setAssistanceStatusFilter('all');
-                setOutcomeStatusFilter('all');
-                setAsnafFilter('all');
-              }}
-              className="text-teal-700 hover:text-teal-900 font-semibold cursor-pointer"
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
+              className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                showFilterPanel
+                  ? 'bg-teal-50 border-teal-200 text-teal-800'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
             >
-              ล้างตัวกรองทั้งหมด
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>ตัวกรองละเอียด</span>
+              {showFilterPanel ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
-          )}
+
+            {/* View Mode Toggle: Table vs Card */}
+            <div className="p-1 rounded-xl bg-slate-100 border border-slate-200 flex items-center gap-1">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white text-teal-900 shadow-2xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="มุมมองตารางรายการ (Table View)"
+              >
+                <TableProperties className="w-4 h-4" />
+                <span className="hidden sm:inline">ตาราง</span>
+              </button>
+              <button
+                onClick={() => setViewMode('card')}
+                className={`p-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                  viewMode === 'card'
+                    ? 'bg-white text-teal-900 shadow-2xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="มุมมองการ์ด (Card View)"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">การ์ด</span>
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Collapsible Filter Dropdowns Panel */}
+        {showFilterPanel && (
+          <div className="p-4 sm:p-5 bg-slate-50/70 border-b border-slate-100 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+              {/* Date Start Filter */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-teal-700" />
+                  วันที่เริ่มต้น (จากวันที่)
+                </label>
+                <input
+                  type="date"
+                  value={dateStartFilter}
+                  onChange={(e) => setDateStartFilter(e.target.value)}
+                  className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600"
+                />
+              </div>
+
+              {/* Date End Filter */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-teal-700" />
+                  วันที่สิ้นสุด (ถึงวันที่)
+                </label>
+                <input
+                  type="date"
+                  value={dateEndFilter}
+                  onChange={(e) => setDateEndFilter(e.target.value)}
+                  className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600"
+                />
+              </div>
+
+              {/* Asnaf Filter */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  หมวดอัสนัฟ
+                </label>
+                <select
+                  value={asnafFilter}
+                  onChange={(e) => setAsnafFilter(e.target.value)}
+                  className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600"
+                >
+                  <option value="all">หมวดอัสนัฟ: ทั้งหมด</option>
+                  <option value="fakir">ผู้ยากไร้ (Faqir)</option>
+                  <option value="miskin">ผู้ขัดสน (Miskin)</option>
+                  <option value="gharimin">มีหนี้สินล้นพ้นตัว (Gharimin)</option>
+                  <option value="muallaf">ผู้เข้ารับอิสลามใหม่ (Muallaf)</option>
+                  <option value="ibnsabil">ผู้เดินทางขาดแคลน (Ibn Sabil)</option>
+                  <option value="fisabilillah">ในหนทางของอัลลอฮ์ (Fisabilillah)</option>
+                </select>
+              </div>
+
+              {/* Assistance Type Filter */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  ประเภทความช่วยเหลือ
+                </label>
+                <select
+                  value={assistanceTypeFilter}
+                  onChange={(e) => setAssistanceTypeFilter(e.target.value)}
+                  className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600"
+                >
+                  <option value="all">ประเภทความช่วยเหลือ: ทั้งหมด</option>
+                  {availableAssistanceTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  สถานะการช่วยเหลือ
+                </label>
+                <select
+                  value={outcomeStatusFilter}
+                  onChange={(e) => setOutcomeStatusFilter(e.target.value)}
+                  className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600"
+                >
+                  <option value="all">สถานะผลการช่วยเหลือ: ทั้งหมด</option>
+                  <option value="not_started">ยังไม่เริ่มดำเนินการ</option>
+                  <option value="in_progress">กำลังดำเนินการ</option>
+                  <option value="partially_assisted">ช่วยเหลือบางส่วน (แบ่งงวด)</option>
+                  <option value="wait_proof_verification">รอตรวจสอบหลักฐาน</option>
+                  <option value="completed">ช่วยเหลือเสร็จสิ้น</option>
+                  <option value="has_issues">มีปัญหาหรือรอแก้ไข</option>
+                  <option value="cancelled">ยกเลิกพร้อมเหตุผล</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Active filters status summary & clear button */}
+            <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-200/60">
+              <div className="flex items-center gap-2">
+                <span>แสดงผลลัพธ์ <strong>{filteredList.length}</strong> จากทั้งหมด {assistanceList.length} รายการ</span>
+              </div>
+
+              {(searchTerm || financeStatusFilter !== 'all' || assistanceStatusFilter !== 'all' || outcomeStatusFilter !== 'all' || asnafFilter !== 'all' || assistanceTypeFilter !== 'all' || dateStartFilter || dateEndFilter) && (
+                <button
+                  onClick={handleClearFilters}
+                  className="text-teal-700 hover:text-teal-900 font-bold cursor-pointer underline flex items-center gap-1"
+                >
+                  <X className="w-3.5 h-3.5" /> ล้างตัวกรองทั้งหมด
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Main Table & Cards */}
+      {/* 4. Main Content: Assistance Cards UI (or alternate Table UI) */}
       {isLoading ? (
-        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3">
+        <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3 shadow-xs">
           <RefreshCw className="w-8 h-8 text-teal-600 animate-spin mx-auto" />
-          <p className="text-xs text-slate-500">กำลังเชื่อมโยงข้อมูลการเงินและคำร้องช่วยเหลือจากฐานข้อมูลจริง...</p>
-        </div>
-      ) : filteredList.length === 0 ? (
-        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3">
-          <AlertCircle className="w-10 h-10 text-slate-400 mx-auto" />
-          <h3 className="text-base font-bold text-slate-800">ไม่พบข้อมูลการช่วยเหลือตามเงื่อนไขที่ระบุ</h3>
+          <h3 className="text-base font-bold text-slate-800">กำลังเชื่อมโยงข้อมูลการช่วยเหลือจากฐานข้อมูลจริง...</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
-            หากคุณเป็นผู้ดูแลเคส ระบบจะแสดงเฉพาะรายการคำร้องที่ได้รับมอบหมายหรือได้รับอนุญาตให้เข้าถึงเท่านั้น
+            กำลังตรวจสอบสิทธิ์ผู้ดูแลเคสและสถานะการเงินล่าสุด
           </p>
         </div>
+      ) : filteredList.length === 0 ? (
+        <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base sm:text-lg font-bold text-slate-800">ไม่พบข้อมูลการช่วยเหลือตามเงื่อนไขที่ระบุ</h3>
+            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
+              ลองเปลี่ยนคำค้นหา หรือรีเซ็ตตัวกรองเพื่อดูรายการช่วยเหลือทั้งหมดที่อยู่ในความรับผิดชอบของคุณ
+            </p>
+          </div>
+          <button
+            onClick={handleClearFilters}
+            className="px-5 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition-colors shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            ล้างตัวกรองและแสดงทั้งหมด
+          </button>
+        </div>
+      ) : viewMode === 'card' ? (
+        /* ================================================================= */
+        /* CARD-BASED UI (Grid 2-3 cols on desktop, 2 on tablet, 1 on mobile) */
+        /* ================================================================= */
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {paginatedList.map((item) => {
+              const statusConfig = OUTCOME_STATUS_CONFIG[item.outcomeStatus || 'not_started'] || OUTCOME_STATUS_CONFIG.not_started;
+              const asnafStyle = getAsnafColor(item.asnafCategory);
+              const confirmedRecord = item.executionRecords?.find((r) => r.isConfirmed);
+
+              return (
+                <div
+                  key={item.applicationId}
+                  className="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden group hover:border-teal-400"
+                >
+                  {/* Card Header (Section 4) */}
+                  <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-50 to-slate-100/60 border-b border-slate-100 flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs sm:text-sm text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs">
+                          {item.applicationNo}
+                        </span>
+                        <span className="text-[11px] text-teal-800 font-mono font-semibold">
+                          {item.registrationNo}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>บันทึกเมื่อ: {formatThaiDate(item.appliedDate)}</span>
+                      </div>
+                    </div>
+
+                    {/* Status Badges */}
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                        {statusConfig.label}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                        item.financeStatus === 'fully_handed_over' 
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                          : item.financeStatus === 'partially_handed_over'
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          item.financeStatus === 'fully_handed_over' ? 'bg-emerald-500' : item.financeStatus === 'partially_handed_over' ? 'bg-amber-500' : 'bg-slate-400'
+                        }`} />
+                        การเงิน: {item.financeStatusLabel}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Body: Beneficiary, Details & Financial Info */}
+                  <div className="p-4 sm:p-5 space-y-4 flex-1 flex flex-col justify-between">
+                    {/* Beneficiary Info */}
+                    <div className="flex items-start gap-3.5">
+                      {/* Avatar */}
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-700 to-teal-900 text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0 border border-teal-600/30">
+                        {item.beneficiaryName.charAt(0) || 'ผ'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base sm:text-lg font-bold text-slate-900 truncate group-hover:text-teal-800 transition-colors">
+                          {item.beneficiaryName}
+                        </h3>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{item.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร'} {item.area ? `• ${item.area}` : ''}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Asnaf & Assistance Details */}
+                    <div className="space-y-2 pt-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${asnafStyle.bg} ${asnafStyle.text} ${asnafStyle.border}`}>
+                          {item.asnafLabel}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/80">
+                          {item.assistanceType}
+                        </span>
+                      </div>
+
+                      {item.purpose && (
+                        <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50/80 border border-slate-100 p-2.5 rounded-xl">
+                          {item.purpose}
+                        </p>
+                      )}
+
+                      {/* Metadata Row */}
+                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 pt-1">
+                        <div>
+                          <span className="text-slate-400 block">วันที่อนุมัติ:</span>
+                          <span className="font-semibold text-slate-700">{formatThaiDate(item.approvedDate)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">วันที่ช่วยเหลือจริง:</span>
+                          <span className="font-semibold text-slate-700">{formatThaiDate(item.actualAssistanceDate) || 'ยังไม่ได้ส่งมอบ'}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-slate-400 block">เจ้าหน้าที่ผู้รับผิดชอบ:</span>
+                          <span className="font-semibold text-slate-700">{item.assignedOfficerName || item.recipientCaseWorkerName || '-'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Financial Data Box */}
+                    <div className="p-3.5 rounded-2xl bg-slate-50/90 border border-slate-200/80 space-y-2.5">
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block uppercase font-medium">ยอดอนุมัติ</span>
+                          <span className="text-xs sm:text-sm font-bold text-slate-700 font-mono">
+                            ฿{item.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-emerald-700 block uppercase font-bold">จ่ายจริง</span>
+                          <span className="text-xs sm:text-sm font-black text-emerald-900 font-mono">
+                            ฿{item.disbursedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block uppercase font-medium">คงเหลือ</span>
+                          <span className="text-xs sm:text-sm font-bold text-slate-700 font-mono">
+                            ฿{item.remainingBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Proof Status Row */}
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5 text-slate-500 truncate">
+                          <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{item.withdrawalNo}</span>
+                        </div>
+
+                        {item.proofUrl ? (
+                          <button
+                            onClick={() => handleOpenProof(item.proofUrl!, item.proofName)}
+                            className="px-2 py-0.5 rounded-md bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold text-[11px] border border-teal-200 transition-colors inline-flex items-center gap-1 cursor-pointer shrink-0"
+                          >
+                            <FileCheck className="w-3 h-3 text-teal-600" />
+                            ดูหลักฐาน
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">
+                            รอหลักฐาน
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Actions Footer (Section 4: Buttons) */}
+                  <div className="p-3.5 sm:p-4 bg-slate-50/70 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleOpenDetail(item)}
+                      className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs transition-colors border border-slate-200/90 shadow-2xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      ดูรายละเอียด
+                    </button>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Follow-up button if completed or has follow up plan */}
+                      {(item.hasFollowUpPlan || item.outcomeStatus === 'completed' || item.assistanceStatus === 'completed') && (
+                        <button
+                          onClick={() => onNavigate('follow-up')}
+                          className="px-2.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs transition-colors border border-indigo-200 flex items-center gap-1 cursor-pointer"
+                          title="ไปที่การติดตามผลและบันทึกการตรวจเยี่ยม"
+                        >
+                          <ClipboardCheck className="w-3.5 h-3.5" />
+                          ติดตามผล
+                        </button>
+                      )}
+
+                      {/* Edit button if confirmed execution record exists */}
+                      {confirmedRecord && (
+                        <button
+                          onClick={() => handleOpenEditExecution(confirmedRecord)}
+                          className="px-2.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs transition-colors border border-amber-200 flex items-center gap-1 cursor-pointer"
+                          title="แก้ไขผลการช่วยเหลือที่ยืนยันแล้วพร้อมบันทึกเหตุผล"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          แก้ไข
+                        </button>
+                      )}
+
+                      {/* Record execution button */}
+                      <button
+                        onClick={() => handleOpenExecutionModal(item)}
+                        className="px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
+                        title="บันทึกและยืนยันผลการช่วยเหลือ"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        บันทึกผล
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="p-4 bg-white rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <span className="text-slate-500 font-medium">
+                แสดง <strong>{(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredList.length)}</strong> จากทั้งหมด <strong>{filteredList.length}</strong> รายการ
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  ย้อนกลับ
+                </button>
+
+                <span className="px-3 py-1 font-mono font-bold text-slate-800">
+                  หน้า {currentPage} / {totalPages}
+                </span>
+
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  ถัดไป
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        /* ================================================================= */
+        /* POLISHED TABLE VIEW (10 Columns, Readable, Accessible)           */
+        /* ================================================================= */
+        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+            <table className="w-full text-left text-xs border-collapse min-w-[1240px]">
+              <thead className="bg-slate-50/90 text-slate-700 font-bold text-xs border-b border-slate-200/90">
                 <tr>
-                  <th className="py-3.5 px-4">เลขที่คำร้อง / ทะเบียน</th>
-                  <th className="py-3.5 px-4">ผู้รับความช่วยเหลือ & อัสนัฟ</th>
-                  <th className="py-3.5 px-4 text-center">สถานะการเงิน</th>
-                  <th className="py-3.5 px-4 text-center">สถานะการช่วยเหลือ</th>
-                  <th className="py-3.5 px-4 text-right">ยอดอนุมัติ</th>
-                  <th className="py-3.5 px-4 text-right">ยอดรับจริงจากฝ่ายการเงิน</th>
-                  <th className="py-3.5 px-4 text-right">ยอดช่วยเหลือจริง</th>
-                  <th className="py-3.5 px-4">ใบสำคัญเบิกจ่าย</th>
-                  <th className="py-3.5 px-4 text-center">หลักฐาน</th>
-                  <th className="py-3.5 px-4 text-center">ดำเนินการ</th>
+                  <th className="py-3.5 px-4 w-36 min-w-[135px] whitespace-nowrap text-left">เลขที่คำร้อง / เลขทะเบียน</th>
+                  <th className="py-3.5 px-4 min-w-[240px] max-w-[300px] whitespace-nowrap text-left">ผู้รับความช่วยเหลือและอัสนัฟ</th>
+                  <th className="py-3.5 px-4 text-center w-36 min-w-[130px] whitespace-nowrap">สถานะการเงิน</th>
+                  <th className="py-3.5 px-4 text-center w-36 min-w-[135px] whitespace-nowrap">สถานะการช่วยเหลือ</th>
+                  <th className="py-3.5 px-4 text-right w-32 min-w-[115px] whitespace-nowrap">ยอดอนุมัติ</th>
+                  <th className="py-3.5 px-4 text-right w-32 min-w-[115px] whitespace-nowrap">ยอดจ่ายจริง</th>
+                  <th className="py-3.5 px-4 text-right w-32 min-w-[115px] whitespace-nowrap">ยอดคงเหลือ</th>
+                  <th className="py-3.5 px-4 w-36 min-w-[130px] whitespace-nowrap text-left">ใบสำคัญเบิกจ่าย</th>
+                  <th className="py-3.5 px-4 text-center w-28 min-w-[110px] whitespace-nowrap">หลักฐาน</th>
+                  <th className="py-3.5 px-4 text-center w-48 min-w-[180px] whitespace-nowrap">ดำเนินการ</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredList.map((item) => {
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {paginatedList.map((item) => {
+                  const statusConfig = OUTCOME_STATUS_CONFIG[item.outcomeStatus || 'not_started'] || {
+                    label: item.assistanceStatusLabel || 'ยังไม่เริ่ม',
+                    bg: 'bg-slate-100',
+                    text: 'text-slate-700',
+                    border: 'border-slate-300'
+                  };
+                  const asnafStyle = getAsnafColor(item.asnafCategory);
+                  const confirmedRecord = item.executionRecords?.find((r) => r.isConfirmed);
                   const hasDiscrepancy = item.discrepancies && item.discrepancies.length > 0;
-                  return (
-                    <tr key={item.applicationId} className="hover:bg-slate-50/90 transition-colors">
-                      {/* 1 & 2: Application No & Registration No */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-mono font-bold text-slate-900">{item.applicationNo}</div>
-                        <div className="text-[11px] text-teal-800 font-mono mt-0.5">{item.registrationNo}</div>
-                      </td>
 
-                      {/* 3 & 4: Beneficiary Name & Asnaf */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900">{item.beneficiaryName}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
-                            {item.asnafLabel}
-                          </span>
-                          <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
-                            {item.assistanceType}
-                          </span>
+                  return (
+                    <tr key={item.applicationId} className="hover:bg-slate-50/80 transition-colors">
+                      {/* 1. เลขที่คำร้อง / เลขทะเบียน */}
+                      <td className="py-3.5 px-4 w-36 min-w-[135px]">
+                        <div className="font-mono font-bold text-slate-900 text-xs sm:text-sm bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200/80 inline-block shadow-2xs">
+                          {item.applicationNo}
+                        </div>
+                        <div className="text-[11px] text-teal-800 font-mono font-semibold mt-1">
+                          {item.registrationNo}
                         </div>
                       </td>
 
-                      {/* Dual Status 1: Finance Status */}
-                      <td className="py-3.5 px-4 text-center">
+                      {/* 2. ผู้รับความช่วยเหลือและอัสนัฟ */}
+                      <td className="py-3.5 px-4 min-w-[240px] max-w-[300px]">
+                        <div className="font-bold text-slate-900 text-sm tracking-tight truncate max-w-[280px]" title={item.beneficiaryName}>
+                          {item.beneficiaryName}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${asnafStyle.bg} ${asnafStyle.text} ${asnafStyle.border}`}>
+                            {item.asnafLabel}
+                          </span>
+                          <span 
+                            className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200/80 truncate max-w-[140px]" 
+                            title={item.assistanceType}
+                          >
+                            {item.assistanceType}
+                          </span>
+                        </div>
+                        {item.registrationNo && (
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            ทะเบียน: {item.registrationNo}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 3. สถานะการเงิน */}
+                      <td className="py-3.5 px-4 text-center w-36 min-w-[130px]">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap border ${
                             item.financeStatus === 'fully_handed_over'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                               : item.financeStatus === 'partially_handed_over'
-                              ? 'bg-amber-50 text-amber-800 border-amber-300'
-                              : 'bg-slate-100 text-slate-700 border-slate-300'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
                           }`}
                         >
                           <span
@@ -797,100 +1192,118 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                                 : 'bg-slate-400'
                             }`}
                           />
-                          การเงิน: {item.financeStatusLabel}
+                          {item.financeStatusLabel}
                         </span>
                         {hasDiscrepancy && (
                           <div className="mt-1">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap animate-pulse">
                               ⚠️ มียอดแจ้งไม่ตรง
                             </span>
                           </div>
                         )}
                       </td>
 
-                      {/* Dual Status 2: Assistance Status */}
-                      <td className="py-3.5 px-4 text-center">
+                      {/* 4. สถานะการช่วยเหลือ */}
+                      <td className="py-3.5 px-4 text-center w-36 min-w-[135px]">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                            item.assistanceStatus === 'completed'
-                              ? 'bg-teal-50 text-teal-800 border-teal-300'
-                              : item.assistanceStatus === 'wait_confirmation'
-                              ? 'bg-indigo-50 text-indigo-800 border-indigo-300'
-                              : item.assistanceStatus === 'in_progress'
-                              ? 'bg-sky-50 text-sky-800 border-sky-300'
-                              : 'bg-stone-100 text-stone-700 border-stone-300'
-                          }`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
                         >
-                          การช่วยเหลือ: {item.assistanceStatusLabel}
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {statusConfig.label}
                         </span>
                       </td>
 
-                      {/* 6: Approved Amount */}
-                      <td className="py-3.5 px-4 text-right font-mono font-semibold text-slate-700">
-                        ฿{item.approvedAmount.toLocaleString()}
+                      {/* 5. ยอดอนุมัติ */}
+                      <td className="py-3.5 px-4 text-right w-32 min-w-[115px]">
+                        <div className="font-mono tabular-nums text-xs sm:text-sm font-semibold text-slate-700">
+                          ฿{item.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
                       </td>
 
-                      {/* 8 & 9: Handed Over & Received Amount */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="font-mono font-bold text-emerald-900">
-                          ฿{item.receivedAmount.toLocaleString()}
+                      {/* 6. ยอดจ่ายจริง */}
+                      <td className="py-3.5 px-4 text-right w-32 min-w-[115px]">
+                        <div className={`font-mono tabular-nums text-xs sm:text-sm font-bold ${
+                          item.disbursedAmount > 0 ? 'text-emerald-700' : 'text-slate-600'
+                        }`}>
+                          ฿{item.disbursedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        {item.withdrawnAmount > 0 && item.withdrawnAmount !== item.receivedAmount && (
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            เบิก: ฿{item.withdrawnAmount.toLocaleString()}
+                      </td>
+
+                      {/* 7. ยอดคงเหลือ */}
+                      <td className="py-3.5 px-4 text-right w-32 min-w-[115px]">
+                        <div className={`font-mono tabular-nums text-xs sm:text-sm font-semibold ${
+                          item.remainingBalance > 0 ? 'text-amber-800' : 'text-slate-400'
+                        }`}>
+                          ฿{item.remainingBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </td>
+
+                      {/* 8. ใบสำคัญเบิกจ่าย */}
+                      <td className="py-3.5 px-4 w-36 min-w-[130px]">
+                        {item.withdrawalNo ? (
+                          <div 
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/90 font-mono text-xs font-semibold text-slate-800"
+                            title={`เลขที่ใบสำคัญเบิกจ่าย: ${item.withdrawalNo}`}
+                          >
+                            <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate max-w-[120px]">{item.withdrawalNo}</span>
                           </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">
+                            ยังไม่มีใบสำคัญ
+                          </span>
                         )}
                       </td>
 
-                      {/* 10: Disbursed to Beneficiary */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="font-mono font-extrabold text-teal-900">
-                          ฿{item.disbursedAmount.toLocaleString()}
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
-                          คงเหลือ: ฿{item.remainingBalance.toLocaleString()}
-                        </div>
-                      </td>
-
-                      {/* 12: Voucher No */}
-                      <td className="py-3.5 px-4 font-mono text-[11px] text-slate-600">
-                        {item.withdrawalNo}
-                      </td>
-
-                      {/* 13: Handover Proof */}
-                      <td className="py-3.5 px-4 text-center">
+                      {/* 9. หลักฐาน */}
+                      <td className="py-3.5 px-4 text-center w-28 min-w-[110px]">
                         {item.proofUrl ? (
                           <button
                             onClick={() => handleOpenProof(item.proofUrl!, item.proofName)}
-                            className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold text-[11px] border border-teal-200 transition-colors inline-flex items-center gap-1"
-                            title="ดูหลักฐานการส่งมอบเงิน"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold text-xs border border-teal-200 transition-colors shadow-2xs cursor-pointer"
+                            title={item.proofName ? `ดูหลักฐาน: ${item.proofName}` : 'ดูหลักฐานการส่งมอบ'}
                           >
-                            <FileCheck className="w-3.5 h-3.5" />
-                            ดูหลักฐาน
+                            <FileCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                            <span>ดูหลักฐาน</span>
                           </button>
                         ) : (
-                          <span className="text-[10px] text-slate-400">-</span>
+                          <span className="text-xs text-slate-400 italic" title="ยังไม่มีการแนบไฟล์หลักฐาน">
+                            ยังไม่มีหลักฐาน
+                          </span>
                         )}
                       </td>
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      {/* 10. ดำเนินการ */}
+                      <td className="py-3.5 px-4 text-center w-48 min-w-[180px]">
+                        <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                           <button
                             onClick={() => handleOpenDetail(item)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
+                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs transition-colors border border-slate-200/90 shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+                            title="ดูรายละเอียดข้อมูลทั้งหมด"
                           >
-                            <Eye className="w-3.5 h-3.5" /> รายละเอียด
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            <span>ดูรายละเอียด</span>
                           </button>
 
-                          {/* Record execution / confirm completion button */}
-                          <button
-                            onClick={() => handleOpenExecutionModal(item)}
-                            className="px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
-                            title="บันทึกและยืนยันผลการช่วยเหลือเสร็จสิ้น"
-                          >
-                            <CheckSquare className="w-3.5 h-3.5" /> บันทึก/ยืนยันผล
-                          </button>
+                          {confirmedRecord ? (
+                            <button
+                              onClick={() => handleOpenEditExecution(confirmedRecord)}
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs transition-colors border border-amber-200 inline-flex items-center gap-1 cursor-pointer"
+                              title="แก้ไขผลการช่วยเหลือที่ยืนยันแล้ว"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>แก้ไข</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenExecutionModal(item)}
+                              className="px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition-colors shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+                              title="บันทึกและยืนยันผลการช่วยเหลือ"
+                            >
+                              <CheckSquare className="w-3.5 h-3.5" />
+                              <span>บันทึกผล</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -899,6 +1312,34 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
               </tbody>
             </table>
           </div>
+
+          {/* Table pagination */}
+          {totalPages > 1 && (
+            <div className="p-4 bg-slate-50/80 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <span className="text-slate-500 font-medium">
+                แสดง <strong>{((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredList.length)}</strong> จากทั้งหมด <strong>{filteredList.length}</strong> รายการ
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 font-bold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                >
+                  ย้อนกลับ
+                </button>
+                <span className="px-3 py-1 font-mono font-bold text-slate-800 bg-white rounded-lg border border-slate-200/80">
+                  หน้า {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 font-bold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                >
+                  ถัดไป
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2110,6 +2551,8 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
           </div>
         </ModalPortal>
       )}
+
+
     </div>
   );
 }

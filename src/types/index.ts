@@ -703,6 +703,18 @@ export interface AssistanceFinancialDetail {
   executionRecords?: AssistanceExecutionRecord[];
   currentInstallment?: number;
   installmentCount?: number;
+
+  // Card UI & Linkage Extensions
+  appliedDate?: string;                    // วันที่บันทึก/ยื่นคำร้อง
+  approvedDate?: string;                   // วันที่อนุมัติ
+  disbursementDate?: string;               // วันที่จ่ายเงิน
+  actualAssistanceDate?: string;           // วันที่ช่วยเหลือจริง
+  purpose?: string;                        // วัตถุประสงค์/รายละเอียดความจำเป็น
+  branchName?: string;                     // สาขา/พื้นที่ที่รับผิดชอบ
+  area?: string;                           // พื้นที่/ตำบล
+  beneficiaryPhoto?: string;               // รูปโปรไฟล์ (ถ้ามี)
+  hasFollowUpPlan?: boolean;               // มีแผนติดตามผลหรือไม่
+  followUpStatus?: string;                 // สถานะการติดตามผล
 }
 
 // ==========================================

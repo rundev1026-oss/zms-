@@ -7138,7 +7138,10 @@ export class FinancialService {
                    b.full_name as beneficiary_name, 
                    b.registration_no as beneficiary_registration_no, 
                    b.national_id, 
-                   b.asnaf_category as beneficiary_asnaf
+                   b.asnaf_category as beneficiary_asnaf,
+                   b.branch_name as beneficiary_branch_name,
+                   b.subdistrict as beneficiary_subdistrict,
+                   b.residence_address as beneficiary_residence_address
             FROM assistance_applications a
             LEFT JOIN beneficiaries b ON b.id = a.beneficiary_id
             WHERE a.id = ?`,
@@ -7440,6 +7443,29 @@ export class FinancialService {
     const asnafRaw = String(app.asnaf_category || app.beneficiary_asnaf || 'fakir');
     const asnafLabel = this.ASNAF_THAI_NAMES[asnafRaw] || asnafRaw;
 
+    // 8.5 Check follow up plan & metadata
+    let hasFollowUpPlan = false;
+    let followUpStatus = 'none';
+    try {
+      const fupRes = await db.execute({
+        sql: `SELECT status FROM follow_up_plans WHERE assistance_record_id = ? LIMIT 1`,
+        args: [applicationId],
+      });
+      if (fupRes.rows.length > 0) {
+        hasFollowUpPlan = true;
+        followUpStatus = String(fupRes.rows[0].status || 'not_started');
+      }
+    } catch {}
+
+    const latestExecution = executionRecords.length > 0 ? executionRecords[executionRecords.length - 1] : undefined;
+    const actualAssistanceDate = latestExecution?.executionDate || (app.disbursement_date ? String(app.disbursement_date).slice(0, 10) : undefined);
+    const purpose = String(app.necessity_details || app.hardship_reasons || app.assistance_type_details || app.disbursement_notes || 'ช่วยเหลือบรรเทาความเดือดร้อนตามหลักเกณฑ์');
+    const appliedDate = String(app.applied_date || app.created_at || '').slice(0, 10);
+    const approvedDate = app.approved_date ? String(app.approved_date).slice(0, 10) : undefined;
+    const disbursementDate = app.disbursement_date ? String(app.disbursement_date).slice(0, 10) : undefined;
+    const branchName = String(app.branch_name || app.beneficiary_branch_name || 'สำนักงานใหญ่ กรุงเทพมหานคร');
+    const area = String(app.beneficiary_subdistrict || app.beneficiary_residence_address || '');
+
     return {
       applicationId: String(app.id),
       applicationNo: String(app.application_no),
@@ -7483,6 +7509,16 @@ export class FinancialService {
       executionRecords,
       currentInstallment: Number(app.current_installment || (executionRecords.length > 0 ? executionRecords[executionRecords.length - 1].installmentNo : 1)),
       installmentCount: Number(app.installment_count || 1),
+      appliedDate,
+      approvedDate,
+      disbursementDate,
+      actualAssistanceDate,
+      purpose,
+      branchName,
+      area,
+      beneficiaryPhoto: '',
+      hasFollowUpPlan,
+      followUpStatus,
     };
   }
 

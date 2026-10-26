@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String
+  role        String   // super_admin, executive, officer, approver, finance, member, public
+  roleTitleTh String
+  phone       String
+  branch      String
+  status      String   @default("active") // active, suspended
+  lastLogin   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Household {
+  id               String            @id @default(cuid())
+  householdNo      String            @unique
+  address          String
+  province         String
+  district         String
+  subdistrict      String?
+  community        String
+  housingCondition String?           // dilapidated, poor, rented, fair
+  housingNotes     String?
+  livingScore      Int?              @default(0)
+  monthlyIncome    Float             @default(0)
+  monthlyExpense   Float             @default(0)
+  debtAmount       Float             @default(0)
+  debtPurpose      String?
+  members          HouseholdMember[]
+  beneficiaries    Beneficiary[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model HouseholdMember {
+  id            String    @id @default(cuid())
+  householdId   String
+  household     Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  fullName      String
+  relation      String
+  age           Int
+  occupation    String
+  monthlyIncome Float     @default(0)
+  healthStatus  String    @default("healthy") // healthy, chronically_ill, disabled, elderly
+  healthNotes   String?
+  createdAt     DateTime  @default(now())
+}
+
+model Beneficiary {
+  id              String                  @id @default(cuid())
+  householdId     String
+  household       Household               @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  fullName        String
+  nationalId      String                  @unique // Uniqueness constraint to prevent duplicate beneficiaries
+  phone           String
+  email           String?
+  asnafCategory   String                  // faqir, miskin, gharimin, amil, muallaf, fisabilillah, ibnsabil, riqab
+  applications    AssistanceApplication[]
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+}
+
+model AssistanceApplication {
+  id                    String                 @id @default(cuid())
+  applicationNo         String                 @unique
+  beneficiaryId         String
+  beneficiary           Beneficiary            @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  asnafCategory         String
+  requestedAmount       Float
+  approvedAmount        Float?
+  disbursedAmount       Float?
+  status                String                 @default("draft") // draft, submitted, doc_review, need_info, assessment, pending_approval, approved, rejected, wait_disbursement, disbursed, followup, closed
+  urgencyLevel          String                 @default("normal") // normal, high, urgent
+  assignedOfficerId     String
+  assignedOfficerName   String
+  approvedById          String?
+  approvedByName        String?
+  approvedDate          String?
+  approvalNotes         String?
+  disbursementDate      String?
+  disbursedById         String?
+  disbursedByName       String?
+  disbursementRef       String?
+  disbursementProofUrl  String?
+  disbursementNotes     String?
+  appliedDate           String
+  documents             ApplicationDocument[]
+  assessment            BeneficiaryAssessment?
+  followups             AssistanceFollowup[]
+  statusHistory         ApplicationHistory[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+}
+
+model ApplicationDocument {
+  id              String                @id @default(cuid())
+  applicationId   String
+  application     AssistanceApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  name            String
+  category        String                // id_card, house_reg, income_proof, medical_cert, debt_doc, field_photo
+  fileUrl         String
+  status          String                @default("pending") // pending, verified, rejected
+  uploadDate      String
+  verifiedById    String?
+  verifiedByName  String?
+  verifiedDate    String?
+  rejectionReason String?
+  createdAt       DateTime              @default(now())
+}
+
+model BeneficiaryAssessment {
+  id                    String                @id @default(cuid())
+  applicationId         String                @unique
+  application           AssistanceApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  assessedById          String
+  assessedByName        String
+  assessedDate          String
+  livingScore           Int                   @default(0) // 0 to 100
+  housingCondition      String
+  housingNotes          String
+  debtBurdenSummary     String
+  primaryHardship       String
+  officerRecommendation String                // recommend_full, recommend_partial, recommend_decline
+  recommendedAmount     Float
+  recommendedFundId     String
+  generalNotes          String
+  createdAt             DateTime              @default(now())
+}
+
+model AssistanceFollowup {
+  id               String                @id @default(cuid())
+  applicationId    String
+  application      AssistanceApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  followupDate     String
+  officerId        String
+  officerName      String
+  statusSummary    String
+  isLivingImproved Boolean               @default(false)
+  notes            String
+  createdAt        DateTime              @default(now())
+}
+
+model ApplicationHistory {
+  id            String                @id @default(cuid())
+  applicationId String
+  application   AssistanceApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status        String
+  timestamp     String
+  changedById   String
+  changedByName String
+  notes         String
+  createdAt     DateTime              @default(now())
+}
+
+model FundAccount {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  description     String
+  category        String   // zakat, sadaqah, operational
+  totalReceived   Float    @default(0)
+  committedAmount Float    @default(0)
+  disbursedAmount Float    @default(0)
+  availableAmount Float    @default(0)
+  targetGoal      Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model FinancialTransaction {
+  id            String   @id @default(cuid())
+  transactionNo String   @unique
+  date          String
+  type          String   // income, expense, disbursement
+  fundId        String
+  fundName      String
+  category      String
+  amount        Float
+  paymentMethod String   // promptpay_qr, bank_transfer, cash
+  payerOrPayee  String
+  referenceNo   String
+  receiptUrl    String?
+  slipUrl       String?
+  status        String   @default("completed") // pending, completed, cancelled
+  recordedById  String
+  recordedByName String
+  verifiedById  String?
+  verifiedByName String?
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  timestamp   String
+  userId      String
+  userName    String
+  userRole    String
+  action      String
+  entityType  String   // application, beneficiary, disbursement, income, user, assessment
+  entityId    String
+  description String
+  ipAddress   String   @default("127.0.0.1")
+  oldValues   String?  // JSON string
+  newValues   String?  // JSON string
+  createdAt   DateTime @default(now())
+}

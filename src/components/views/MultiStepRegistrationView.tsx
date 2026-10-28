@@ -80,6 +80,25 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
   const [community, setCommunity] = useState<string>('ชุมชนนูรุลยากีน');
   const [branchId, setBranchId] = useState<string>('br-hq');
   const [branchName, setBranchName] = useState<string>('สำนักงานใหญ่ กรุงเทพมหานคร');
+  const [activeBranches, setActiveBranches] = useState<{ id: string; code: string; name: string }[]>([
+    { id: 'br-hq', code: 'HQ-BKK', name: 'สำนักงานใหญ่ กรุงเทพมหานคร' },
+  ]);
+
+  useEffect(() => {
+    fetch('/api/organization/structure?activeOnly=true')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data?.branches?.length > 0) {
+          setActiveBranches(json.data.branches);
+          const currentMatch = json.data.branches.find((b: any) => b.id === branchId) || json.data.branches[0];
+          if (currentMatch) {
+            setBranchId(currentMatch.id);
+            setBranchName(currentMatch.name);
+          }
+        }
+      })
+      .catch((err) => console.error('Failed to load active branches:', err));
+  }, []);
   const [housingType, setHousingType] = useState<HousingType>('own');
   const [housingCondition, setHousingCondition] = useState<string>('dilapidated');
   const [housingNotes, setHousingNotes] = useState<string>('บ้านไม้ชั้นเดียวยกพื้น หลังคาสังกะสีรั่ว ผุพัง');
@@ -889,19 +908,21 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
 
               {/* สาขามูลนิธิที่รับผิดชอบ (แถวเดียวกันกับลักษณะที่อยู่อาศัยและเอกสารสิทธิ์ที่ดิน) */}
               <div>
-                <label className="font-bold text-slate-700 block mb-1">สาขาผู้รับผิดชอบ</label>
+                <label className="font-bold text-slate-700 block mb-1">สาขาผู้รับผิดชอบ (เฉพาะสาขาที่เปิดใช้งาน)</label>
                 <select
                   value={branchId}
                   onChange={(e) => {
+                    const selected = activeBranches.find((b) => b.id === e.target.value);
                     setBranchId(e.target.value);
-                    setBranchName(e.target.options[e.target.selectedIndex].text);
+                    setBranchName(selected ? selected.name : e.target.options[e.target.selectedIndex].text);
                   }}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
                 >
-                  <option value="br-hq">สำนักงานใหญ่ กรุงเทพมหานคร</option>
-                  <option value="br-central">สาขาภาคกลางและปริมณฑล</option>
-                  <option value="br-south">สาขาภาคใต้ (ปัตตานี)</option>
-                  <option value="br-north">สาขาภาคเหนือ (เชียงใหม่)</option>
+                  {activeBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.code})
+                    </option>
+                  ))}
                 </select>
               </div>
 

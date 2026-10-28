@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import { Branch, Department } from '@/types';
 import { 
   TrendingUp, 
   Wallet, 
@@ -31,6 +32,20 @@ interface ExecutiveDashboardProps {
 export function ExecutiveDashboard({ onNavigate, onSelectApplication }: ExecutiveDashboardProps) {
   const { funds, applications, registries, dashboardStats, transactions, showToast } = useApp();
   const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'quarter' | 'year'>('month');
+  const [orgBranches, setOrgBranches] = useState<Branch[]>([]);
+  const [orgDepartments, setOrgDepartments] = useState<Department[]>([]);
+
+  useEffect(() => {
+    fetch('/api/organization/structure')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setOrgBranches(json.data.branches || []);
+          setOrgDepartments(json.data.departments || []);
+        }
+      })
+      .catch((err) => console.error('Failed to load organization structure for dashboard:', err));
+  }, []);
 
   // Real database separated counts mandated by prompt
   const separatedStats = dashboardStats || {
@@ -575,6 +590,78 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
           </div>
         </div>
       </div>
+
+      {/* Branch & Organization Summary Section */}
+      {orgBranches.length > 0 && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Building className="w-4 h-4 text-emerald-700" />
+                <span>ภาพรวมการดำเนินงานแยกตามสาขาและโครงสร้างองค์กร ({orgBranches.length} สาขา / {orgDepartments.length} แผนก)</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                ข้อมูลบุคลากร ทะเบียนผู้มีสิทธิ์ และคำร้องขอความช่วยเหลือเชื่อมโยงตามสาขาจริงจากฐานข้อมูล
+              </p>
+            </div>
+            <button
+              onClick={() => onNavigate('branches-depts')}
+              className="text-xs font-semibold text-emerald-700 hover:underline flex items-center gap-1 self-start sm:self-auto"
+            >
+              <span>จัดการโครงสร้างสาขาและแผนก</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            {orgBranches.map((br) => (
+              <div
+                key={br.id}
+                className={`p-3.5 rounded-xl border transition-all ${
+                  br.status === 'active'
+                    ? 'bg-slate-50/70 border-slate-200 hover:border-emerald-300'
+                    : 'bg-slate-100/70 border-slate-300 opacity-75'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">
+                    {br.code}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      br.status === 'active'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {br.status === 'active' ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                  </span>
+                </div>
+                <div className="font-bold text-slate-900 mt-2 truncate" title={br.name}>
+                  {br.name}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  ผู้จัดการ: <strong className="text-slate-700">{br.managerName || 'ยังไม่ระบุ'}</strong>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 mt-3 pt-2.5 border-t border-slate-200/80 text-center">
+                  <div className="bg-white p-1.5 rounded-lg border border-slate-200/60">
+                    <div className="font-extrabold text-slate-900 text-sm">{br.staffCount ?? 0}</div>
+                    <div className="text-[10px] text-slate-500">บุคลากร</div>
+                  </div>
+                  <div className="bg-white p-1.5 rounded-lg border border-slate-200/60">
+                    <div className="font-extrabold text-teal-800 text-sm">{br.beneficiaryCount ?? 0}</div>
+                    <div className="text-[10px] text-slate-500">ผู้มีสิทธิ์</div>
+                  </div>
+                  <div className="bg-white p-1.5 rounded-lg border border-slate-200/60">
+                    <div className="font-extrabold text-indigo-800 text-sm">{br.applicationCount ?? 0}</div>
+                    <div className="text-[10px] text-slate-500">คำร้อง</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Applications Activity Stream */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">

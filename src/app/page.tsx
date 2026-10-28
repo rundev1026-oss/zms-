@@ -336,7 +336,7 @@ export default function Home() {
           )}
 
           {currentView === 'branches-depts' && (
-            <BranchesAndDepartmentsView />
+            <BranchesAndDepartmentsView onNavigate={setCurrentView} />
           )}
 
           {currentView === 'transparency-reports' && (

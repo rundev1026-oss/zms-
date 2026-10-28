@@ -1,17 +1,8 @@
 import { NextResponse } from 'next/server';
 import { AuthService } from '@/services/authService';
+import { OrganizationService } from '@/services/organizationService';
 import { getDb, initDb } from '@/lib/db';
 import { User } from '@/types';
-
-function extractToken(req: Request): string {
-  const authHeader = req.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.replace('Bearer ', '').trim();
-  }
-  const cookieHeader = req.headers.get('cookie') || '';
-  const match = cookieHeader.match(/zms_session=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
 
 export async function GET(
   req: Request,
@@ -21,13 +12,12 @@ export async function GET(
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
 
-    const token = extractToken(req);
-    if (!token) {
+    const actor = await OrganizationService.resolveActor(req);
+    if (!actor) {
       return NextResponse.json({ success: false, error: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
     }
 
-    const actor = await AuthService.validateSession(token);
-    if (!actor || actor.role !== 'super_admin') {
+    if (actor.role !== 'super_admin') {
       return NextResponse.json(
         { success: false, error: 'เฉพาะผู้ดูแลระบบสูงสุด (Super Admin) เท่านั้นที่สามารถดูรายละเอียดผู้ใช้งานได้' },
         { status: 403 }
@@ -90,13 +80,12 @@ export async function PUT(
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
 
-    const token = extractToken(req);
-    if (!token) {
+    const actor = await OrganizationService.resolveActor(req);
+    if (!actor) {
       return NextResponse.json({ success: false, error: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
     }
 
-    const actor = await AuthService.validateSession(token);
-    if (!actor || actor.role !== 'super_admin') {
+    if (actor.role !== 'super_admin') {
       return NextResponse.json(
         { success: false, error: 'เฉพาะผู้ดูแลระบบสูงสุด (Super Admin) เท่านั้นที่สามารถแก้ไขผู้ใช้งานได้' },
         { status: 403 }
@@ -106,7 +95,7 @@ export async function PUT(
     const body = await req.json();
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
 
-    const result = await AuthService.updateUserByAdmin(userId, body, actor, ip);
+    const result = await AuthService.updateUserByAdmin(userId, body, actor as any, ip);
 
     return NextResponse.json({
       success: true,

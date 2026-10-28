@@ -47,19 +47,65 @@ export type AsnafCategory =
   | 'ibnsabil'        // ผู้เดินทางตกยาก
   | 'riqab';          // ปลดปล่อยภาระผูกพัน
 
+export type BranchType = 'headquarters' | 'regional_branch' | 'sub_branch';
+
 export interface Branch {
   id: string;
   code: string;
   name: string;
+  nameEn?: string;
+  branchType?: BranchType;
+  parentBranchId?: string | null;
+  parentBranchName?: string | null;
+  address?: string;
+  subdistrict?: string;
+  district?: string;
   province: string;
+  postcode?: string;
+  phone?: string;
+  email?: string;
+  managerUserId?: string | null;
+  managerName?: string;
+  managerRoleTitle?: string;
   isHeadquarters: boolean;
+  status?: 'active' | 'inactive';
+  deactivatedReason?: string | null;
+  staffCount?: number;
+  departmentCount?: number;
+  beneficiaryCount?: number;
+  applicationCount?: number;
+  disbursedAmountTotal?: number;
+  activeFollowUpCount?: number;
+  createdById?: string;
+  createdByName?: string;
+  updatedById?: string;
+  updatedByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Department {
   id: string;
   code: string;
   name: string;
+  nameEn?: string;
   description?: string;
+  branchId?: string;
+  branchName?: string;
+  branchCode?: string;
+  headUserId?: string | null;
+  headName?: string;
+  headRoleTitle?: string;
+  allowedRoles?: UserRole[];
+  status?: 'active' | 'inactive';
+  deactivatedReason?: string | null;
+  memberCount?: number;
+  createdById?: string;
+  createdByName?: string;
+  updatedById?: string;
+  updatedByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface User {

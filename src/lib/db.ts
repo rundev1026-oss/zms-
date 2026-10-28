@@ -127,21 +127,101 @@ export async function initDb(): Promise<void> {
       id TEXT PRIMARY KEY,
       code TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
+      name_en TEXT,
+      branch_type TEXT DEFAULT 'regional_branch',
+      parent_branch_id TEXT,
+      address TEXT,
+      subdistrict TEXT,
+      district TEXT,
       province TEXT NOT NULL,
+      postcode TEXT,
+      phone TEXT,
+      email TEXT,
+      manager_user_id TEXT,
+      manager_name TEXT,
       is_headquarters INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      status TEXT DEFAULT 'active',
+      deactivated_reason TEXT,
+      created_by_id TEXT,
+      created_by_name TEXT,
+      updated_by_id TEXT,
+      updated_by_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  const branchCols = await db.execute(`PRAGMA table_info(branches)`);
+  const branchColNames = branchCols.rows.map((c) => String(c.name));
+  const branchNewCols: [string, string][] = [
+    ['name_en', 'TEXT'],
+    ['branch_type', "TEXT DEFAULT 'regional_branch'"],
+    ['parent_branch_id', 'TEXT'],
+    ['address', 'TEXT'],
+    ['subdistrict', 'TEXT'],
+    ['district', 'TEXT'],
+    ['postcode', 'TEXT'],
+    ['phone', 'TEXT'],
+    ['email', 'TEXT'],
+    ['manager_user_id', 'TEXT'],
+    ['manager_name', 'TEXT'],
+    ['status', "TEXT DEFAULT 'active'"],
+    ['deactivated_reason', 'TEXT'],
+    ['created_by_id', 'TEXT'],
+    ['created_by_name', 'TEXT'],
+    ['updated_by_id', 'TEXT'],
+    ['updated_by_name', 'TEXT'],
+    ['updated_at', 'DATETIME'],
+  ];
+  for (const [col, colType] of branchNewCols) {
+    if (!branchColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE branches ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS departments (
       id TEXT PRIMARY KEY,
       code TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
+      name_en TEXT,
       description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      branch_id TEXT DEFAULT 'br-hq',
+      head_user_id TEXT,
+      head_name TEXT,
+      allowed_roles TEXT DEFAULT '["officer"]',
+      status TEXT DEFAULT 'active',
+      deactivated_reason TEXT,
+      created_by_id TEXT,
+      created_by_name TEXT,
+      updated_by_id TEXT,
+      updated_by_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  const deptCols = await db.execute(`PRAGMA table_info(departments)`);
+  const deptColNames = deptCols.rows.map((c) => String(c.name));
+  const deptNewCols: [string, string][] = [
+    ['name_en', 'TEXT'],
+    ['branch_id', "TEXT DEFAULT 'br-hq'"],
+    ['head_user_id', 'TEXT'],
+    ['head_name', 'TEXT'],
+    ['allowed_roles', 'TEXT DEFAULT \'["officer"]\''],
+    ['status', "TEXT DEFAULT 'active'"],
+    ['deactivated_reason', 'TEXT'],
+    ['created_by_id', 'TEXT'],
+    ['created_by_name', 'TEXT'],
+    ['updated_by_id', 'TEXT'],
+    ['updated_by_name', 'TEXT'],
+    ['updated_at', 'DATETIME'],
+  ];
+  for (const [col, colType] of deptNewCols) {
+    if (!deptColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE departments ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -797,24 +877,136 @@ export async function initDb(): Promise<void> {
   // Seed default Branches if empty
   const branchCount = await db.execute('SELECT COUNT(*) as count FROM branches');
   if (Number(branchCount.rows[0].count) === 0) {
-    await db.execute(`INSERT INTO branches (id, code, name, province, is_headquarters) VALUES
-      ('br-hq', 'BR-BKK', 'สำนักงานใหญ่ กรุงเทพมหานคร', 'กรุงเทพมหานคร', 1),
-      ('br-central', 'BR-CTR', 'สาขาภาคกลางและปริมณฑล', 'นนทบุรี', 0),
-      ('br-south', 'BR-STH', 'สาขาภาคใต้ (ปัตตานี)', 'ปัตตานี', 0),
-      ('br-north', 'BR-NTH', 'สาขาภาคเหนือ (เชียงใหม่)', 'เชียงใหม่', 0);
+    await db.execute(`INSERT INTO branches (
+      id, code, name, name_en, branch_type, parent_branch_id, address, subdistrict, district, province, postcode,
+      phone, email, manager_user_id, manager_name, is_headquarters, status
+    ) VALUES
+      ('br-hq', 'BR-BKK', 'สำนักงานใหญ่ กรุงเทพมหานคร', 'Bangkok Headquarters', 'headquarters', NULL, '123/45 ถนนรามคำแหง', 'หัวหมาก', 'บางกะปิ', 'กรุงเทพมหานคร', '10240', '02-123-4567', 'hq@zakatfoundation.or.th', 'u-2', 'ดร. อับดุลลอฮ์ สัจจะธรรม', 1, 'active'),
+      ('br-central', 'BR-CTR', 'สาขาภาคกลางและปริมณฑล', 'Central & Metropolitan Branch', 'regional_branch', 'br-hq', '19/4 ถนนรัตนาธิเบศร์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '02-555-8899', 'central@zakatfoundation.or.th', 'u-3', 'อุสมาน เจริญสุข', 0, 'active'),
+      ('br-south', 'BR-STH', 'สาขาภาคใต้ (ปัตตานี)', 'Southern Regional Branch (Pattani)', 'regional_branch', 'br-hq', '88/12 ถนนเจริญประดิษฐ์', 'รูสะมิแล', 'เมืองปัตตานี', 'ปัตตานี', '94000', '073-333-456', 'south@zakatfoundation.or.th', NULL, 'อุสตาซซาการียา บินดอเลาะ', 0, 'active'),
+      ('br-north', 'BR-NTH', 'สาขาภาคเหนือ (เชียงใหม่)', 'Northern Regional Branch (Chiang Mai)', 'regional_branch', 'br-hq', '45/3 ถนนช้างคลาน', 'ช้างคลาน', 'เมืองเชียงใหม่', 'เชียงใหม่', '50100', '053-271-456', 'north@zakatfoundation.or.th', NULL, 'อาจารย์อิบรอฮีม สมบูรณ์', 0, 'active');
     `);
+  } else {
+    // Safe one-time backfill for existing branches missing extended fields
+    await db.execute(`UPDATE branches SET
+      name_en = COALESCE(name_en, 'Bangkok Headquarters'),
+      branch_type = COALESCE(branch_type, 'headquarters'),
+      address = COALESCE(address, '123/45 ถนนรามคำแหง'),
+      subdistrict = COALESCE(subdistrict, 'หัวหมาก'),
+      district = COALESCE(district, 'บางกะปิ'),
+      postcode = COALESCE(postcode, '10240'),
+      phone = COALESCE(phone, '02-123-4567'),
+      email = COALESCE(email, 'hq@zakatfoundation.or.th'),
+      manager_user_id = COALESCE(manager_user_id, 'u-2'),
+      manager_name = COALESCE(manager_name, 'ดร. อับดุลลอฮ์ สัจจะธรรม'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'br-hq' AND (address IS NULL OR address = '');`);
+
+    await db.execute(`UPDATE branches SET
+      name_en = COALESCE(name_en, 'Central & Metropolitan Branch'),
+      branch_type = COALESCE(branch_type, 'regional_branch'),
+      parent_branch_id = COALESCE(parent_branch_id, 'br-hq'),
+      address = COALESCE(address, '19/4 ถนนรัตนาธิเบศร์'),
+      subdistrict = COALESCE(subdistrict, 'บางกระสอ'),
+      district = COALESCE(district, 'เมืองนนทบุรี'),
+      postcode = COALESCE(postcode, '11000'),
+      phone = COALESCE(phone, '02-555-8899'),
+      email = COALESCE(email, 'central@zakatfoundation.or.th'),
+      manager_user_id = COALESCE(manager_user_id, 'u-3'),
+      manager_name = COALESCE(manager_name, 'อุสมาน เจริญสุข'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'br-central' AND (address IS NULL OR address = '');`);
+
+    await db.execute(`UPDATE branches SET
+      name_en = COALESCE(name_en, 'Southern Regional Branch (Pattani)'),
+      branch_type = COALESCE(branch_type, 'regional_branch'),
+      parent_branch_id = COALESCE(parent_branch_id, 'br-hq'),
+      address = COALESCE(address, '88/12 ถนนเจริญประดิษฐ์'),
+      subdistrict = COALESCE(subdistrict, 'รูสะมิแล'),
+      district = COALESCE(district, 'เมืองปัตตานี'),
+      postcode = COALESCE(postcode, '94000'),
+      phone = COALESCE(phone, '073-333-456'),
+      email = COALESCE(email, 'south@zakatfoundation.or.th'),
+      manager_name = COALESCE(manager_name, 'อุสตาซซาการียา บินดอเลาะ'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'br-south' AND (address IS NULL OR address = '');`);
+
+    await db.execute(`UPDATE branches SET
+      name_en = COALESCE(name_en, 'Northern Regional Branch (Chiang Mai)'),
+      branch_type = COALESCE(branch_type, 'regional_branch'),
+      parent_branch_id = COALESCE(parent_branch_id, 'br-hq'),
+      address = COALESCE(address, '45/3 ถนนช้างคลาน'),
+      subdistrict = COALESCE(subdistrict, 'ช้างคลาน'),
+      district = COALESCE(district, 'เมืองเชียงใหม่'),
+      postcode = COALESCE(postcode, '50100'),
+      phone = COALESCE(phone, '053-271-456'),
+      email = COALESCE(email, 'north@zakatfoundation.or.th'),
+      manager_name = COALESCE(manager_name, 'อาจารย์อิบรอฮีม สมบูรณ์'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'br-north' AND (address IS NULL OR address = '');`);
+
+    await db.execute(`UPDATE branches SET status = 'active' WHERE status IS NULL OR status = '';`);
   }
 
   // Seed default Departments if empty
   const deptCount = await db.execute('SELECT COUNT(*) as count FROM departments');
   if (Number(deptCount.rows[0].count) === 0) {
-    await db.execute(`INSERT INTO departments (id, code, name, description) VALUES
-      ('dept-board', 'DEPT-BRD', 'คณะกรรมการมูลนิธิและชะรีอะฮ์', 'กำหนดนโยบาย วินิจฉัยข้อชารีอะฮ์ และกำกับดูแลภาพรวม'),
-      ('dept-social', 'DEPT-SOC', 'ฝ่ายสังคมสงเคราะห์และลงพื้นที่', 'รับคำร้อง ตรวจสอบเอกสาร และลงพื้นที่ประเมินคุณสมบัติผู้ขอรับซะกาต'),
-      ('dept-finance', 'DEPT-FIN', 'ฝ่ายการเงินและบัญชีกองทุน', 'บริหารจัดการรายรับ-จ่าย จัดทำบัญชีแยกกองทุน และโอนจ่ายเงินสวัสดิการ'),
-      ('dept-it', 'DEPT-SYS', 'ฝ่ายเทคโนโลยีสารสนเทศและการรักษาความปลอดภัย', 'ดูแลความปลอดภัยระบบเซิร์ฟเวอร์ ฐานข้อมูล และการสำรองข้อมูล'),
-      ('dept-public', 'DEPT-PUB', 'แผนกบริการสมาชิกและผู้บริจาคทั่วไป', 'บริการข้อมูลสาธารณะ ประสานงานผู้บริจาค และออกใบสำคัญรับเงิน');
+    await db.execute(`INSERT INTO departments (
+      id, code, name, name_en, description, branch_id, head_user_id, head_name, allowed_roles, status
+    ) VALUES
+      ('dept-board', 'DEPT-BRD', 'คณะกรรมการมูลนิธิและชะรีอะฮ์', 'Board & Shariah Governance', 'กำหนดนโยบาย วินิจฉัยข้อชารีอะฮ์ และกำกับดูแลภาพรวม', 'br-hq', 'u-2', 'ดร. อับดุลลอฮ์ สัจจะธรรม', '["executive","approver"]', 'active'),
+      ('dept-social', 'DEPT-SOC', 'ฝ่ายสังคมสงเคราะห์และลงพื้นที่', 'Social Welfare & Field Operations', 'รับคำร้อง ตรวจสอบเอกสาร และลงพื้นที่ประเมินคุณสมบัติผู้ขอรับซะกาต', 'br-central', 'u-3', 'อุสมาน เจริญสุข', '["officer"]', 'active'),
+      ('dept-finance', 'DEPT-FIN', 'ฝ่ายการเงินและบัญชีกองทุน', 'Finance & Fund Accounting', 'บริหารจัดการรายรับ-จ่าย จัดทำบัญชีแยกกองทุน และโอนจ่ายเงินสวัสดิการ', 'br-hq', 'u-5', 'ฟาติมะฮ์ หวังดี', '["finance"]', 'active'),
+      ('dept-it', 'DEPT-SYS', 'ฝ่ายเทคโนโลยีสารสนเทศและการรักษาความปลอดภัย', 'Information Technology & Security', 'ดูแลความปลอดภัยระบบเซิร์ฟเวอร์ ฐานข้อมูล และการสำรองข้อมูล', 'br-hq', 'u-1', 'อิบรอฮีม มานะชัย', '["super_admin"]', 'active'),
+      ('dept-public', 'DEPT-PUB', 'แผนกบริการสมาชิกและผู้บริจาคทั่วไป', 'Member & Donor Relations', 'บริการข้อมูลสาธารณะ ประสานงานผู้บริจาค และออกใบสำคัญรับเงิน', 'br-hq', NULL, 'ฝ่ายบริการสมาชิกกลาง', '["member","officer"]', 'active');
     `);
+  } else {
+    await db.execute(`UPDATE departments SET
+      name_en = COALESCE(name_en, 'Board & Shariah Governance'),
+      branch_id = COALESCE(branch_id, 'br-hq'),
+      head_user_id = COALESCE(head_user_id, 'u-2'),
+      head_name = COALESCE(head_name, 'ดร. อับดุลลอฮ์ สัจจะธรรม'),
+      allowed_roles = COALESCE(allowed_roles, '["executive","approver"]'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'dept-board' AND (name_en IS NULL OR name_en = '');`);
+
+    await db.execute(`UPDATE departments SET
+      name_en = COALESCE(name_en, 'Social Welfare & Field Operations'),
+      branch_id = COALESCE(branch_id, 'br-central'),
+      head_user_id = COALESCE(head_user_id, 'u-3'),
+      head_name = COALESCE(head_name, 'อุสมาน เจริญสุข'),
+      allowed_roles = COALESCE(allowed_roles, '["officer"]'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'dept-social' AND (name_en IS NULL OR name_en = '');`);
+
+    await db.execute(`UPDATE departments SET
+      name_en = COALESCE(name_en, 'Finance & Fund Accounting'),
+      branch_id = COALESCE(branch_id, 'br-hq'),
+      head_user_id = COALESCE(head_user_id, 'u-5'),
+      head_name = COALESCE(head_name, 'ฟาติมะฮ์ หวังดี'),
+      allowed_roles = COALESCE(allowed_roles, '["finance"]'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'dept-finance' AND (name_en IS NULL OR name_en = '');`);
+
+    await db.execute(`UPDATE departments SET
+      name_en = COALESCE(name_en, 'Information Technology & Security'),
+      branch_id = COALESCE(branch_id, 'br-hq'),
+      head_user_id = COALESCE(head_user_id, 'u-1'),
+      head_name = COALESCE(head_name, 'อิบรอฮีม มานะชัย'),
+      allowed_roles = COALESCE(allowed_roles, '["super_admin"]'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'dept-it' AND (name_en IS NULL OR name_en = '');`);
+
+    await db.execute(`UPDATE departments SET
+      name_en = COALESCE(name_en, 'Member & Donor Relations'),
+      branch_id = COALESCE(branch_id, 'br-hq'),
+      head_name = COALESCE(head_name, 'ฝ่ายบริการสมาชิกกลาง'),
+      allowed_roles = COALESCE(allowed_roles, '["member","officer"]'),
+      status = COALESCE(status, 'active')
+      WHERE id = 'dept-public' AND (name_en IS NULL OR name_en = '');`);
+
+    await db.execute(`UPDATE departments SET status = 'active' WHERE status IS NULL OR status = '';`);
+    await db.execute(`UPDATE departments SET branch_id = 'br-hq' WHERE branch_id IS NULL OR branch_id = '';`);
   }
 
   // Seed default Users if empty

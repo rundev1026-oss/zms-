@@ -115,7 +115,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   const [editBranchId, setEditBranchId] = useState('br-hq');
   const [editDepartmentId, setEditDepartmentId] = useState('dept-social');
 
-  // Helper to fetch with token
+  // Helper to fetch with token + RBAC actor headers
   const getAuthHeaders = useCallback(() => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -123,8 +123,14 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
     }
+    if (currentUser?.id) {
+      headers['x-actor-id'] = currentUser.id;
+    }
+    if (currentUser?.role) {
+      headers['x-actor-role'] = currentUser.role;
+    }
     return headers;
-  }, [authToken]);
+  }, [authToken, currentUser]);
 
   // Load Organization Structure (Branches & Departments)
   const fetchOrgStructure = useCallback(async () => {
@@ -132,13 +138,17 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
       const res = await fetch('/api/organization/structure');
       const json = await res.json();
       if (json.success && json.data) {
-        setBranches(json.data.branches || []);
-        setDepartments(json.data.departments || []);
-        if (json.data.branches?.length > 0) {
-          setNewBranchId(json.data.branches[0].id);
+        const loadedBranches: Branch[] = json.data.branches || [];
+        const loadedDepts: Department[] = json.data.departments || [];
+        setBranches(loadedBranches);
+        setDepartments(loadedDepts);
+        const firstActiveBranch = loadedBranches.find(b => b.status !== 'inactive') || loadedBranches[0];
+        const firstActiveDept = loadedDepts.find(d => d.status !== 'inactive') || loadedDepts[0];
+        if (firstActiveBranch) {
+          setNewBranchId(firstActiveBranch.id);
         }
-        if (json.data.departments?.length > 0) {
-          setNewDepartmentId(json.data.departments[0].id);
+        if (firstActiveDept) {
+          setNewDepartmentId(firstActiveDept.id);
         }
       }
     } catch (err) {
@@ -787,13 +797,23 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
 
                       {/* Branch & Department */}
                       <td className="py-3.5 px-4 text-slate-700">
-                        <div className="font-medium flex items-center gap-1">
+                        <div className="font-medium flex items-center gap-1 flex-wrap">
                           <Building className="w-3 h-3 text-slate-400 shrink-0" />
-                          {user.branchName || user.branch}
+                          <span>{user.branchName || user.branch}</span>
+                          {branches.find(b => b.id === user.branchId)?.status === 'inactive' && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                              สาขาปิดใช้งาน
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 flex-wrap">
                           <Layers className="w-3 h-3 text-slate-400 shrink-0" />
-                          {user.departmentName || 'ส่วนกลาง'}
+                          <span>{user.departmentName || 'ส่วนกลาง'}</span>
+                          {departments.find(d => d.id === user.departmentId)?.status === 'inactive' && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              แผนกปิดใช้งาน
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -1026,31 +1046,33 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    สาขา / สำนักงาน <span className="text-rose-500">*</span>
+                    สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={editBranchId}
                     onChange={(e) => setEditBranchId(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
+                    {branches.filter(b => b.status !== 'inactive').map(b => (
+                      <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    แผนก / ฝ่าย <span className="text-rose-500">*</span>
+                    แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={editDepartmentId}
                     onChange={(e) => setEditDepartmentId(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    {departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
+                    {departments
+                      .filter(d => d.status !== 'inactive' && (!d.branchId || d.branchId === editBranchId))
+                      .map(d => (
+                        <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                      ))}
                   </select>
                 </div>
               </div>
@@ -1427,31 +1449,33 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    สาขา / สำนักงาน <span className="text-rose-500">*</span>
+                    สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={newBranchId}
                     onChange={(e) => setNewBranchId(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
+                    {branches.filter(b => b.status !== 'inactive').map(b => (
+                      <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    แผนก / ฝ่าย <span className="text-rose-500">*</span>
+                    แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={newDepartmentId}
                     onChange={(e) => setNewDepartmentId(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    {departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
+                    {departments
+                      .filter(d => d.status !== 'inactive' && (!d.branchId || d.branchId === newBranchId))
+                      .map(d => (
+                        <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                      ))}
                   </select>
                 </div>
               </div>

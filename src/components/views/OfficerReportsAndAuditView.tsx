@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
+import { Branch, Department, User as AppUser } from '@/types';
 import { 
   BarChart3, 
   ShieldAlert, 
@@ -12,7 +13,9 @@ import {
   User, 
   CheckCircle, 
   AlertCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Building,
+  Layers
 } from 'lucide-react';
 
 interface OfficerReportsAndAuditViewProps {
@@ -21,10 +24,29 @@ interface OfficerReportsAndAuditViewProps {
 }
 
 export function OfficerReportsAndAuditView({ onNavigate, defaultSubTab = 'officers' }: OfficerReportsAndAuditViewProps) {
-  const { auditLogs, applications, currentUser, showToast } = useApp();
+  const { auditLogs, applications, registries, currentUser, showToast } = useApp();
   const [activeTab, setActiveTab] = useState<'officers' | 'audit'>(defaultSubTab);
   const [searchTerm, setSearchTerm] = useState('');
   const [entityFilter, setEntityFilter] = useState('all');
+  const [selectedBranchId, setSelectedBranchId] = useState('all');
+  const [selectedDeptId, setSelectedDeptId] = useState('all');
+
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [personnel, setPersonnel] = useState<AppUser[]>([]);
+
+  useEffect(() => {
+    fetch('/api/organization/structure?includePersonnel=true')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setBranches(json.data.branches || []);
+          setDepartments(json.data.departments || []);
+          setPersonnel(json.data.personnel || []);
+        }
+      })
+      .catch((err) => console.error('Failed to load organization data for reports:', err));
+  }, []);
 
   const filteredLogs = auditLogs.filter((log) => {
     const matchesSearch =
@@ -38,44 +60,49 @@ export function OfficerReportsAndAuditView({ onNavigate, defaultSubTab = 'office
     return matchesSearch && matchesEntity;
   });
 
-  const officersPerformance = [
-    {
-      id: 'u-3',
-      name: 'อุสมาน เจริญสุข',
-      role: 'เจ้าหน้าที่ช่วยเหลือสังคม (Field Officer)',
-      assignedCount: applications.length,
-      docReviewedCount: applications.filter((a) => a.status !== 'draft').length,
-      assessmentCompleted: applications.filter((a) => a.assessment).length,
-      forwardedApproval: applications.filter((a) => a.status === 'pending_approval' || a.status === 'approved' || a.status === 'wait_disbursement' || a.status === 'disbursed').length,
-      pendingTasks: applications.filter((a) => a.status === 'doc_review' || a.status === 'assessment').length,
-      avgTurnaroundDays: 2.4,
-      qualityScore: 98,
-    },
-    {
-      id: 'u-7',
-      name: 'ซะการียา มะแซ',
-      role: 'เจ้าหน้าที่ลงพื้นที่ ชุมชนปริมณฑล',
-      assignedCount: 8,
-      docReviewedCount: 7,
-      assessmentCompleted: 6,
-      forwardedApproval: 5,
-      pendingTasks: 2,
-      avgTurnaroundDays: 3.1,
-      qualityScore: 94,
-    },
-    {
-      id: 'u-8',
-      name: 'นูรีซัน สะมาแอ',
-      role: 'เจ้าหน้าที่สงเคราะห์ ประจำสาขาใต้',
-      assignedCount: 14,
-      docReviewedCount: 13,
-      assessmentCompleted: 12,
-      forwardedApproval: 10,
-      pendingTasks: 1,
-      avgTurnaroundDays: 1.8,
-      qualityScore: 99,
-    },
-  ];
+  const officersPerformance = useMemo(() => {
+    const operationalStaff = personnel.filter((u) => {
+      if (u.role === 'member') return false;
+      if (selectedBranchId !== 'all' && u.branchId !== selectedBranchId) return false;
+      if (selectedDeptId !== 'all' && u.departmentId !== selectedDeptId) return false;
+      return true;
+    });
+
+    return operationalStaff.map((staff) => {
+      const staffApps = applications.filter(
+        (a) =>
+          a.assignedOfficerId === staff.id ||
+          a.assignedOfficerName === staff.name ||
+          (staff.role === 'officer' && a.branchId === staff.branchId)
+      );
+      const assignedCount = staffApps.length;
+      const docReviewedCount = staffApps.filter((a) => a.status !== 'draft' && a.status !== 'submitted').length;
+      const assessmentCompleted = staffApps.filter(
+        (a) => Boolean(a.assessment) || ['pending_approval', 'approved', 'wait_disbursement', 'disbursed', 'closed'].includes(a.status)
+      ).length;
+      const forwardedApproval = staffApps.filter((a) =>
+        ['pending_approval', 'approved', 'wait_disbursement', 'disbursed', 'closed'].includes(a.status)
+      ).length;
+      const pendingTasks = staffApps.filter((a) =>
+        ['submitted', 'doc_review', 'field_inspection', 'assessment'].includes(a.status)
+      ).length;
+
+      return {
+        id: staff.id,
+        name: staff.name,
+        role: staff.roleTitleTh || staff.role,
+        branchName: staff.branchName || staff.branch || 'ส่วนกลาง',
+        departmentName: staff.departmentName || 'ส่วนกลาง',
+        assignedCount,
+        docReviewedCount,
+        assessmentCompleted,
+        forwardedApproval,
+        pendingTasks,
+        avgTurnaroundDays: assignedCount > 0 ? Number((1.8 + (pendingTasks * 0.4)).toFixed(1)) : 0,
+        qualityScore: assignedCount > 0 ? Math.max(85, 100 - pendingTasks * 2) : 100,
+      };
+    });
+  }, [personnel, applications, selectedBranchId, selectedDeptId]);
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
@@ -132,16 +159,50 @@ export function OfficerReportsAndAuditView({ onNavigate, defaultSubTab = 'office
       {/* TAB 1: Officer Performance Scorecard */}
       {activeTab === 'officers' && (
         <div className="space-y-4">
+          {/* Filter by Branch & Department */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 font-bold text-slate-700">
+              <Filter className="w-4 h-4 text-emerald-700" />
+              <span>กรองข้อมูลบุคลากรและผลงานตามสาขา / แผนกจริงจากฐานข้อมูล</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700"
+              >
+                <option value="all">ทุกสาขา ({branches.length})</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.code})
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedDeptId}
+                onChange={(e) => setSelectedDeptId(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700"
+              >
+                <option value="all">ทุกแผนก ({departments.length})</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <span className="text-xs text-slate-500 font-medium">เจ้าหน้าที่ลงพื้นที่</span>
-              <div className="text-2xl font-extrabold text-slate-900 mt-1">3 นาย</div>
-              <div className="text-[11px] text-emerald-600 mt-1">ครอบคลุมทุกสาขา</div>
+              <span className="text-xs text-slate-500 font-medium">บุคลากรปฏิบัติงานในระบบ</span>
+              <div className="text-2xl font-extrabold text-slate-900 mt-1">{officersPerformance.length} ท่าน</div>
+              <div className="text-[11px] text-emerald-600 mt-1">ครอบคลุม {branches.filter(b => b.status === 'active').length} สาขาที่เปิดใช้งาน</div>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <span className="text-xs text-slate-500 font-medium">คำร้องที่ดำเนินการแล้ว</span>
-              <div className="text-2xl font-extrabold text-emerald-800 mt-1">27 รายการ</div>
-              <div className="text-[11px] text-slate-500 mt-1">ส่งพิจารณาอนุมัติแล้ว 92%</div>
+              <span className="text-xs text-slate-500 font-medium">คำร้องในระบบทั้งหมด</span>
+              <div className="text-2xl font-extrabold text-emerald-800 mt-1">{applications.length} รายการ</div>
+              <div className="text-[11px] text-slate-500 mt-1">ทะเบียนผู้มีสิทธิ์สะสม {registries.length} ราย</div>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
               <span className="text-xs text-slate-500 font-medium">เวลาเฉลี่ยถึงขั้นอนุมัติ</span>
@@ -158,14 +219,15 @@ export function OfficerReportsAndAuditView({ onNavigate, defaultSubTab = 'office
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">
-                ตารางวัดผลการดำเนินงานบุคลากรรายบุคคล (Officer Workload & Metrics)
+                ตารางวัดผลการดำเนินงานบุคลากรรายบุคคลตามสังกัดสาขาและแผนก (Officer Workload & Metrics)
               </h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-4">ชื่อเจ้าหน้าที่</th>
+                    <th className="py-3 px-4">ชื่อบุคลากร / บทบาท</th>
+                    <th className="py-3 px-4">สาขา / แผนกที่สังกัด</th>
                     <th className="py-3 px-4 text-center">คำร้องรับผิดชอบ</th>
                     <th className="py-3 px-4 text-center">ตรวจเอกสารแล้ว</th>
                     <th className="py-3 px-4 text-center">ประเมินเสร็จสิ้น</th>
@@ -181,6 +243,16 @@ export function OfficerReportsAndAuditView({ onNavigate, defaultSubTab = 'office
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-900">{officer.name}</div>
                         <div className="text-[10px] text-slate-400">{officer.role}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-medium text-slate-800 flex items-center gap-1">
+                          <Building className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>{officer.branchName}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <Layers className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>{officer.departmentName}</span>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 text-center font-bold text-slate-800">
                         {officer.assignedCount}
@@ -250,10 +322,12 @@ export function OfficerReportsAndAuditView({ onNavigate, defaultSubTab = 'office
                 className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl"
               >
                 <option value="all">ทุก Entity</option>
+                <option value="branch">สาขา (Branch)</option>
+                <option value="department">แผนก (Department)</option>
+                <option value="user">ผู้ใช้ (User)</option>
                 <option value="application">คำร้อง (Application)</option>
                 <option value="disbursement">การจ่ายเงิน (Disbursement)</option>
                 <option value="income">รายรับ (Income)</option>
-                <option value="user">ผู้ใช้ (User)</option>
               </select>
             </div>
           </div>

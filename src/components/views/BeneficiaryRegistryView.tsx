@@ -140,8 +140,20 @@ export function BeneficiaryRegistryView({
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter);
   const [asnafFilter, setAsnafFilter] = useState<string>('all');
   const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [orgBranches, setOrgBranches] = useState<{ id: string; code: string; name: string; status: string }[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  useEffect(() => {
+    fetch('/api/organization/structure')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data?.branches) {
+          setOrgBranches(json.data.branches);
+        }
+      })
+      .catch((err) => console.error('Failed to load branches for registry filter:', err));
+  }, []);
 
   // 6 Main Sections state
   const [selectedRegistry, setSelectedRegistry] = useState<BeneficiaryRegistryItem | null>(null);
@@ -744,10 +756,12 @@ export function BeneficiaryRegistryView({
               onChange={(e) => { setBranchFilter(e.target.value); setCurrentPage(1); }}
               className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0b2545] text-xs font-medium"
             >
-              <option value="all">ทุกสาขา / พื้นที่</option>
-              <option value="br-hq">สำนักงานใหญ่ กรุงเทพมหานคร</option>
-              <option value="br-s1">สาขาภาคใต้ (สงขลา)</option>
-              <option value="br-c1">สาขาภาคกลาง (อยุธยา)</option>
+              <option value="all">ทุกสาขา / พื้นที่ ({orgBranches.length})</option>
+              {orgBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} {b.status === 'inactive' ? '(ปิดใช้งาน)' : ''}
+                </option>
+              ))}
             </select>
           </div>
         </div>

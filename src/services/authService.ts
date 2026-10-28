@@ -881,23 +881,97 @@ export class AuthService {
     await initDb();
     const db = getDb();
 
-    const branchRes = await db.execute(`SELECT id, code, name, province, is_headquarters FROM branches ORDER BY is_headquarters DESC, code ASC`);
-    const deptRes = await db.execute(`SELECT id, code, name, description FROM departments ORDER BY code ASC`);
+    const branchRes = await db.execute(`
+      SELECT 
+        b.id, b.code, b.name, b.name_en, b.branch_type, b.parent_branch_id,
+        pb.name as parent_branch_name,
+        b.address, b.subdistrict, b.district, b.province, b.postcode,
+        b.phone, b.email, b.manager_user_id, b.manager_name,
+        mu.name as manager_db_name, mu.role_title_th as manager_role_title,
+        b.is_headquarters, COALESCE(b.status, 'active') as status, b.deactivated_reason,
+        b.created_at, b.updated_at,
+        (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.status != 'disabled') as staff_count,
+        (SELECT COUNT(*) FROM departments d WHERE d.branch_id = b.id AND COALESCE(d.status, 'active') = 'active') as department_count,
+        (SELECT COUNT(*) FROM beneficiaries ben WHERE ben.branch_id = b.id) as beneficiary_count,
+        (SELECT COUNT(*) FROM assistance_applications app WHERE app.branch_id = b.id AND app.id != 'REGISTRY-DOCS') as application_count
+      FROM branches b
+      LEFT JOIN branches pb ON b.parent_branch_id = pb.id
+      LEFT JOIN users mu ON b.manager_user_id = mu.id
+      ORDER BY b.is_headquarters DESC, b.code ASC
+    `);
+
+    const deptRes = await db.execute(`
+      SELECT 
+        d.id, d.code, d.name, d.name_en, d.description,
+        d.branch_id, b.name as branch_name, b.code as branch_code,
+        d.head_user_id, d.head_name,
+        hu.name as head_db_name, hu.role_title_th as head_role_title,
+        d.allowed_roles, COALESCE(d.status, 'active') as status, d.deactivated_reason,
+        d.created_at, d.updated_at,
+        (SELECT COUNT(*) FROM users u WHERE u.department_id = d.id AND u.status != 'disabled') as member_count
+      FROM departments d
+      LEFT JOIN branches b ON d.branch_id = b.id
+      LEFT JOIN users hu ON d.head_user_id = hu.id
+      ORDER BY d.code ASC
+    `);
 
     const branches: Branch[] = branchRes.rows.map((b: any) => ({
       id: String(b.id),
       code: String(b.code),
       name: String(b.name),
+      nameEn: b.name_en ? String(b.name_en) : undefined,
+      branchType: (b.branch_type ? String(b.branch_type) : (b.is_headquarters ? 'headquarters' : 'regional_branch')) as any,
+      parentBranchId: b.parent_branch_id ? String(b.parent_branch_id) : null,
+      parentBranchName: b.parent_branch_name ? String(b.parent_branch_name) : null,
+      address: b.address ? String(b.address) : '',
+      subdistrict: b.subdistrict ? String(b.subdistrict) : '',
+      district: b.district ? String(b.district) : '',
       province: String(b.province),
+      postcode: b.postcode ? String(b.postcode) : '',
+      phone: b.phone ? String(b.phone) : '',
+      email: b.email ? String(b.email) : '',
+      managerUserId: b.manager_user_id ? String(b.manager_user_id) : null,
+      managerName: b.manager_db_name ? String(b.manager_db_name) : (b.manager_name ? String(b.manager_name) : 'ยังไม่ได้ระบุผู้จัดการสาขา'),
+      managerRoleTitle: b.manager_role_title ? String(b.manager_role_title) : undefined,
       isHeadquarters: Boolean(b.is_headquarters),
+      status: (b.status === 'inactive' ? 'inactive' : 'active'),
+      deactivatedReason: b.deactivated_reason ? String(b.deactivated_reason) : null,
+      staffCount: Number(b.staff_count || 0),
+      departmentCount: Number(b.department_count || 0),
+      beneficiaryCount: Number(b.beneficiary_count || 0),
+      applicationCount: Number(b.application_count || 0),
+      createdAt: b.created_at ? String(b.created_at) : undefined,
+      updatedAt: b.updated_at ? String(b.updated_at) : undefined,
     }));
 
-    const departments: Department[] = deptRes.rows.map((d: any) => ({
-      id: String(d.id),
-      code: String(d.code),
-      name: String(d.name),
-      description: d.description ? String(d.description) : undefined,
-    }));
+    const departments: Department[] = deptRes.rows.map((d: any) => {
+      let parsedRoles: UserRole[] = ['officer'];
+      if (d.allowed_roles) {
+        try {
+          const parsed = JSON.parse(String(d.allowed_roles));
+          if (Array.isArray(parsed)) parsedRoles = parsed;
+        } catch {}
+      }
+      return {
+        id: String(d.id),
+        code: String(d.code),
+        name: String(d.name),
+        nameEn: d.name_en ? String(d.name_en) : undefined,
+        description: d.description ? String(d.description) : undefined,
+        branchId: d.branch_id ? String(d.branch_id) : 'br-hq',
+        branchName: d.branch_name ? String(d.branch_name) : 'สำนักงานใหญ่ กรุงเทพมหานคร',
+        branchCode: d.branch_code ? String(d.branch_code) : 'BR-BKK',
+        headUserId: d.head_user_id ? String(d.head_user_id) : null,
+        headName: d.head_db_name ? String(d.head_db_name) : (d.head_name ? String(d.head_name) : 'ยังไม่ได้ระบุหัวหน้าแผนก'),
+        headRoleTitle: d.head_role_title ? String(d.head_role_title) : undefined,
+        allowedRoles: parsedRoles,
+        status: (d.status === 'inactive' ? 'inactive' : 'active'),
+        deactivatedReason: d.deactivated_reason ? String(d.deactivated_reason) : null,
+        memberCount: Number(d.member_count || 0),
+        createdAt: d.created_at ? String(d.created_at) : undefined,
+        updatedAt: d.updated_at ? String(d.updated_at) : undefined,
+      };
+    });
 
     return { branches, departments };
   }
@@ -1042,15 +1116,24 @@ export class AuthService {
       throw new Error('อีเมลนี้มีอยู่ในระบบแล้ว กรุณาใช้อีเมลอื่น');
     }
 
-    // Lookup branch & dept names
-    let branchName = 'สำนักงานใหญ่ กรุงเทพฯ';
-    let deptName = 'ส่วนกลาง';
+    // Lookup and validate branch & dept names (Do not trust client IDs blindly; reject inactive branches/depts)
+    const bRes = await db.execute({ sql: `SELECT id, name, COALESCE(status, 'active') as status FROM branches WHERE id = ?`, args: [input.branchId] });
+    if (bRes.rows.length === 0) {
+      throw new Error('ไม่พบข้อมูลสาขาที่ระบุในระบบ');
+    }
+    if (String(bRes.rows[0].status) !== 'active') {
+      throw new Error(`ไม่สามารถกำหนดผู้ใช้งานใหม่เข้าสู่สาขา "${bRes.rows[0].name}" ที่ถูกปิดใช้งานแล้วได้`);
+    }
+    const branchName = String(bRes.rows[0].name);
 
-    const bRes = await db.execute({ sql: `SELECT name FROM branches WHERE id = ?`, args: [input.branchId] });
-    if (bRes.rows.length > 0) branchName = String(bRes.rows[0].name);
-
-    const dRes = await db.execute({ sql: `SELECT name FROM departments WHERE id = ?`, args: [input.departmentId] });
-    if (dRes.rows.length > 0) deptName = String(dRes.rows[0].name);
+    const dRes = await db.execute({ sql: `SELECT id, name, COALESCE(status, 'active') as status FROM departments WHERE id = ?`, args: [input.departmentId] });
+    if (dRes.rows.length === 0) {
+      throw new Error('ไม่พบข้อมูลแผนกที่ระบุในระบบ');
+    }
+    if (String(dRes.rows[0].status) !== 'active') {
+      throw new Error(`ไม่สามารถกำหนดผู้ใช้งานใหม่เข้าสู่แผนก "${dRes.rows[0].name}" ที่ถูกปิดใช้งานแล้วได้`);
+    }
+    const deptName = String(dRes.rows[0].name);
 
     // Map role title
     const roleTitles: Record<UserRole, string> = {
@@ -1393,17 +1476,29 @@ export class AuthService {
       throw new Error('ไม่อนุญาตให้ลดระดับสิทธิ์ Super Admin ของตนเอง');
     }
 
-    // Resolve branch and department names
+    // Resolve and validate branch and department names
     let branchName = current.branch || 'สำนักงานใหญ่ กรุงเทพฯ';
     let departmentName = 'ส่วนกลาง';
 
     if (newBranchId) {
-      const bRes = await db.execute({ sql: `SELECT name FROM branches WHERE id = ?`, args: [newBranchId] });
-      if (bRes.rows.length > 0) branchName = String(bRes.rows[0].name);
+      const bRes = await db.execute({ sql: `SELECT id, name, COALESCE(status, 'active') as status FROM branches WHERE id = ?`, args: [newBranchId] });
+      if (bRes.rows.length === 0) {
+        throw new Error('ไม่พบข้อมูลสาขาที่ระบุในระบบ');
+      }
+      if (newBranchId !== current.branch_id && String(bRes.rows[0].status) !== 'active') {
+        throw new Error(`ไม่สามารถย้ายบุคลากรเข้าสู่สาขา "${bRes.rows[0].name}" ที่ถูกปิดใช้งานแล้วได้`);
+      }
+      branchName = String(bRes.rows[0].name);
     }
     if (newDepartmentId) {
-      const dRes = await db.execute({ sql: `SELECT name FROM departments WHERE id = ?`, args: [newDepartmentId] });
-      if (dRes.rows.length > 0) departmentName = String(dRes.rows[0].name);
+      const dRes = await db.execute({ sql: `SELECT id, name, COALESCE(status, 'active') as status FROM departments WHERE id = ?`, args: [newDepartmentId] });
+      if (dRes.rows.length === 0) {
+        throw new Error('ไม่พบข้อมูลแผนกที่ระบุในระบบ');
+      }
+      if (newDepartmentId !== current.department_id && String(dRes.rows[0].status) !== 'active') {
+        throw new Error(`ไม่สามารถย้ายบุคลากรเข้าสู่แผนก "${dRes.rows[0].name}" ที่ถูกปิดใช้งานแล้วได้`);
+      }
+      departmentName = String(dRes.rows[0].name);
     }
 
     const roleTitles: Record<UserRole, string> = {

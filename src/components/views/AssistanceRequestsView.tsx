@@ -130,8 +130,21 @@ export function AssistanceRequestsView({
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter);
   const [urgencyFilter, setUrgencyFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [orgBranches, setOrgBranches] = useState<{ id: string; code: string; name: string; status: string }[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  useEffect(() => {
+    fetch('/api/organization/structure')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data?.branches) {
+          setOrgBranches(json.data.branches);
+        }
+      })
+      .catch((err) => console.error('Failed to load branches for assistance filter:', err));
+  }, []);
 
   // Wizard state for "ยื่นคำร้องขอความช่วยเหลือใหม่"
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
@@ -360,10 +373,11 @@ export function AssistanceRequestsView({
 
       const matchUrgency = urgencyFilter === 'all' || app.urgencyLevel === urgencyFilter;
       const matchType = typeFilter === 'all' || app.assistanceType === typeFilter;
+      const matchBranch = branchFilter === 'all' || app.branchId === branchFilter || app.branchName === branchFilter;
 
-      return matchSearch && matchStatus && matchUrgency && matchType;
+      return matchSearch && matchStatus && matchUrgency && matchType && matchBranch;
     });
-  }, [applications, searchTerm, statusFilter, urgencyFilter, typeFilter, currentUser]);
+  }, [applications, searchTerm, statusFilter, urgencyFilter, typeFilter, branchFilter, currentUser]);
 
   // Pagination
   const totalItems = filteredApplications.length;
@@ -531,7 +545,7 @@ export function AssistanceRequestsView({
 
       {/* 3. Search & Secondary Filters */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
           {/* Search box */}
           <div className="relative sm:col-span-2">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -550,6 +564,22 @@ export function AssistanceRequestsView({
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          {/* Branch Filter */}
+          <div>
+            <select
+              value={branchFilter}
+              onChange={(e) => { setBranchFilter(e.target.value); setCurrentPage(1); }}
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0b2545] text-xs font-medium"
+            >
+              <option value="all">ทุกสาขาที่รับผิดชอบ ({orgBranches.length})</option>
+              {orgBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} {b.status === 'inactive' ? '(ปิดใช้งาน)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Type Filter */}

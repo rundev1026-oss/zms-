@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { User, UserRole, Branch, Department } from '@/types';
 import { 
@@ -33,11 +33,19 @@ import {
   ChevronDown,
   Info,
   Sliders,
-  UserX
+  UserX,
+  Eye,
+  MoreVertical,
+  Briefcase,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Shield
 } from 'lucide-react';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll } from '@/components/common/Modal';
 import { RoleManagementModal } from './users/RoleManagementModal';
 import { ManualPermissionModal } from './users/ManualPermissionModal';
+import { UserDetailModal } from './users/UserDetailModal';
 
 interface UserManagementViewProps {
   onNavigate: (view: string) => void;
@@ -52,14 +60,20 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
+  const [rolesCount, setRolesCount] = useState<number>(7);
 
   // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRole, setSelectedRole] = useState('all');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [selectedDept, setSelectedDept] = useState('all');
-  const [selectedRole, setSelectedRole] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedPasswordStatus, setSelectedPasswordStatus] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLastLoginFilter, setSelectedLastLoginFilter] = useState('all');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(9);
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -69,32 +83,16 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showManualPermissionModal, setShowManualPermissionModal] = useState(false);
-  const [selectedUserForPerm, setSelectedUserForPerm] = useState<User | null>(null);
-  const [rolesCount, setRolesCount] = useState<number>(7);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // Lock body scroll cleanly whenever any modal in this view is active
-  const isAnyModalOpen = Boolean(
-    showAddModal || 
-    showEditModal || 
-    showResetConfirmModal || 
-    showInviteModal || 
-    showAuditModal ||
-    showRoleModal ||
-    showManualPermissionModal
-  );
-
-  useEffect(() => {
-    if (isAnyModalOpen) {
-      lockBodyScroll();
-      return () => unlockBodyScroll();
-    }
-  }, [isAnyModalOpen]);
-
-  // Active item in modal
+  // Active user selections
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUserForPerm, setSelectedUserForPerm] = useState<User | null>(null);
   const [userAuditLogs, setUserAuditLogs] = useState<any[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const [activeDropdownUserId, setActiveDropdownUserId] = useState<string | null>(null);
 
+  // Invite modal feedback
   const [inviteModalData, setInviteModalData] = useState<{
     user?: User;
     setupUrl?: string;
@@ -124,6 +122,25 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   const [editRole, setEditRole] = useState<UserRole>('officer');
   const [editBranchId, setEditBranchId] = useState('br-hq');
   const [editDepartmentId, setEditDepartmentId] = useState('dept-social');
+
+  // Lock body scroll cleanly whenever any modal in this view is active
+  const isAnyModalOpen = Boolean(
+    showAddModal || 
+    showEditModal || 
+    showResetConfirmModal || 
+    showInviteModal || 
+    showAuditModal ||
+    showRoleModal ||
+    showManualPermissionModal ||
+    showDetailModal
+  );
+
+  useEffect(() => {
+    if (isAnyModalOpen) {
+      lockBodyScroll();
+      return () => unlockBodyScroll();
+    }
+  }, [isAnyModalOpen]);
 
   // Helper to fetch with token + RBAC actor headers
   const getAuthHeaders = useCallback(() => {
@@ -220,6 +237,109 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     fetchRolesCount();
   }, [fetchRolesCount]);
 
+  // Reset pagination to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedRole, selectedBranch, selectedDept, selectedStatus, selectedPasswordStatus, selectedLastLoginFilter]);
+
+  // Close card action dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setActiveDropdownUserId(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Filter users by client-side criteria (e.g. Last Login and search fallback)
+  const filteredUsers = useMemo(() => {
+    return usersList.filter((user) => {
+      // 1. Search filter: Name, Username, Email
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const nameMatch = (user.name || '').toLowerCase().includes(q) ||
+          `${user.firstName || ''} ${user.lastName || ''}`.toLowerCase().includes(q);
+        const usernameMatch = ((user as any).username || '').toLowerCase().includes(q);
+        const emailMatch = (user.email || '').toLowerCase().includes(q);
+        const phoneMatch = (user.phone || '').includes(q);
+        if (!nameMatch && !usernameMatch && !emailMatch && !phoneMatch) return false;
+      }
+
+      // 2. Role filter
+      if (selectedRole !== 'all') {
+        const uRole = (user.role || (user as any).primaryRoleCode || '').toLowerCase();
+        if (uRole !== selectedRole.toLowerCase()) return false;
+      }
+
+      // 3. Branch filter
+      if (selectedBranch !== 'all' && user.branchId !== selectedBranch) {
+        return false;
+      }
+
+      // 4. Department filter
+      if (selectedDept !== 'all' && user.departmentId !== selectedDept) {
+        return false;
+      }
+
+      // 5. Status filter
+      if (selectedStatus !== 'all') {
+        const uStatus = user.status?.toLowerCase() || ((user as any).isActive ? 'active' : 'disabled');
+        if (selectedStatus === 'active' && uStatus !== 'active') return false;
+        if (selectedStatus === 'suspended' && uStatus !== 'suspended') return false;
+        if (selectedStatus === 'disabled' && uStatus !== 'disabled' && uStatus !== 'inactive') return false;
+      }
+
+      // 6. Password Status filter
+      if (selectedPasswordStatus !== 'all') {
+        if (selectedPasswordStatus === 'pending_setup' && user.passwordSetupStatus !== 'pending_setup') return false;
+        if (selectedPasswordStatus === 'completed' && user.passwordSetupStatus === 'pending_setup') return false;
+      }
+
+      // 7. Last Login filter
+      if (selectedLastLoginFilter !== 'all') {
+        const lastLoginDate = (user as any).lastLoginAt || user.lastLogin;
+        if (selectedLastLoginFilter === 'never') {
+          if (lastLoginDate) return false;
+        } else if (selectedLastLoginFilter === '7days') {
+          if (!lastLoginDate) return false;
+          const diffDays = (Date.now() - new Date(lastLoginDate).getTime()) / (1000 * 3600 * 24);
+          if (diffDays > 7) return false;
+        } else if (selectedLastLoginFilter === '30days') {
+          if (!lastLoginDate) return false;
+          const diffDays = (Date.now() - new Date(lastLoginDate).getTime()) / (1000 * 3600 * 24);
+          if (diffDays > 30) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [usersList, searchQuery, selectedRole, selectedBranch, selectedDept, selectedStatus, selectedPasswordStatus, selectedLastLoginFilter]);
+
+  // Pagination calculation
+  const totalItems = filteredUsers.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredUsers.slice(startIndex, startIndex + pageSize);
+  }, [filteredUsers, currentPage, pageSize]);
+
+  // Clear all filters handler
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setSelectedRole('all');
+    setSelectedBranch('all');
+    setSelectedDept('all');
+    setSelectedStatus('all');
+    setSelectedPasswordStatus('all');
+    setSelectedLastLoginFilter('all');
+    setCurrentPage(1);
+    showToast('ล้างตัวกรองทั้งหมดแล้ว', 'info');
+  };
+
+  // Open Details Modal
+  const openDetailModal = (user: User) => {
+    setSelectedUser(user);
+    setShowDetailModal(true);
+  };
+
   // Open Edit Modal
   const openEditModal = (user: User) => {
     setSelectedUser(user);
@@ -312,7 +432,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     }
   };
 
-  // Open Reset Password Confirmation Modal (for completed users)
+  // Open Reset Password Confirmation Modal
   const openResetPasswordModal = (user: User) => {
     setSelectedUser(user);
     setShowResetConfirmModal(true);
@@ -512,152 +632,133 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     setTimeout(() => setIsCopied(false), 3000);
   };
 
+  // Top summary counters
+  const totalCount = usersList.length;
+  const activeCount = usersList.filter(u => u.status === 'active' || (u as any).isActive === true).length;
+  const inactiveCount = usersList.filter(u => u.status === 'disabled' || (u as any).status === 'inactive' || (u as any).isActive === false).length;
+  const suspendedCount = usersList.filter(u => u.status === 'suspended').length;
+
   const quickPersonaUsers = usersList.slice(0, 6);
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-12">
-      {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Users className="w-5 h-5 text-indigo-700" />
-              จัดการผู้ใช้งานและสิทธิ์ (User & Permission Management)
+    <div className="space-y-6 animate-fadeIn pb-16">
+      {/* 1. Page Header (Modern Enterprise Design) */}
+      <div className="bg-[#0B2545] text-white p-6 rounded-3xl border border-[#DFE7F0] shadow-md relative overflow-hidden flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        {/* Subtle decorative glow */}
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-[#0D9488]/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute right-60 -bottom-24 w-60 h-60 bg-[#00845A]/15 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative z-10 space-y-1.5 max-w-2xl">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2 tracking-tight">
+              <Users className="w-6 h-6 text-[#0D9488]" />
+              จัดการผู้ใช้งาน
             </h1>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-teal-300 border border-teal-400/20 backdrop-blur-xs">
+              Users Management
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#0D9488] text-white">
               Super Admin Control
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            บริหารบัญชีบุคลากร กำหนดสิทธิ์แบบ Granular Override ควบคุม Data Scope และตรวจสอบประวัติการเปลี่ยนแปลงสิทธิ์ (Audit Trail)
+          <p className="text-xs text-slate-300 leading-relaxed">
+            ระบบบริหารจัดการบุคลากร กำหนดบทบาท และควบคุมสิทธิ์การเข้าถึงข้อมูลรายบุคคล (Granular Overrides & Data Scope Control)
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Top Header Actions */}
+        <div className="relative z-10 flex items-center gap-2.5 flex-wrap">
           <button
             onClick={() => fetchUsers()}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 transition-colors"
-            title="รีเฟรชข้อมูล"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold backdrop-blur-xs transition-colors border border-white/15"
+            title="รีเฟรชข้อมูลล่าสุด"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             รีเฟรช
           </button>
+
           <button
             onClick={() => setShowRoleModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors shadow-xs"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-xl text-xs font-bold transition-all shadow-xs backdrop-blur-xs"
             title="จัดการบทบาทและสิทธิ์ตั้งต้น"
           >
-            <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            <ShieldCheck className="w-4 h-4 text-teal-300" />
             จัดการ Role ({rolesCount})
           </button>
-          <button
-            onClick={() => {
-              const target = selectedUser || usersList[0];
-              if (target) {
-                setSelectedUserForPerm(target);
-                setShowManualPermissionModal(true);
-              } else {
-                showToast('กรุณาเลือกผู้ใช้งานที่ต้องการกำหนดสิทธิ์', 'info');
-              }
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold hover:bg-purple-100 transition-colors shadow-xs"
-            title="กำหนดสิทธิ์เฉพาะบุคคล (Manual Permission Control)"
-          >
-            <Sliders className="w-4 h-4 text-purple-600" />
-            กำหนด Permission
-          </button>
+
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-700 text-white rounded-xl text-xs font-semibold hover:bg-indigo-800 transition-colors shadow-xs"
+            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-[#0D9488] hover:bg-[#0b8075] text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-teal-950/40 border border-teal-400/30"
           >
-            <UserPlus className="w-4 h-4" /> เพิ่มผู้ใช้งานใหม่
+            <UserPlus className="w-4 h-4" />
+            + เพิ่มผู้ใช้งาน
           </button>
         </div>
       </div>
 
-      {/* 6 Dashboard Cards: Master Prompt Part 2 */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Card 1: ผู้ใช้งานทั้งหมด */}
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">ผู้ใช้ทั้งหมด</span>
-            <Users className="w-4 h-4 text-indigo-600" />
+      {/* 2. Top Summary Metrics Cards (Prompt Requirement 2) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        {/* Total Users */}
+        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ผู้ใช้งานทั้งหมด</div>
+            <div className="text-2xl font-bold text-[#0B2545] mt-1">{totalCount}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">ในฐานข้อมูลระบบ ZMS</div>
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">{usersList.length}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">ในฐานข้อมูลระบบ</div>
+          <div className="w-11 h-11 rounded-2xl bg-[#0B2545]/5 text-[#0B2545] flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5" />
+          </div>
         </div>
 
-        {/* Card 2: บัญชีที่ Active */}
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-emerald-600">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">บัญชีที่ Active</span>
-            <UserCheck className="w-4 h-4 text-emerald-600" />
+        {/* Active Accounts */}
+        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-[#00845A] uppercase tracking-wider">บัญชี Active</div>
+            <div className="text-2xl font-bold text-[#00845A] mt-1">{activeCount}</div>
+            <div className="text-[10px] text-emerald-600/80 mt-0.5">เปิดใช้งานปกติ</div>
           </div>
-          <div className="text-2xl font-bold text-emerald-600 mt-2">
-            {usersList.filter(u => u.status === 'active').length}
+          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-[#00845A] flex items-center justify-center shrink-0">
+            <UserCheck className="w-5 h-5" />
           </div>
-          <div className="text-[10px] text-emerald-700/80 mt-0.5">เปิดใช้งานปกติ</div>
         </div>
 
-        {/* Card 3: บัญชีที่ Inactive */}
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">บัญชี Inactive</span>
-            <UserX className="w-4 h-4 text-slate-400" />
+        {/* Inactive Accounts */}
+        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">บัญชี Inactive</div>
+            <div className="text-2xl font-bold text-slate-600 mt-1">{inactiveCount}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">ปิดใช้งานบัญชี</div>
           </div>
-          <div className="text-2xl font-bold text-slate-600 mt-2">
-            {usersList.filter(u => u.status === 'disabled' || (u as any).status === 'inactive').length}
+          <div className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+            <UserX className="w-5 h-5" />
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">ปิดใช้งานบัญชี</div>
         </div>
 
-        {/* Card 4: ผู้ใช้งานที่ถูกระงับ */}
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-rose-600">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">ถูกระงับสิทธิ์</span>
-            <ShieldAlert className="w-4 h-4 text-rose-600" />
+        {/* Suspended Accounts */}
+        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">บัญชี Suspended</div>
+            <div className="text-2xl font-bold text-amber-700 mt-1">{suspendedCount}</div>
+            <div className="text-[10px] text-amber-600/80 mt-0.5">ระงับสิทธิ์ชั่วคราว</div>
           </div>
-          <div className="text-2xl font-bold text-rose-600 mt-2">
-            {usersList.filter(u => u.status === 'suspended').length}
+          <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+            <ShieldAlert className="w-5 h-5" />
           </div>
-          <div className="text-[10px] text-rose-600/80 mt-0.5">ระงับชั่วคราว</div>
-        </div>
-
-        {/* Card 5: จำนวน Role */}
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-indigo-600">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">จำนวน Role</span>
-            <ShieldCheck className="w-4 h-4 text-indigo-600" />
-          </div>
-          <div className="text-2xl font-bold text-indigo-700 mt-2">{rolesCount}</div>
-          <div className="text-[10px] text-indigo-600/80 mt-0.5">ระบบ & สร้างเอง</div>
-        </div>
-
-        {/* Card 6: รอกำหนดสิทธิ์ */}
-        <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-amber-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider">รอกำหนดสิทธิ์</span>
-            <Clock className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="text-2xl font-bold text-amber-900 mt-2">
-            {pendingCount || usersList.filter(u => u.passwordSetupStatus === 'pending_setup').length}
-          </div>
-          <div className="text-[10px] text-amber-700 mt-0.5">รอตั้งรหัส/สิทธิ์</div>
         </div>
       </div>
 
-      {/* Quick Login Role Cards (Demonstration Persona Switcher) */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
+      {/* Quick Role Switcher for Test Personas */}
+      <div className="bg-white p-4.5 rounded-2xl border border-[#DFE7F0] shadow-xs space-y-2.5">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-            <LogIn className="w-4 h-4 text-emerald-700" />
-            เข้าสู่ระบบด่วนตามบทบาทเพื่อทดสอบระบบ (Quick Switch Persona for Testing)
+            <LogIn className="w-4 h-4 text-[#0D9488]" />
+            ทดสอบระบบตามบทบาท (Quick Persona Switcher)
           </h2>
-          <span className="text-[11px] text-slate-400">สลับบัญชีเพื่อทดสอบมุมมองและสิทธิ์แต่ละฝ่าย</span>
+          <span className="text-[11px] text-slate-400">สลับบทบาทเพื่อทดสอบมุมมองและขอบเขตสิทธิ์ของแต่ละฝ่าย</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
           {quickPersonaUsers.map((user) => {
             const isCurrent = currentUser?.id === user.id;
             const isPending = user.passwordSetupStatus === 'pending_setup';
@@ -665,28 +766,28 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               <button
                 key={user.id}
                 onClick={() => switchUserRole(user.role)}
-                className={`p-3 rounded-xl border text-left transition-all ${
+                className={`p-2.5 rounded-xl border text-left transition-all ${
                   isCurrent
-                    ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-300/40 shadow-xs'
+                    ? 'bg-teal-50 border-[#0D9488] ring-2 ring-teal-300/40 shadow-xs'
                     : 'bg-slate-50/70 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
-                    isCurrent ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                <div className="flex items-center justify-between mb-1">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-[11px] ${
+                    isCurrent ? 'bg-[#0D9488] text-white' : 'bg-slate-200 text-slate-700'
                   }`}>
                     {user.name.slice(0, 2)}
                   </div>
                   {isCurrent ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
                   ) : isPending ? (
-                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                    <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800">
                       รอรหัส
                     </span>
                   ) : null}
                 </div>
                 <div className="font-bold text-xs text-slate-900 truncate">{user.name}</div>
-                <div className="text-[10px] text-emerald-700 font-semibold truncate mt-0.5">
+                <div className="text-[10px] text-teal-800 font-semibold truncate mt-0.5">
                   {user.roleTitleTh}
                 </div>
               </button>
@@ -695,52 +796,38 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-          <Filter className="w-4 h-4 text-purple-700" />
-          ตัวกรองข้อมูลบุคลากรแยกตามองค์กรและสถานะ
+      {/* 3. Search & Comprehensive Filter Bar (Prompt Requirement 3) */}
+      <div className="bg-white p-5 rounded-3xl border border-[#DFE7F0] shadow-xs space-y-3.5">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#0B2545]">
+            <Filter className="w-4 h-4 text-[#0D9488]" />
+            ค้นหาและกรองข้อมูลบุคลากร (Search & Filters)
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">
+              พบ <strong className="text-[#0B2545]">{filteredUsers.length}</strong> จากทั้งหมด {totalCount} บัญชี
+            </span>
+            <button
+              onClick={handleClearFilters}
+              className="text-xs text-[#0D9488] hover:text-[#0b8075] font-semibold hover:underline flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              ล้างตัวกรอง
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 text-xs">
-          {/* Search */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          {/* Search Input: Name, Username, Email */}
           <div className="lg:col-span-2 relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
-              placeholder="ค้นหาชื่อ, อีเมล, เบอร์โทร..."
+              placeholder="ค้นหาชื่อ–นามสกุล, Username (@...), หรือ Email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#0D9488] text-slate-800 placeholder-slate-400 font-medium"
             />
-          </div>
-
-          {/* Branch Filter */}
-          <div>
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="w-full py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
-            >
-              <option value="all">ทุกสาขา / สำนักงาน</option>
-              {branches.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Department Filter */}
-          <div>
-            <select
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-              className="w-full py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
-            >
-              <option value="all">ทุกแผนก / ฝ่าย</option>
-              {departments.map(d => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
           </div>
 
           {/* Role Filter */}
@@ -748,9 +835,9 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             <select
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value)}
-              className="w-full py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
             >
-              <option value="all">ทุกบทบาท (Roles)</option>
+              <option value="all">ทุกบทบาท (All Roles)</option>
               <option value="super_admin">ผู้ดูแลระบบสูงสุด (Super Admin)</option>
               <option value="executive">ผู้บริหาร (Executive)</option>
               <option value="officer">เจ้าหน้าที่ลงพื้นที่ (Officer)</option>
@@ -760,12 +847,72 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             </select>
           </div>
 
-          {/* Password Setup Status Filter */}
+          {/* Status Filter */}
+          <div>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+            >
+              <option value="all">ทุกสถานะบัญชี (All Status)</option>
+              <option value="active">✓ ใช้งานปกติ (Active)</option>
+              <option value="suspended">⚠️ ระงับการใช้งาน (Suspended)</option>
+              <option value="disabled">✕ ปิดใช้งาน (Disabled / Inactive)</option>
+            </select>
+          </div>
+
+          {/* Branch Filter */}
+          <div>
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+            >
+              <option value="all">ทุกสาขา / สำนักงาน</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} ({b.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Department Filter */}
+          <div>
+            <select
+              value={selectedDept}
+              onChange={(e) => setSelectedDept(e.target.value)}
+              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+            >
+              <option value="all">ทุกแผนก / ฝ่ายงาน</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Last Login Filter */}
+          <div>
+            <select
+              value={selectedLastLoginFilter}
+              onChange={(e) => setSelectedLastLoginFilter(e.target.value)}
+              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+            >
+              <option value="all">การเข้าสู่ระบบทั้งหมด (All Logins)</option>
+              <option value="7days">ภายใน 7 วันล่าสุด</option>
+              <option value="30days">ภายใน 30 วันล่าสุด</option>
+              <option value="never">ยังไม่เคยเข้าสู่ระบบ</option>
+            </select>
+          </div>
+
+          {/* Password Status Filter */}
           <div>
             <select
               value={selectedPasswordStatus}
               onChange={(e) => setSelectedPasswordStatus(e.target.value)}
-              className="w-full py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
             >
               <option value="all">สถานะรหัสผ่านทั้งหมด</option>
               <option value="pending_setup">⚠️ ยังไม่ตั้งรหัสผ่าน (Pending)</option>
@@ -775,262 +922,473 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
         </div>
       </div>
 
-      {/* Users Master Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-900">
-              รายชื่อบุคลากรและบัญชีผู้ใช้งาน ({usersList.length} รายการ)
-            </h2>
-            {pendingCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                <Key className="w-3 h-3 text-amber-600" />
-                มี {pendingCount} บัญชียังไม่ได้กำหนดรหัสผ่าน
-              </span>
-            )}
+      {/* 4. Card-Based User Display Grid (Prompt Requirement 4) */}
+      <div className="space-y-4">
+        {isLoading ? (
+          <div className="py-20 text-center text-slate-400 bg-white rounded-3xl border border-[#DFE7F0] flex flex-col items-center justify-center gap-3">
+            <RefreshCw className="w-8 h-8 animate-spin text-[#0D9488]" />
+            <span className="text-sm font-semibold text-slate-600">กำลังโหลดข้อมูลผู้ใช้งานระบบ...</span>
           </div>
-          <div className="text-[11px] text-slate-400">
-            ระบบความปลอดภัย: รหัสผ่านไม่ปรากฏในหน้าจอ Super Admin และยกเลิก Session อัตโนมัติเมื่อมีการรีเซ็ตรหัสผ่าน
+        ) : paginatedUsers.length === 0 ? (
+          <div className="py-20 text-center bg-white rounded-3xl border border-[#DFE7F0] p-6 space-y-3">
+            <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+              <UserX className="w-8 h-8" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800">ไม่พบข้อมูลผู้ใช้งานตามเงื่อนไขที่เลือก</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              ลองปรับเปลี่ยนคำค้นหา หรือคลิกปุ่มล้างตัวกรองเพื่อแสดงข้อมูลผู้ใช้ทั้งหมด
+            </p>
+            <button
+              onClick={handleClearFilters}
+              className="px-4 py-2 bg-[#0D9488] text-white rounded-xl text-xs font-bold hover:bg-[#0b8075] transition-colors shadow-xs"
+            >
+              ล้างตัวกรองทั้งหมด
+            </button>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {paginatedUsers.map((user) => {
+              const isSelf = currentUser?.id === user.id;
+              const userName =
+                user.name ||
+                (user as any).displayName ||
+                `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+                user.email.split('@')[0];
+              const username = (user as any).username || user.email.split('@')[0];
+              const isPendingPassword = user.passwordSetupStatus === 'pending_setup';
+              const is2FA = Boolean((user as any).mfaEnabled || (user as any).twoFactorEnabled);
+              const dataScope = (user as any).dataScope?.scope || (user as any).dataScope || 'BRANCH';
+              const overridesCount = (user as any).overridesCount || 0;
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider border-b border-slate-200 font-bold">
-              <tr>
-                <th className="py-3 px-3 text-center w-12">#</th>
-                <th className="py-3 px-4">ชื่อ - นามสกุล / Username</th>
-                <th className="py-3 px-4">อีเมล / เบอร์ติดต่อ</th>
-                <th className="py-3 px-4">บทบาท (Role)</th>
-                <th className="py-3 px-4">สาขา / แผนก</th>
-                <th className="py-3 px-4 text-center">สถานะรหัสผ่าน</th>
-                <th className="py-3 px-4 text-center">สถานะบัญชี</th>
-                <th className="py-3 px-4 text-center">เข้าสู่ระบบล่าสุด</th>
-                <th className="py-3 px-4 text-right">การจัดการ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {usersList.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400">
-                    ไม่พบข้อมูลผู้ใช้งานตามเงื่อนไขที่เลือก
-                  </td>
-                </tr>
-              ) : (
-                usersList.map((user, index) => {
-                  const isPendingPassword = user.passwordSetupStatus === 'pending_setup';
-                  const isSelf = currentUser?.id === user.id;
-                  const usernameText = (user as any).username || user.email.split('@')[0];
+              const isSuspended = user.status === 'suspended';
+              const isDisabled = user.status === 'disabled' || (user as any).status === 'inactive' || (user as any).isActive === false;
+              const isActive = !isSuspended && !isDisabled;
 
-                  return (
-                    <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Index */}
-                      <td className="py-3.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                        {index + 1}
-                      </td>
+              const statusBadgeColor = isActive
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                : isSuspended
+                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                : 'bg-rose-50 text-rose-800 border-rose-300';
+              const statusBadgeText = isActive ? 'ใช้งานปกติ' : isSuspended ? 'ระงับชั่วคราว' : 'ปิดใช้งาน';
 
-                      {/* Name & Username */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                          {user.name}
-                          {isSelf && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-700">
-                              (คุณ)
-                            </span>
-                          )}
+              const roleBadgeColor =
+                user.role === 'super_admin'
+                  ? 'bg-purple-50 text-purple-800 border-purple-200'
+                  : user.role === 'executive'
+                  ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                  : user.role === 'officer'
+                  ? 'bg-blue-50 text-blue-800 border-blue-200'
+                  : user.role === 'approver'
+                  ? 'bg-teal-50 text-teal-800 border-teal-200'
+                  : user.role === 'finance'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-slate-100 text-slate-700 border-slate-200';
+
+              const branchName =
+                user.branchName ||
+                user.branch ||
+                branches.find((b) => b.id === user.branchId)?.name ||
+                'สำนักงานใหญ่';
+              const deptName =
+                user.departmentName ||
+                departments.find((d) => d.id === user.departmentId)?.name ||
+                'ส่วนกลาง';
+
+              const lastLoginText = (user as any).lastLoginAt || user.lastLogin;
+              const isDropdownOpen = activeDropdownUserId === user.id;
+
+              return (
+                <div
+                  key={user.id}
+                  className="bg-white rounded-3xl border border-[#DFE7F0] shadow-xs hover:shadow-md hover:border-[#0D9488]/40 transition-all duration-200 flex flex-col justify-between overflow-hidden relative group"
+                >
+                  {/* Top Bar Accent Line based on status */}
+                  <div
+                    className={`h-1 w-full ${
+                      isActive ? 'bg-[#00845A]' : isSuspended ? 'bg-amber-500' : 'bg-slate-300'
+                    }`}
+                  />
+
+                  {/* Card Main Body */}
+                  <div className="p-5 space-y-4">
+                    {/* Header: Avatar, Name, Username, Status */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {/* Avatar */}
+                        <div className="relative shrink-0">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#0B2545] to-[#133e6f] text-white font-bold text-base flex items-center justify-center shadow-xs">
+                            {userName.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                              isActive ? 'bg-emerald-500' : isSuspended ? 'bg-amber-500' : 'bg-slate-400'
+                            }`}
+                          />
                         </div>
-                        <div className="text-[10px] text-indigo-600 font-mono font-medium">@{usernameText}</div>
-                        <div className="text-[9px] text-slate-400 font-mono truncate max-w-[130px]">UID: {user.id}</div>
-                      </td>
 
-                      {/* Email & Phone */}
-                      <td className="py-3.5 px-4 text-slate-600">
-                        <div className="flex items-center gap-1 font-mono text-[11px]">
-                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                          {user.email}
+                        {/* Name & Username */}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="font-bold text-slate-900 text-sm truncate max-w-[150px] sm:max-w-[180px]">
+                              {userName}
+                            </h3>
+                            {isSelf && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-100 text-teal-800">
+                                (คุณ)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] font-mono text-[#0D9488] font-semibold truncate">
+                            @{username}
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                          {user.phone || '-'}
-                        </div>
-                      </td>
+                      </div>
 
-                      {/* Role */}
-                      <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block border ${
-                          user.role === 'super_admin' ? 'bg-purple-50 text-purple-800 border-purple-200' :
-                          user.role === 'executive' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' :
-                          user.role === 'officer' ? 'bg-blue-50 text-blue-800 border-blue-200' :
-                          user.role === 'approver' ? 'bg-teal-50 text-teal-800 border-teal-200' :
-                          user.role === 'finance' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                          'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}>
+                      {/* Status Badge */}
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${statusBadgeColor}`}>
+                        {statusBadgeText}
+                      </span>
+                    </div>
+
+                    {/* Email and Phone Contact Row */}
+                    <div className="space-y-1 text-xs text-slate-600 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                      <div className="flex items-center justify-between gap-1 font-mono text-[11px]">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{user.email}</span>
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(user.email)}
+                          className="text-slate-400 hover:text-slate-700 shrink-0"
+                          title="คัดลอกอีเมล"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{user.phone || '-'}</span>
+                      </div>
+                    </div>
+
+                    {/* Organization and Position Information */}
+                    <div className="space-y-2 text-xs">
+                      {/* Role and Position */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${roleBadgeColor}`}>
                           {user.roleTitleTh || user.role}
                         </span>
-                      </td>
+                        <span className="text-[11px] text-slate-600 flex items-center gap-1">
+                          <Briefcase className="w-3 h-3 text-slate-400" />
+                          <span className="truncate max-w-[140px]">
+                            {(user as any).position || 'เจ้าหน้าที่ฝ่าย'}
+                          </span>
+                        </span>
+                      </div>
 
                       {/* Branch & Department */}
-                      <td className="py-3.5 px-4 text-slate-700">
-                        <div className="font-medium flex items-center gap-1 flex-wrap">
-                          <Building className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{user.branchName || user.branch}</span>
-                          {branches.find(b => b.id === user.branchId)?.status === 'inactive' && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
-                              สาขาปิดใช้งาน
-                            </span>
-                          )}
+                      <div className="space-y-1 text-slate-600 text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="font-medium text-slate-700 truncate">{branchName}</span>
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 flex-wrap">
-                          <Layers className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{user.departmentName || 'ส่วนกลาง'}</span>
-                          {departments.find(d => d.id === user.departmentId)?.status === 'inactive' && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                              แผนกปิดใช้งาน
-                            </span>
-                          )}
+                        <div className="flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="text-slate-500 truncate">{deptName}</span>
                         </div>
-                      </td>
+                      </div>
 
-                      {/* Password Setup Status */}
-                      <td className="py-3.5 px-4 text-center">
-                        {isPendingPassword ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                            <Clock className="w-3 h-3 text-amber-600" />
-                            ยังไม่ตั้งรหัสผ่าน
+                      {/* Permission Type & Data Scope Pill */}
+                      <div className="pt-1 flex items-center justify-between gap-1 flex-wrap text-[10px]">
+                        <span className="px-2 py-0.5 rounded-md bg-[#0B2545]/5 text-[#0B2545] font-mono font-bold border border-[#0B2545]/10">
+                          Scope: {dataScope}
+                        </span>
+
+                        {overridesCount > 0 ? (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
+                            สิทธิ์พิเศษ (+{overridesCount})
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
-                            <CheckCircle className="w-3 h-3 text-emerald-600" />
-                            ตั้งรหัสผ่านแล้ว
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
+                            สิทธิ์ตามบทบาท
                           </span>
                         )}
-                      </td>
+                      </div>
 
-                      {/* Account Status */}
-                      <td className="py-3.5 px-4 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${
-                          user.status === 'active'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : user.status === 'suspended'
-                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                            : 'bg-rose-100 text-rose-800'
-                        }`}>
-                          {user.status === 'active' ? 'ใช้งานปกติ' : 
-                           user.status === 'suspended' ? 'ระงับชั่วคราว' : 'ปิดใช้งาน'}
-                        </span>
-                      </td>
-
-                      {/* Last Login & Created At */}
-                      <td className="py-3.5 px-4 text-center text-slate-500 text-[11px]">
-                        <div>{user.lastLogin || 'ยังไม่เคยเข้าสู่ระบบ'}</div>
-                        {user.createdAt && (
-                          <div className="text-[9px] text-slate-400 mt-0.5">
-                            สร้างเมื่อ: {new Date(user.createdAt).toLocaleDateString('th-TH')}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Actions Toolbar */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                          {/* Manage Manual Permissions Button */}
-                          <button
-                            onClick={() => {
-                              setSelectedUserForPerm(user);
-                              setShowManualPermissionModal(true);
-                            }}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-all shadow-xs"
-                            title="กำหนดสิทธิ์เฉพาะบุคคล (Manual Permission Override & Data Scope)"
+                      {/* Security & Login row */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`px-1.5 py-0.2 rounded font-semibold ${
+                              is2FA
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}
                           >
-                            <Key className="w-3 h-3 text-indigo-600" />
-                            สิทธิ์
-                          </button>
+                            2FA: {is2FA ? 'เปิด' : 'ปิด'}
+                          </span>
 
-                          {/* Edit User Button */}
-                          <button
-                            onClick={() => openEditModal(user)}
-                            className="p-1.5 bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold"
-                            title="แก้ไขข้อมูลผู้ใช้"
-                          >
-                            <Edit className="w-3.5 h-3.5 text-slate-600" />
-                          </button>
+                          {isPendingPassword ? (
+                            <span className="px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800">
+                              รอตั้งรหัส
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded font-semibold bg-slate-100 text-slate-500">
+                              รหัสผ่านแล้ว
+                            </span>
+                          )}
+                        </div>
 
-                          {/* Send Invite or Reset Password */}
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          <span>
+                            {lastLoginText ? (
+                              new Date(lastLoginText).toLocaleDateString('th-TH')
+                            ) : (
+                              'ยังไม่เคยเข้าใช้'
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. Card Actions Toolbar (Prompt Requirement 4) */}
+                  <div className="p-3 bg-[#F4F7FB] border-t border-[#DFE7F0] flex items-center justify-between gap-1.5">
+                    {/* Primary Action Button: "ดูรายละเอียด" */}
+                    <button
+                      onClick={() => openDetailModal(user)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-[#0D9488] hover:bg-[#0b8075] text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                      title="ดูรายละเอียดข้อมูลเชิงลึกของผู้ใช้งาน"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      ดูรายละเอียด
+                    </button>
+
+                    {/* Manage Permissions */}
+                    <button
+                      onClick={() => {
+                        setSelectedUserForPerm(user);
+                        setShowManualPermissionModal(true);
+                      }}
+                      className="flex items-center justify-center gap-1 py-2 px-2.5 bg-white hover:bg-slate-100 text-[#0B2545] border border-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                      title="กำหนดสิทธิ์เฉพาะบุคคล (Manual Permission Control)"
+                    >
+                      <Key className="w-3.5 h-3.5 text-[#0D9488]" />
+                      สิทธิ์
+                    </button>
+
+                    {/* Edit User */}
+                    <button
+                      onClick={() => openEditModal(user)}
+                      className="p-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                      title="แก้ไขข้อมูลผู้ใช้งาน"
+                    >
+                      <Edit className="w-3.5 h-3.5 text-slate-600" />
+                    </button>
+
+                    {/* Suspend / Activate Toggle */}
+                    {!isSelf && (
+                      <button
+                        onClick={() => handleUpdateStatus(user, isActive ? 'suspended' : 'active')}
+                        disabled={isSubmitting}
+                        className={`p-2 border rounded-xl text-xs font-semibold transition-colors ${
+                          isActive
+                            ? 'bg-white hover:bg-amber-50 text-amber-700 border-amber-200'
+                            : 'bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                        title={isActive ? 'ระงับบัญชีชั่วคราว' : 'เปิดใช้งานบัญชี'}
+                      >
+                        {isActive ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+
+                    {/* More Menu Dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveDropdownUserId(isDropdownOpen ? null : user.id);
+                        }}
+                        className="p-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs transition-colors"
+                        title="เมนูเพิ่มเติม"
+                      >
+                        <MoreVertical className="w-3.5 h-3.5" />
+                      </button>
+
+                      {isDropdownOpen && (
+                        <div
+                          className="absolute right-0 bottom-full mb-1.5 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-20 text-xs animate-fadeIn space-y-0.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {isPendingPassword ? (
                             <button
-                              onClick={() => handleSendInvite(user)}
-                              disabled={isSubmitting || user.status === 'disabled'}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-500 text-white border border-amber-600 hover:bg-amber-600 shadow-xs transition-all disabled:opacity-50"
-                              title="ส่งคำเชิญให้ตั้งรหัสผ่านครั้งแรก"
+                              onClick={() => {
+                                setActiveDropdownUserId(null);
+                                handleSendInvite(user);
+                              }}
+                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-amber-800 font-semibold"
                             >
-                              <Send className="w-3 h-3" />
-                              ส่งคำเชิญตั้งรหัส
+                              <Send className="w-3.5 h-3.5 text-amber-600" />
+                              ส่งคำเชิญตั้งรหัสผ่าน
                             </button>
                           ) : (
                             <button
-                              onClick={() => openResetPasswordModal(user)}
-                              disabled={isSubmitting || user.status === 'disabled'}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-all disabled:opacity-50"
-                              title="รีเซ็ตรหัสผ่านสำหรับผู้ใช้"
+                              onClick={() => {
+                                setActiveDropdownUserId(null);
+                                openResetPasswordModal(user);
+                              }}
+                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-purple-800 font-semibold"
                             >
-                              <RotateCcw className="w-3 h-3" />
+                              <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
                               รีเซ็ตรหัสผ่าน
                             </button>
                           )}
 
-                          {/* Revoke Session */}
                           <button
-                            onClick={() => handleRevokeSession(user)}
-                            disabled={isSubmitting}
-                            className="p-1.5 bg-slate-50 text-slate-600 hover:bg-amber-50 hover:text-amber-700 border border-slate-200 rounded-lg text-xs"
-                            title="ยกเลิก Session (บังคับ Logout)"
+                            onClick={() => {
+                              setActiveDropdownUserId(null);
+                              handleRevokeSession(user);
+                            }}
+                            className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
                           >
-                            <LogOut className="w-3.5 h-3.5" />
+                            <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                            ยกเลิก Session
                           </button>
 
-                          {/* Status Management */}
-                          {!isSelf && (
-                            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-[10px]">
-                              {user.status === 'active' ? (
-                                <button
-                                  onClick={() => handleUpdateStatus(user, 'suspended')}
-                                  disabled={isSubmitting}
-                                  className="px-2 py-1 bg-white text-amber-700 hover:bg-amber-50 font-semibold"
-                                  title="ระงับบัญชีชั่วคราว"
-                                >
-                                  ระงับ
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleUpdateStatus(user, 'active')}
-                                  disabled={isSubmitting}
-                                  className="px-2 py-1 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold"
-                                  title="เปิดใช้งานบัญชี"
-                                >
-                                  เปิดใช้
-                                </button>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Audit Logs */}
                           <button
-                            onClick={() => handleViewAuditLogs(user)}
-                            className="p-1.5 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs"
-                            title="ดูประวัติการเปลี่ยนแปลง (Audit Log)"
+                            onClick={() => {
+                              setActiveDropdownUserId(null);
+                              handleViewAuditLogs(user);
+                            }}
+                            className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
                           >
-                            <History className="w-3.5 h-3.5 text-slate-600" />
+                            <History className="w-3.5 h-3.5 text-slate-500" />
+                            ดูประวัติ (Audit Log)
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 6. Pagination Controls */}
+        {totalItems > 0 && (
+          <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="text-slate-500">
+                แสดง <strong>{(currentPage - 1) * pageSize + 1}</strong> ถึง{' '}
+                <strong>{Math.min(currentPage * pageSize, totalItems)}</strong> จากทั้งหมด{' '}
+                <strong>{totalItems}</strong> รายการ
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400">ต่อหน้า:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="py-1 px-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-hidden"
+                >
+                  <option value={6}>6</option>
+                  <option value={9}>9</option>
+                  <option value={12}>12</option>
+                  <option value={24}>24</option>
+                  <option value={48}>48</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Page Buttons */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-600 transition-colors"
+                title="หน้าก่อนหน้า"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                .map((pageNum, idx, arr) => {
+                  const prev = arr[idx - 1];
+                  const hasGap = prev && pageNum - prev > 1;
+                  return (
+                    <React.Fragment key={pageNum}>
+                      {hasGap && <span className="px-1 text-slate-400">...</span>}
+                      <button
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-xl font-bold text-xs transition-all ${
+                          currentPage === pageNum
+                            ? 'bg-[#0D9488] text-white shadow-xs'
+                            : 'hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    </React.Fragment>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                })}
+
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-600 transition-colors"
+                title="หน้าถัดไป"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* User Detail Page / Drawer Modal (6 Tabs) */}
+      {showDetailModal && selectedUser && (
+        <UserDetailModal
+          isOpen={showDetailModal}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedUser(null);
+          }}
+          user={selectedUser}
+          authToken={authToken}
+          actor={currentUser}
+          showToast={showToast}
+          branches={branches}
+          departments={departments}
+          onEditUser={(u) => {
+            setShowDetailModal(false);
+            openEditModal(u);
+          }}
+          onManagePermissions={(u) => {
+            setShowDetailModal(false);
+            setSelectedUserForPerm(u);
+            setShowManualPermissionModal(true);
+          }}
+          onStatusChange={(u, newStat) => {
+            handleUpdateStatus(u, newStat);
+          }}
+          onResetPassword={(u) => {
+            openResetPasswordModal(u);
+          }}
+          onSendInvite={(u) => {
+            handleSendInvite(u);
+          }}
+          onRevokeSession={(u) => {
+            handleRevokeSession(u);
+          }}
+        />
+      )}
 
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
@@ -1046,144 +1404,144 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               aria-modal="true"
               className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[calc(100dvh-24px)] flex flex-col overflow-hidden"
             >
-            <div className="flex items-center justify-between border-b pb-3">
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Edit className="w-5 h-5 text-purple-700" />
-                แก้ไขข้อมูลผู้ใช้งาน: {selectedUser.name}
-              </h2>
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditUser} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    ชื่อ <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFirstName}
-                    onChange={(e) => setEditFirstName(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    นามสกุล <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editLastName}
-                    onChange={(e) => setEditLastName(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  อีเมล <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  หมายเลขโทรศัพท์
-                </label>
-                <input
-                  type="tel"
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  บทบาท (Role) <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as UserRole)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                >
-                  <option value="super_admin">ผู้ดูแลระบบสูงสุด (Super Admin)</option>
-                  <option value="executive">ผู้บริหาร / ประธานมูลนิธิ (Executive)</option>
-                  <option value="officer">เจ้าหน้าที่ช่วยเหลือสังคมและลงพื้นที่ (Help Officer)</option>
-                  <option value="approver">ผู้อนุมัติคำร้อง / คณะกรรมการชะรีอะฮ์ (Approver)</option>
-                  <option value="finance">หัวหน้าฝ่ายการเงินและบัญชี (Finance)</option>
-                  <option value="member">สมาชิกทั่วไป (Member)</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={editBranchId}
-                    onChange={(e) => setEditBranchId(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                  >
-                    {branches.filter(b => b.status !== 'inactive').map(b => (
-                      <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={editDepartmentId}
-                    onChange={(e) => setEditDepartmentId(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                  >
-                    {departments
-                      .filter(d => d.status !== 'inactive' && (!d.branchId || d.branchId === editBranchId))
-                      .map(d => (
-                        <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
-                      ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <div className="flex items-center justify-between border-b pb-3">
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Edit className="w-5 h-5 text-[#0D9488]" />
+                  แก้ไขข้อมูลผู้ใช้งาน: {selectedUser.name}
+                </h2>
                 <button
-                  type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100"
+                  className="text-slate-400 hover:text-slate-600"
                 >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-purple-700 text-white font-bold hover:bg-purple-800 disabled:opacity-50"
-                >
-                  {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleSaveEditUser} className="space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      ชื่อ <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      นามสกุล <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    อีเมล <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    หมายเลขโทรศัพท์
+                  </label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    บทบาท (Role) <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as UserRole)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                  >
+                    <option value="super_admin">ผู้ดูแลระบบสูงสุด (Super Admin)</option>
+                    <option value="executive">ผู้บริหาร / ประธานมูลนิธิ (Executive)</option>
+                    <option value="officer">เจ้าหน้าที่ช่วยเหลือสังคมและลงพื้นที่ (Help Officer)</option>
+                    <option value="approver">ผู้อนุมัติคำร้อง / คณะกรรมการชะรีอะฮ์ (Approver)</option>
+                    <option value="finance">หัวหน้าฝ่ายการเงินและบัญชี (Finance)</option>
+                    <option value="member">สมาชิกทั่วไป (Member)</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={editBranchId}
+                      onChange={(e) => setEditBranchId(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    >
+                      {branches.filter(b => b.status !== 'inactive').map(b => (
+                        <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={editDepartmentId}
+                      onChange={(e) => setEditDepartmentId(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    >
+                      {departments
+                        .filter(d => d.status !== 'inactive' && (!d.branchId || d.branchId === editBranchId))
+                        .map(d => (
+                          <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-5 py-2 rounded-xl bg-[#0D9488] hover:bg-[#0b8075] text-white font-bold disabled:opacity-50 transition-colors"
+                  >
+                    {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      </ModalPortal>
+        </ModalPortal>
       )}
 
       {/* Reset Password Confirmation Modal */}
@@ -1200,62 +1558,62 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               aria-modal="true"
               className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden"
             >
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
-                  <RotateCcw className="w-5 h-5" />
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                    <RotateCcw className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    ยืนยันการรีเซ็ตรหัสผ่าน
+                  </h2>
                 </div>
-                <h2 className="text-base font-bold text-slate-900">
-                  ยืนยันการรีเซ็ตรหัสผ่าน
-                </h2>
-              </div>
-              <button
-                onClick={() => setShowResetConfirmModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                <div><strong>ผู้ใช้งาน:</strong> {selectedUser.name}</div>
-                <div><strong>อีเมล:</strong> {selectedUser.email}</div>
-                <div><strong>บทบาท:</strong> {selectedUser.roleTitleTh || selectedUser.role}</div>
-                <div><strong>แผนก:</strong> {selectedUser.departmentName || 'ส่วนกลาง'}</div>
+                <button
+                  onClick={() => setShowResetConfirmModal(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 space-y-1">
-                <div className="font-bold flex items-center gap-1 text-amber-950">
-                  <AlertTriangle className="w-4 h-4 text-amber-700" />
-                  มาตรการความปลอดภัย
+              <div className="space-y-3 text-xs">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <div><strong>ผู้ใช้งาน:</strong> {selectedUser.name}</div>
+                  <div><strong>อีเมล:</strong> {selectedUser.email}</div>
+                  <div><strong>บทบาท:</strong> {selectedUser.roleTitleTh || selectedUser.role}</div>
+                  <div><strong>แผนก:</strong> {selectedUser.departmentName || 'ส่วนกลาง'}</div>
                 </div>
-                <p className="leading-relaxed text-[11px]">
-                  เมื่อดำเนินการ ระบบจะยกเลิก Session ที่ใช้งานอยู่ของผู้ใช้ทันที และสร้างโทเคนแบบใช้ครั้งเดียวที่มีอายุ 48 ชั่วโมงสำหรับให้ผู้ใช้กำหนดรหัสผ่านใหม่ด้วยตนเอง
-                </p>
-              </div>
-            </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirmModal(false)}
-                className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={handleExecuteResetPassword}
-                disabled={isSubmitting}
-                className="px-5 py-2 rounded-xl bg-purple-700 text-white font-bold hover:bg-purple-800 disabled:opacity-50 text-xs"
-              >
-                {isSubmitting ? 'กำลังดำเนินการ...' : 'ยืนยันและสร้างลิงก์รีเซ็ต'}
-              </button>
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 space-y-1">
+                  <div className="font-bold flex items-center gap-1 text-amber-950">
+                    <AlertTriangle className="w-4 h-4 text-amber-700" />
+                    มาตรการความปลอดภัย
+                  </div>
+                  <p className="leading-relaxed text-[11px]">
+                    เมื่อดำเนินการ ระบบจะยกเลิก Session ที่ใช้งานอยู่ของผู้ใช้ทันที และสร้างโทเคนแบบใช้ครั้งเดียวที่มีอายุ 48 ชั่วโมงสำหรับให้ผู้ใช้กำหนดรหัสผ่านใหม่ด้วยตนเอง
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirmModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteResetPassword}
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-purple-700 text-white font-bold hover:bg-purple-800 disabled:opacity-50 text-xs"
+                >
+                  {isSubmitting ? 'กำลังดำเนินการ...' : 'ยืนยันและสร้างลิงก์รีเซ็ต'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </ModalPortal>
+        </ModalPortal>
       )}
 
       {/* Invite / Reset Token Modal */}
@@ -1272,84 +1630,84 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               aria-modal="true"
               className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden"
             >
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
-                  <Key className="w-5 h-5" />
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-teal-50 text-[#0D9488] flex items-center justify-center">
+                    <Key className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      {inviteModalData.isReset ? 'ลิงก์รีเซ็ตรหัสผ่าน (Password Reset)' : 'ลิงก์คำเชิญตั้งรหัสผ่าน (Password Setup)'}
+                    </h2>
+                    <p className="text-[11px] text-slate-500">
+                      สำหรับผู้ใช้: <strong className="text-slate-800">{inviteModalData.user?.name}</strong> ({inviteModalData.user?.email})
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setShowInviteModal(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-800 flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    ระบบได้สร้างโทเคนแบบใช้ได้ครั้งเดียว (One-Time Token) และเข้ารหัสด้วย SHA-256 บันทึกในฐานข้อมูลเรียบร้อยแล้ว ลิงก์นี้มีอายุใช้งาน <strong>48 ชั่วโมง</strong>
+                  </div>
+                </div>
+
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    {inviteModalData.isReset ? 'ลิงก์รีเซ็ตรหัสผ่าน (Password Reset)' : 'ลิงก์คำเชิญตั้งรหัสผ่าน (Password Setup)'}
-                  </h2>
-                  <p className="text-[11px] text-slate-500">
-                    สำหรับผู้ใช้: <strong className="text-slate-800">{inviteModalData.user?.name}</strong> ({inviteModalData.user?.email})
-                  </p>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    URL สำหรับให้ผู้ใช้งานเปิดเพื่อกำหนดรหัสผ่านด้วยตนเอง:
+                  </label>
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-2 font-mono text-[11px] text-slate-800 break-all select-all">
+                    <span className="flex-1 overflow-x-auto">{inviteModalData.setupUrl}</span>
+                    <button
+                      onClick={() => copyToClipboard(inviteModalData.setupUrl || '')}
+                      className="px-3 py-1.5 bg-[#0D9488] hover:bg-[#0b8075] text-white rounded-lg font-semibold shrink-0 flex items-center gap-1 transition-colors"
+                    >
+                      {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {isCopied ? 'คัดลอกแล้ว' : 'คัดลอก'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <button
-                onClick={() => setShowInviteModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-800 flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="leading-relaxed">
-                  ระบบได้สร้างโทเคนแบบใช้ได้ครั้งเดียว (One-Time Token) และเข้ารหัสด้วย SHA-256 บันทึกในฐานข้อมูลเรียบร้อยแล้ว ลิงก์นี้มีอายุใช้งาน <strong>48 ชั่วโมง</strong>
-                </div>
-              </div>
+                {inviteModalData.emailStatus && (
+                  <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>{inviteModalData.emailStatus}</span>
+                  </div>
+                )}
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  URL สำหรับให้ผู้ใช้งานเปิดเพื่อกำหนดรหัสผ่านด้วยตนเอง:
-                </label>
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-2 font-mono text-[11px] text-slate-800 break-all select-all">
-                  <span className="flex-1 overflow-x-auto">{inviteModalData.setupUrl}</span>
-                  <button
-                    onClick={() => copyToClipboard(inviteModalData.setupUrl || '')}
-                    className="px-3 py-1.5 bg-purple-700 text-white rounded-lg font-semibold shrink-0 hover:bg-purple-800 flex items-center gap-1 transition-colors"
-                  >
-                    {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    {isCopied ? 'คัดลอกแล้ว' : 'คัดลอก'}
-                  </button>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-slate-600">
+                  <div className="font-semibold text-slate-800 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#0D9488]" />
+                    หลักความปลอดภัยตามข้อกำหนด:
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-500">
+                    <li>Super Admin ไม่สามารถดูหรือตั้งรหัสผ่านแทนผู้ใช้ได้</li>
+                    <li>ระบบไม่เก็บบันทึกรหัสผ่านหรือ Secret เป็นข้อความธรรมดา</li>
+                    <li>เมื่อตั้งรหัสผ่านสำเร็จ Session เดิมทั้งหมดจะถูกเพิกถอนทันที</li>
+                  </ul>
                 </div>
               </div>
 
-              {inviteModalData.emailStatus && (
-                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5">
-                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <span>{inviteModalData.emailStatus}</span>
-                </div>
-              )}
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-slate-600">
-                <div className="font-semibold text-slate-800 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
-                  หลักความปลอดภัยตามข้อกำหนด:
-                </div>
-                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-500">
-                  <li>Super Admin ไม่สามารถดูหรือตั้งรหัสผ่านแทนผู้ใช้ได้</li>
-                  <li>ระบบไม่เก็บบันทึกรหัสผ่านหรือ Secret เป็นข้อความธรรมดา</li>
-                  <li>เมื่อตั้งรหัสผ่านสำเร็จ Session เดิมทั้งหมดจะถูกเพิกถอนทันที</li>
-                </ul>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-5 py-2 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-900 text-xs"
+                >
+                  ปิดหน้าต่าง
+                </button>
               </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t">
-              <button
-                type="button"
-                onClick={() => setShowInviteModal(false)}
-                className="px-5 py-2 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-900 text-xs"
-              >
-                ปิดหน้าต่าง
-              </button>
             </div>
           </div>
-        </div>
-      </ModalPortal>
+        </ModalPortal>
       )}
 
       {/* Audit Log Modal */}
@@ -1366,69 +1724,69 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               aria-modal="true"
               className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[calc(100dvh-24px)] flex flex-col overflow-hidden"
             >
-            <div className="flex items-center justify-between border-b pb-3 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                  <History className="w-5 h-5 text-purple-700" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    ประวัติการเปลี่ยนแปลงบัญชีและ Audit Log
-                  </h2>
-                  <p className="text-[11px] text-slate-500">
-                    เป้าหมาย: <strong className="text-slate-800">{selectedUser.name}</strong> ({selectedUser.email})
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowAuditModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto flex-1 space-y-2 text-xs pr-1">
-              {isLoadingAudit ? (
-                <div className="py-8 text-center text-slate-400 flex items-center justify-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  กำลังโหลดบันทึกประวัติ...
-                </div>
-              ) : userAuditLogs.length === 0 ? (
-                <div className="py-8 text-center text-slate-400">
-                  ไม่พบประวัติการทำรายการสำหรับผู้ใช้นี้
-                </div>
-              ) : (
-                userAuditLogs.map((log) => (
-                  <div key={log.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-mono text-slate-400">{log.timestamp}</span>
-                      <span className="px-2 py-0.5 rounded font-bold bg-purple-50 text-purple-700 border border-purple-200 text-[10px]">
-                        {log.action}
-                      </span>
-                    </div>
-                    <div className="text-slate-800 leading-relaxed">{log.description}</div>
-                    <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100">
-                      <span>ผู้ดำเนินการ: <strong>{log.userName}</strong> ({log.userRole})</span>
-                      <span className="font-mono">IP: {log.ipAddress}</span>
-                    </div>
+              <div className="flex items-center justify-between border-b pb-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                    <History className="w-5 h-5 text-[#0D9488]" />
                   </div>
-                ))
-              )}
-            </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      ประวัติการเปลี่ยนแปลงบัญชีและ Audit Log
+                    </h2>
+                    <p className="text-[11px] text-slate-500">
+                      เป้าหมาย: <strong className="text-slate-800">{selectedUser.name}</strong> ({selectedUser.email})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAuditModal(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-            <div className="flex items-center justify-end pt-3 border-t shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowAuditModal(false)}
-                className="px-5 py-2 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-900 text-xs"
-              >
-                ปิดหน้าต่าง
-              </button>
+              <div className="overflow-y-auto flex-1 space-y-2 text-xs pr-1">
+                {isLoadingAudit ? (
+                  <div className="py-8 text-center text-slate-400 flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-[#0D9488]" />
+                    กำลังโหลดบันทึกประวัติ...
+                  </div>
+                ) : userAuditLogs.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400">
+                    ไม่พบประวัติการทำรายการสำหรับผู้ใช้นี้
+                  </div>
+                ) : (
+                  userAuditLogs.map((log) => (
+                    <div key={log.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-mono text-slate-400">{log.timestamp}</span>
+                        <span className="px-2 py-0.5 rounded font-bold bg-teal-50 text-teal-800 border border-teal-200 text-[10px]">
+                          {log.action}
+                        </span>
+                      </div>
+                      <div className="text-slate-800 leading-relaxed">{log.description}</div>
+                      <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100">
+                        <span>ผู้ดำเนินการ: <strong>{log.userName}</strong> ({log.userRole})</span>
+                        <span className="font-mono">IP: {log.ipAddress}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex items-center justify-end pt-3 border-t shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAuditModal(false)}
+                  className="px-5 py-2 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-900 text-xs"
+                >
+                  ปิดหน้าต่าง
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </ModalPortal>
+        </ModalPortal>
       )}
 
       {/* Add User Modal */}
@@ -1445,165 +1803,165 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               aria-modal="true"
               className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[calc(100dvh-24px)] flex flex-col overflow-hidden"
             >
-            <div className="flex items-center justify-between border-b pb-3">
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-purple-700" />
-                เพิ่มบุคลากรใหม่และส่งคำเชิญตั้งรหัสผ่าน
-              </h2>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    ชื่อ <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น ซะการียา"
-                    value={newFirstName}
-                    onChange={(e) => setNewFirstName(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    นามสกุล <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น มะแซ"
-                    value={newLastName}
-                    onChange={(e) => setNewLastName(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  อีเมล (สำหรับเข้าสู่ระบบและรับคำเชิญ) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="zakariya@zakatfoundation.or.th"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  หมายเลขโทรศัพท์
-                </label>
-                <input
-                  type="tel"
-                  placeholder="08X-XXX-XXXX"
-                  value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  บทบาทและสิทธิ์การใช้งาน (Role) <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as UserRole)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                >
-                  <option value="officer">เจ้าหน้าที่ช่วยเหลือสังคมและลงพื้นที่ (Help Officer)</option>
-                  <option value="approver">ผู้อนุมัติคำร้อง / คณะกรรมการชะรีอะฮ์ (Approver)</option>
-                  <option value="finance">หัวหน้าฝ่ายการเงินและบัญชี (Finance)</option>
-                  <option value="executive">ผู้บริหาร / ประธานมูลนิธิ (Executive)</option>
-                  <option value="super_admin">ผู้ดูแลระบบสูงสุด (Super Admin)</option>
-                  <option value="member">สมาชิกทั่วไป (Member)</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={newBranchId}
-                    onChange={(e) => setNewBranchId(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                  >
-                    {branches.filter(b => b.status !== 'inactive').map(b => (
-                      <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={newDepartmentId}
-                    onChange={(e) => setNewDepartmentId(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                  >
-                    {departments
-                      .filter(d => d.status !== 'inactive' && (!d.branchId || d.branchId === newBranchId))
-                      .map(d => (
-                        <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
-                      ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 space-y-2">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={sendInviteOnCreate}
-                    onChange={(e) => setSendInviteOnCreate(e.target.checked)}
-                    className="mt-0.5 rounded text-purple-700 focus:ring-purple-500"
-                  />
-                  <div className="text-[11px] text-slate-700">
-                    <span className="font-bold text-purple-900">สร้างและแสดงลิงก์คำเชิญตั้งรหัสผ่านทันที</span>
-                    <p className="text-slate-500 mt-0.5">
-                      ระบบจะสร้างบัญชีสถานะ <span className="font-semibold text-amber-700">"รอตั้งรหัสผ่าน (pending_setup)"</span> โดยไม่มีรหัสผ่านเริ่มต้น และสร้างลิงก์ปลอดภัยสำหรับส่งให้ผู้ใช้กำหนดรหัสผ่านเอง
-                    </p>
-                  </div>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <div className="flex items-center justify-between border-b pb-3">
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-[#0D9488]" />
+                  เพิ่มบุคลากรใหม่และส่งคำเชิญตั้งรหัสผ่าน
+                </h2>
                 <button
-                  type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100"
+                  className="text-slate-400 hover:text-slate-600"
                 >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-purple-700 text-white font-bold hover:bg-purple-800 disabled:opacity-50"
-                >
-                  {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกและสร้างบัญชี'}
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      ชื่อ <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="เช่น ซะการียา"
+                      value={newFirstName}
+                      onChange={(e) => setNewFirstName(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      นามสกุล <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="เช่น มะแซ"
+                      value={newLastName}
+                      onChange={(e) => setNewLastName(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    อีเมล (สำหรับเข้าสู่ระบบและรับคำเชิญ) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="zakariya@zakatfoundation.or.th"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    หมายเลขโทรศัพท์
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="08X-XXX-XXXX"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    บทบาทและสิทธิ์การใช้งาน (Role) <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as UserRole)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                  >
+                    <option value="officer">เจ้าหน้าที่ช่วยเหลือสังคมและลงพื้นที่ (Help Officer)</option>
+                    <option value="approver">ผู้อนุมัติคำร้อง / คณะกรรมการชะรีอะฮ์ (Approver)</option>
+                    <option value="finance">หัวหน้าฝ่ายการเงินและบัญชี (Finance)</option>
+                    <option value="executive">ผู้บริหาร / ประธานมูลนิธิ (Executive)</option>
+                    <option value="super_admin">ผู้ดูแลระบบสูงสุด (Super Admin)</option>
+                    <option value="member">สมาชิกทั่วไป (Member)</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={newBranchId}
+                      onChange={(e) => setNewBranchId(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    >
+                      {branches.filter(b => b.status !== 'inactive').map(b => (
+                        <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={newDepartmentId}
+                      onChange={(e) => setNewDepartmentId(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    >
+                      {departments
+                        .filter(d => d.status !== 'inactive' && (!d.branchId || d.branchId === newBranchId))
+                        .map(d => (
+                          <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-teal-50/70 rounded-xl border border-teal-200 space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sendInviteOnCreate}
+                      onChange={(e) => setSendInviteOnCreate(e.target.checked)}
+                      className="mt-0.5 rounded text-[#0D9488] focus:ring-[#0D9488]"
+                    />
+                    <div className="text-[11px] text-slate-700">
+                      <span className="font-bold text-teal-900">สร้างและแสดงลิงก์คำเชิญตั้งรหัสผ่านทันที</span>
+                      <p className="text-slate-500 mt-0.5">
+                        ระบบจะสร้างบัญชีสถานะ <span className="font-semibold text-amber-700">"รอตั้งรหัสผ่าน (pending_setup)"</span> โดยไม่มีรหัสผ่านเริ่มต้น และสร้างลิงก์ปลอดภัยสำหรับส่งให้ผู้ใช้กำหนดรหัสผ่านเอง
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-5 py-2 rounded-xl bg-[#0D9488] hover:bg-[#0b8075] text-white font-bold disabled:opacity-50 transition-colors"
+                  >
+                    {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกและสร้างบัญชี'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      </ModalPortal>
+        </ModalPortal>
       )}
 
       {/* Role Management Modal */}

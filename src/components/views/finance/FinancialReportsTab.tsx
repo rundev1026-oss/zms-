@@ -21,11 +21,12 @@ export function FinancialReportsTab() {
   const { showToast } = useApp();
 
   const reportOptions = [
+    { id: 'three_tier_fund_summary', name: '★ รายงานโครงสร้างกองทุน 3 ระดับและสถานะงบประมาณรวม (3-Tier Fund Budget Summary)', icon: '🏛️' },
     { id: 'income_by_type', name: '1. รายงานรายรับแยกตามประเภทเงิน (ซะกาต / ศอดะเกาะฮ์ / บริหาร)', icon: '📥' },
     { id: 'aid_by_asnaf', name: '2. รายงานรายจ่ายเพื่อการช่วยเหลือแยกตาม 8 อัสนัฟ (Asnaf Aid)', icon: '🤲' },
     { id: 'aid_by_assistance_type', name: '3. รายงานรายจ่ายแยกตามประเภทการช่วยเหลือ (Assistance Types)', icon: '🩺' },
     { id: 'caregiver_unspent_summary', name: '4. รายงานสรุปเงินสดคงค้างในมือผู้ดูแลเคสและเงินคืน (Caregiver Custody & Refunds)', icon: '💼' },
-    { id: 'faqir_miskin_subfunds', name: '5. รายงานรายจ่ายตามกองทุนย่อยฟากีร–มิสกิน (5 รูปแบบ)', icon: '🏠' },
+    { id: 'faqir_miskin_subfunds', name: '5. รายงานสถานะงบประมาณกองทุนเฉพาะเจาะจง (Specific Funds Utilization)', icon: '🏠' },
     { id: 'admin_expenses', name: '6. รายงานค่าใช้จ่ายบริหาร (10 หมวดหมู่)', icon: '📑' },
     { id: 'deposit_withdraw_transfers', name: '7. รายงานฝาก–ถอน–โอน ระหว่างบัญชีและเบิกเงิน', icon: '🔄' },
     { id: 'cash_flow_workflows', name: '8. รายงานการเบิกเงินสด 5 ขั้นตอนและเงินคงเหลือ', icon: '💵' },

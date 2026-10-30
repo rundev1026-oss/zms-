@@ -1,5 +1,6 @@
 import { getDb, initDb } from '@/lib/db';
 import crypto from 'crypto';
+import { BeneficiaryService } from './beneficiaryService';
 
 export interface PublicStats {
   totalBeneficiaries: number;
@@ -69,6 +70,16 @@ export interface PublicAssistanceInput {
   subdistrict?: string;
   community: string;
   asnafCategory: string;
+  primaryGroupCode?: string;
+  specificFundId?: string;
+  assistanceTypeId?: string;
+  assistanceType?: string;
+  assistanceTypeDetails?: string;
+  necessityDetails?: string;
+  assistanceReason?: string;
+  fiscalYear?: string;
+  branchId?: string;
+  branchName?: string;
   requestedAmount: number;
   urgencyLevel?: 'urgent' | 'high' | 'normal';
   monthlyIncome: number;
@@ -351,110 +362,159 @@ export class PublicPortalService {
       throw new Error('เลขประจำตัวประชาชนต้องประกอบด้วยตัวเลข 13 หลัก');
     }
 
-    // Duplicate check for active applications
+    // Duplicate check for active applications (includes rapid double-submit protection)
     const dupCheck = await db.execute({
       sql: `SELECT a.application_no, a.status 
             FROM assistance_applications a
             JOIN beneficiaries b ON a.beneficiary_id = b.id
-            WHERE b.national_id = ? AND a.status NOT IN ('rejected', 'closed')`,
+            WHERE b.national_id = ? AND a.status NOT IN ('rejected', 'closed', 'cancelled')`,
       args: [cleanId]
     });
 
     if (dupCheck.rows.length > 0) {
       const existing = dupCheck.rows[0];
-      throw new Error(`พบคำร้องขอรับความช่วยเหลือที่มีอยู่แล้วในระบบ (เลขที่: ${existing.application_no}, สถานะ: ${existing.status}) ไม่สามารถยื่นซ้ำได้`);
+      throw new Error(`DUPLICATE_SUBMISSION: พบคำร้องขอรับความช่วยเหลือที่กำลังดำเนินการอยู่แล้วในระบบ (เลขที่: ${existing.application_no}, สถานะ: ${existing.status}) ไม่สามารถยื่นซ้ำได้`);
     }
+
+    // Server-side 3-Tier Fund & Assistance Type Validation (before any DB inserts)
+    const resolvedThreeTier = await BeneficiaryService.validateAndResolveThreeTierSelection({
+      fiscalYear: input.fiscalYear || '2569',
+      primaryGroupCode: input.primaryGroupCode,
+      asnafCategory: input.asnafCategory,
+      specificFundId: input.specificFundId,
+      assistanceTypeId: input.assistanceTypeId,
+      assistanceType: input.assistanceType,
+      requestedAmount: input.requestedAmount,
+      requireExplicitThreeTier: Boolean(
+        input.primaryGroupCode !== undefined ||
+        input.specificFundId !== undefined ||
+        input.assistanceTypeId !== undefined
+      ),
+    });
 
     // Mask ID for public display
     const maskedId = `${cleanId[0]}-${cleanId.slice(1, 5)}-XXXXX-${cleanId.slice(10, 12)}-${cleanId[12]}`;
 
-    // 1. Create Household
-    const householdId = `hh-pub-${Date.now()}`;
-    const householdNo = `HH-${new Date().getFullYear() + 543}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    await db.execute({
-      sql: `INSERT INTO households (
-        id, household_no, address, province, district, subdistrict, community,
-        housing_condition, housing_notes, living_score, monthly_income, monthly_expense,
-        debt_amount, debt_purpose
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-      args: [
-        householdId,
-        householdNo,
-        input.address,
-        input.province,
-        input.district,
-        input.subdistrict || '',
-        input.community,
-        input.housingCondition || 'rented',
-        input.housingNotes || '',
-        input.monthlyIncome || 0,
-        input.monthlyExpense || 0,
-        input.debtAmount || 0,
-        input.debtPurpose || ''
-      ]
+    // Reuse existing beneficiary & household if national_id already exists (e.g. after closed/cancelled prior request)
+    const existingBenRes = await db.execute({
+      sql: 'SELECT id, household_id FROM beneficiaries WHERE national_id = ? LIMIT 1',
+      args: [cleanId],
     });
 
-    // 2. Household Members
-    if (input.householdMembers && input.householdMembers.length > 0) {
-      for (const m of input.householdMembers) {
-        if (m.fullName && m.fullName.trim()) {
-          await db.execute({
-            sql: `INSERT INTO household_members (
-              id, household_id, full_name, relation, age, occupation, monthly_income, health_status, health_notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            args: [
-              `hhm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              householdId,
-              m.fullName,
-              m.relation || 'สมาชิก',
-              m.age || 0,
-              m.occupation || 'ไม่มี',
-              m.monthlyIncome || 0,
-              m.healthStatus || 'healthy',
-              m.healthNotes || ''
-            ]
-          });
+    let householdId = '';
+    let beneficiaryId = '';
+
+    if (existingBenRes.rows.length > 0) {
+      beneficiaryId = String(existingBenRes.rows[0].id);
+      householdId = String(existingBenRes.rows[0].household_id);
+    } else {
+      // 1. Create Household
+      householdId = `hh-pub-${Date.now()}`;
+      const householdNo = `HH-${new Date().getFullYear() + 543}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      await db.execute({
+        sql: `INSERT INTO households (
+          id, household_no, address, province, district, subdistrict, community,
+          housing_condition, housing_notes, living_score, monthly_income, monthly_expense,
+          debt_amount, debt_purpose
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+        args: [
+          householdId,
+          householdNo,
+          input.address || 'ที่อยู่ตามทะเบียนราษฎร์',
+          input.province || 'กรุงเทพมหานคร',
+          input.district || 'เขตพระนคร',
+          input.subdistrict || '',
+          input.community || 'ชุมชนทั่วไป',
+          input.housingCondition || 'rented',
+          input.housingNotes || '',
+          input.monthlyIncome || 0,
+          input.monthlyExpense || 0,
+          input.debtAmount || 0,
+          input.debtPurpose || ''
+        ].map((v) => (v === undefined ? null : v))
+      });
+
+      // 2. Household Members
+      if (input.householdMembers && input.householdMembers.length > 0) {
+        for (const m of input.householdMembers) {
+          if (m.fullName && m.fullName.trim()) {
+            await db.execute({
+              sql: `INSERT INTO household_members (
+                id, household_id, full_name, relation, age, occupation, monthly_income, health_status, health_notes
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              args: [
+                `hhm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                householdId,
+                m.fullName,
+                m.relation || 'สมาชิก',
+                m.age || 0,
+                m.occupation || 'ไม่มี',
+                m.monthlyIncome || 0,
+                m.healthStatus || 'healthy',
+                m.healthNotes || ''
+              ]
+            });
+          }
         }
       }
-    }
 
-    // 3. Beneficiary
-    const beneficiaryId = `ben-pub-${Date.now()}`;
-    await db.execute({
-      sql: `INSERT INTO beneficiaries (
-        id, household_id, full_name, national_id, phone, email, asnaf_category
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        beneficiaryId,
-        householdId,
-        input.fullName,
-        cleanId,
-        input.phone,
-        input.email || '',
-        input.asnafCategory
-      ]
-    });
+      // 3. Beneficiary
+      beneficiaryId = `ben-pub-${Date.now()}`;
+      await db.execute({
+        sql: `INSERT INTO beneficiaries (
+          id, household_id, full_name, national_id, phone, email, asnaf_category, branch_id, branch_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          beneficiaryId,
+          householdId,
+          input.fullName,
+          cleanId,
+          input.phone,
+          input.email || '',
+          resolvedThreeTier.asnafCategory,
+          input.branchId || 'br-hq',
+          input.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
+        ].map((v) => (v === undefined ? null : v))
+      });
+    }
 
     // 4. Assistance Application
     const applicationId = `app-pub-${Date.now()}`;
     const applicationNo = `APP-${new Date().getFullYear() + 543}-${Math.floor(10000 + Math.random() * 90000)}`;
     const appliedDate = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    const finalNecessity = input.necessityDetails || input.assistanceReason || '';
 
     await db.execute({
       sql: `INSERT INTO assistance_applications (
         id, application_no, beneficiary_id, asnaf_category, requested_amount,
-        status, urgency_level, assigned_officer_id, assigned_officer_name, applied_date
-      ) VALUES (?, ?, ?, ?, ?, 'submitted', ?, 'unassigned', 'รอการมอบหมายเจ้าหน้าที่', ?)`,
+        status, urgency_level, assigned_officer_id, assigned_officer_name, applied_date,
+        branch_id, branch_name, assistance_type, assistance_type_id, assistance_group,
+        primary_group_code, specific_fund_id, specific_fund_code, specific_fund_name, fiscal_year,
+        classification_snapshot, assistance_type_details, necessity_details
+      ) VALUES (?, ?, ?, ?, ?, 'submitted', ?, 'unassigned', 'รอการมอบหมายเจ้าหน้าที่', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         applicationId,
         applicationNo,
         beneficiaryId,
-        input.asnafCategory,
-        input.requestedAmount || 5000,
+        resolvedThreeTier.asnafCategory,
+        Number(input.requestedAmount),
         input.urgencyLevel || 'normal',
-        appliedDate
-      ]
+        appliedDate,
+        input.branchId || 'br-hq',
+        input.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
+        resolvedThreeTier.assistanceTypeName,
+        resolvedThreeTier.assistanceTypeId,
+        resolvedThreeTier.assistanceGroup,
+        resolvedThreeTier.primaryGroupCode,
+        resolvedThreeTier.specificFundId,
+        resolvedThreeTier.specificFundCode,
+        resolvedThreeTier.specificFundName,
+        resolvedThreeTier.fiscalYear,
+        resolvedThreeTier.classificationSnapshot,
+        input.assistanceTypeDetails || '',
+        finalNecessity,
+      ].map((v) => (v === undefined ? null : v))
     });
 
     // 5. Documents

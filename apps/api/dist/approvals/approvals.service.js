@@ -1,0 +1,403 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ApprovalsService = void 0;
+const common_1 = require("@nestjs/common");
+const client_1 = require("@prisma/client");
+const prisma_service_1 = require("../prisma/prisma.service");
+const audit_service_1 = require("../audit/audit.service");
+const app_exception_1 = require("../common/app.exception");
+const mask_identity_1 = require("../beneficiaries/mask-identity");
+let ApprovalsService = class ApprovalsService {
+    prisma;
+    audit;
+    constructor(prisma, audit) {
+        this.prisma = prisma;
+        this.audit = audit;
+    }
+    async getPendingApprovals(query, user) {
+        const page = Math.max(1, Number(query.page || 1));
+        const limit = Math.max(1, Math.min(100, Number(query.limit || 20)));
+        const skip = (page - 1) * limit;
+        const where = {
+            status: 'pending_approval',
+        };
+        if (query.asnafCategory && query.asnafCategory.trim()) {
+            where.asnafCategory = query.asnafCategory.trim();
+        }
+        if (query.urgencyLevel && query.urgencyLevel.trim()) {
+            where.urgencyLevel = query.urgencyLevel.trim();
+        }
+        if (query.branchId && query.branchId.trim()) {
+            where.branchId = query.branchId.trim();
+        }
+        if (query.search && query.search.trim()) {
+            const q = query.search.trim();
+            const cleanQ = q.replace(/[^0-9]/g, '');
+            where.OR = [
+                { applicationNo: { contains: q, mode: 'insensitive' } },
+                { beneficiary: { firstName: { contains: q, mode: 'insensitive' } } },
+                { beneficiary: { lastName: { contains: q, mode: 'insensitive' } } },
+                { beneficiary: { registryNumber: { contains: q, mode: 'insensitive' } } },
+                ...(cleanQ.length > 0 ? [{ beneficiary: { identityNumberNormalized: { contains: cleanQ } } }] : []),
+            ];
+        }
+        const [items, total] = await Promise.all([
+            this.prisma.assistanceApplication.findMany({
+                where,
+                orderBy: [{ urgencyLevel: 'desc' }, { createdAt: 'asc' }],
+                skip,
+                take: limit,
+                include: {
+                    beneficiary: {
+                        select: {
+                            id: true,
+                            title: true,
+                            firstName: true,
+                            lastName: true,
+                            identityNumber: true,
+                            identityNumberNormalized: true,
+                            registryNumber: true,
+                            phone: true,
+                        },
+                    },
+                    documents: true,
+                    legacyAssessment: true,
+                    history: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 3,
+                    },
+                },
+            }),
+            this.prisma.assistanceApplication.count({ where }),
+        ]);
+        const canSeeSensitive = user?.permissions?.includes('beneficiaries.read.sensitive') ?? true;
+        const formattedItems = items.map((app) => {
+            const ben = app.beneficiary;
+            const fullName = ben ? [ben.title, ben.firstName, ben.lastName].filter(Boolean).join(' ') : '';
+            const idNum = ben?.identityNumberNormalized || ben?.identityNumber || '';
+            return {
+                ...app,
+                requestedAmount: Number(app.requestedAmount),
+                approvedAmount: app.approvedAmount ? Number(app.approvedAmount) : null,
+                beneficiary: ben
+                    ? {
+                        id: ben.id,
+                        fullName,
+                        registryNumber: ben.registryNumber,
+                        phone: ben.phone,
+                        identityNumber: canSeeSensitive ? idNum : (0, mask_identity_1.maskIdentityNumber)(idNum),
+                        identityNumberMasked: (0, mask_identity_1.maskIdentityNumber)(idNum),
+                    }
+                    : null,
+                assessment: app.legacyAssessment
+                    ? {
+                        ...app.legacyAssessment,
+                        recommendedAmount: Number(app.legacyAssessment.recommendedAmount),
+                    }
+                    : null,
+            };
+        });
+        return {
+            items: formattedItems,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit) || 1,
+        };
+    }
+    async getSummary() {
+        const [pendingCount, approvedCount, rejectedCount, needInfoCount, pendingAmountAgg, approvedAmountAgg,] = await Promise.all([
+            this.prisma.assistanceApplication.count({ where: { status: 'pending_approval' } }),
+            this.prisma.assistanceApplication.count({
+                where: { status: { in: ['wait_disbursement', 'approved', 'disbursed'] } },
+            }),
+            this.prisma.assistanceApplication.count({ where: { status: 'rejected' } }),
+            this.prisma.assistanceApplication.count({ where: { status: { in: ['need_info', 'assessment'] } } }),
+            this.prisma.assistanceApplication.aggregate({
+                where: { status: 'pending_approval' },
+                _sum: { requestedAmount: true },
+            }),
+            this.prisma.assistanceApplication.aggregate({
+                where: { status: { in: ['wait_disbursement', 'approved', 'disbursed'] } },
+                _sum: { approvedAmount: true },
+            }),
+        ]);
+        return {
+            pendingCount,
+            approvedCount,
+            rejectedCount,
+            needInfoCount,
+            totalPendingAmount: Number(pendingAmountAgg._sum.requestedAmount || 0),
+            totalApprovedAmount: Number(approvedAmountAgg._sum.approvedAmount || 0),
+        };
+    }
+    async approve(id, dto, user) {
+        if (!dto.approvedAmount || dto.approvedAmount <= 0) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'INVALID_AMOUNT', 'วงเงินที่อนุมัติต้องมากกว่า 0 บาท');
+        }
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const app = await this.prisma.assistanceApplication.findFirst({
+            where: isUuid ? { id } : { OR: [{ applicationNo: id }, { legacyId: id }] },
+            include: { legacyAssessment: true },
+        });
+        if (!app) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'APPLICATION_NOT_FOUND', `ไม่พบคำร้องขอความช่วยเหลือรหัส ${id}`);
+        }
+        const userRoleCodes = (user.roles || []).map((r) => (typeof r === 'string' ? r : r.code));
+        const isSuperAdmin = userRoleCodes.includes('SUPER_ADMIN');
+        if (!isSuperAdmin && app.assignedOfficerId && app.assignedOfficerId === user.id) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.FORBIDDEN, 'SOD_VIOLATION', 'การละเมิดหลักการแบ่งแยกหน้าที่ (Segregation of Duties): เจ้าหน้าที่ผู้รับผิดชอบคำร้องไม่มีสิทธิ์อนุมัติคำร้องของตนเอง');
+        }
+        const validStates = ['pending_approval', 'submitted', 'doc_review', 'assessment'];
+        if (!validStates.includes(app.status)) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'INVALID_STATE', `คำร้องนี้อยู่ในสถานะ "${app.status}" ไม่สามารถอนุมัติได้ (ต้องอยู่ในสถานะรอพิจารณาอนุมัติเท่านั้น)`);
+        }
+        const fundInput = dto.fundId.trim();
+        const isFundUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fundInput);
+        const fund = await this.prisma.fundAccount.findFirst({
+            where: {
+                OR: [
+                    ...(isFundUuid ? [{ id: fundInput }] : []),
+                    { code: fundInput },
+                    { legacyId: fundInput },
+                ],
+            },
+        });
+        if (!fund) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'FUND_NOT_FOUND', `ไม่พบบัญชีกองทุนรหัส ${dto.fundId}`);
+        }
+        if (!fund.isActive) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'FUND_INACTIVE', `บัญชีกองทุน "${fund.name}" ถูกปิดใช้งาน`);
+        }
+        const availableFund = Number(fund.availableAmount);
+        if (availableFund < dto.approvedAmount) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'INSUFFICIENT_FUNDS', `ยอดเงินคงเหลือจัดสรรได้ในบัญชีกองทุน "${fund.name}" ไม่เพียงพอ (คงเหลือ: ฿${availableFund.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ยอดที่ขออนุมัติ: ฿${dto.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`);
+        }
+        const specificFundId = dto.specificFundId ||
+            app.legacyAssessment?.recommendedSpecificFundId ||
+            app.specificFundId ||
+            undefined;
+        let subFund = null;
+        if (specificFundId) {
+            const isSubUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(specificFundId);
+            subFund = await this.prisma.faqirMiskinSubFund.findFirst({
+                where: {
+                    OR: [
+                        ...(isSubUuid ? [{ id: specificFundId }] : []),
+                        { code: specificFundId },
+                        { fundCode: specificFundId },
+                        { legacyId: specificFundId },
+                    ],
+                },
+            });
+        }
+        const approvedDecimal = new client_1.Prisma.Decimal(dto.approvedAmount);
+        const nowIso = new Date().toISOString();
+        const approvedDateStr = new Date().toLocaleDateString('th-TH');
+        return await this.prisma.$transaction(async (tx) => {
+            await tx.fundAccount.update({
+                where: { id: fund.id },
+                data: {
+                    committedAmount: { increment: approvedDecimal },
+                    availableAmount: { decrement: approvedDecimal },
+                    updatedAt: new Date(),
+                },
+            });
+            if (subFund) {
+                await tx.faqirMiskinSubFund.update({
+                    where: { id: subFund.id },
+                    data: {
+                        committedAmount: { increment: approvedDecimal },
+                        remainingAmount: { decrement: approvedDecimal },
+                        updatedAt: new Date(),
+                    },
+                });
+            }
+            const fiscalYear = app.fiscalYear || '2569';
+            const asnafAlloc = await tx.asnafAllocation.findFirst({
+                where: { asnafCode: app.asnafCategory, fiscalYear },
+            });
+            if (asnafAlloc) {
+                await tx.asnafAllocation.update({
+                    where: { id: asnafAlloc.id },
+                    data: {
+                        committedAmount: { increment: approvedDecimal },
+                        remainingAmount: { decrement: approvedDecimal },
+                        updatedAt: new Date(),
+                    },
+                });
+            }
+            const updatedApp = await tx.assistanceApplication.update({
+                where: { id: app.id },
+                data: {
+                    status: 'wait_disbursement',
+                    approvedAmount: approvedDecimal,
+                    approvedFundId: fund.id,
+                    approvedSpecificFundId: subFund?.id || null,
+                    approvedById: user.id,
+                    approvedByName: user.displayName,
+                    approvedDate: approvedDateStr,
+                    approvalNotes: dto.notes || 'อนุมัติวงเงินช่วยเหลือ',
+                    updatedAt: new Date(),
+                },
+            });
+            await tx.applicationHistory.create({
+                data: {
+                    applicationId: app.id,
+                    status: 'wait_disbursement',
+                    timestamp: nowIso,
+                    changedById: user.id,
+                    changedByName: user.displayName,
+                    notes: `อนุมัติวงเงิน ฿${Number(approvedDecimal).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท จากกองทุน "${fund.name}" ${subFund ? `-> "${subFund.name}"` : ''} (${dto.notes || 'อนุมัติ'}) และส่งต่อฝ่ายการเงิน`,
+                },
+            });
+            await this.audit.record(tx, {
+                actorId: user.id,
+                action: 'APPLICATION_APPROVED',
+                resourceType: 'assistance_application',
+                resourceId: app.id,
+                metadata: {
+                    applicationNo: app.applicationNo,
+                    approvedAmount: approvedDecimal.toFixed(2),
+                    fundId: fund.id,
+                    fundName: fund.name,
+                    specificFundId: subFund?.id || null,
+                },
+            });
+            return {
+                applicationId: updatedApp.id,
+                applicationNo: updatedApp.applicationNo,
+                status: updatedApp.status,
+                approvedAmount: Number(updatedApp.approvedAmount),
+                fundId: fund.id,
+                fundName: fund.name,
+                specificFundId: subFund?.id || null,
+                specificFundName: subFund?.name || null,
+                approvedByName: user.displayName,
+                approvedDate: approvedDateStr,
+            };
+        });
+    }
+    async reject(id, dto, user) {
+        if (!dto.reason || !dto.reason.trim()) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', 'กรุณาระบุเหตุผลในการไม่อนุมัติคำร้อง');
+        }
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const app = await this.prisma.assistanceApplication.findFirst({
+            where: isUuid ? { id } : { OR: [{ applicationNo: id }, { legacyId: id }] },
+        });
+        if (!app) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'APPLICATION_NOT_FOUND', `ไม่พบคำร้องขอความช่วยเหลือรหัส ${id}`);
+        }
+        const userRoleCodes = (user.roles || []).map((r) => (typeof r === 'string' ? r : r.code));
+        const isSuperAdmin = userRoleCodes.includes('SUPER_ADMIN');
+        if (!isSuperAdmin && app.assignedOfficerId && app.assignedOfficerId === user.id) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.FORBIDDEN, 'SOD_VIOLATION', 'การละเมิดหลักการแบ่งแยกหน้าที่: เจ้าหน้าที่ผู้รับผิดชอบคำร้องไม่สามารถพิจารณาคำร้องของตนเองได้');
+        }
+        const nowIso = new Date().toISOString();
+        return await this.prisma.$transaction(async (tx) => {
+            const updatedApp = await tx.assistanceApplication.update({
+                where: { id: app.id },
+                data: {
+                    status: 'rejected',
+                    rejectionReason: dto.reason.trim(),
+                    approvalNotes: dto.notes ? `${dto.reason} (${dto.notes})` : dto.reason,
+                    updatedAt: new Date(),
+                },
+            });
+            await tx.applicationHistory.create({
+                data: {
+                    applicationId: app.id,
+                    status: 'rejected',
+                    timestamp: nowIso,
+                    changedById: user.id,
+                    changedByName: user.displayName,
+                    notes: `ไม่อนุมัติคำร้อง: ${dto.reason.trim()}`,
+                },
+            });
+            await this.audit.record(tx, {
+                actorId: user.id,
+                action: 'APPLICATION_REJECTED',
+                resourceType: 'assistance_application',
+                resourceId: app.id,
+                metadata: {
+                    applicationNo: app.applicationNo,
+                    reason: dto.reason.trim(),
+                },
+            });
+            return {
+                applicationId: updatedApp.id,
+                applicationNo: updatedApp.applicationNo,
+                status: updatedApp.status,
+                rejectionReason: updatedApp.rejectionReason,
+            };
+        });
+    }
+    async returnForCorrection(id, dto, user) {
+        if (!dto.notes || !dto.notes.trim()) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'NOTES_REQUIRED', 'กรุณาระบุรายละเอียดที่ต้องการให้แก้ไขหรือเพิ่มเติม');
+        }
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const app = await this.prisma.assistanceApplication.findFirst({
+            where: isUuid ? { id } : { OR: [{ applicationNo: id }, { legacyId: id }] },
+        });
+        if (!app) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'APPLICATION_NOT_FOUND', `ไม่พบคำร้องขอความช่วยเหลือรหัส ${id}`);
+        }
+        const targetStatus = dto.targetStatus || 'need_info';
+        const nowIso = new Date().toISOString();
+        return await this.prisma.$transaction(async (tx) => {
+            const updatedApp = await tx.assistanceApplication.update({
+                where: { id: app.id },
+                data: {
+                    status: targetStatus,
+                    approvalNotes: dto.notes.trim(),
+                    updatedAt: new Date(),
+                },
+            });
+            await tx.applicationHistory.create({
+                data: {
+                    applicationId: app.id,
+                    status: targetStatus,
+                    timestamp: nowIso,
+                    changedById: user.id,
+                    changedByName: user.displayName,
+                    notes: `ส่งกลับให้ตรวจสอบ/แก้ไขเพิ่มเติม: ${dto.notes.trim()}`,
+                },
+            });
+            await this.audit.record(tx, {
+                actorId: user.id,
+                action: 'APPLICATION_RETURNED',
+                resourceType: 'assistance_application',
+                resourceId: app.id,
+                metadata: {
+                    applicationNo: app.applicationNo,
+                    targetStatus,
+                    notes: dto.notes.trim(),
+                },
+            });
+            return {
+                applicationId: updatedApp.id,
+                applicationNo: updatedApp.applicationNo,
+                status: updatedApp.status,
+                notes: updatedApp.approvalNotes,
+            };
+        });
+    }
+};
+exports.ApprovalsService = ApprovalsService;
+exports.ApprovalsService = ApprovalsService = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        audit_service_1.AuditService])
+], ApprovalsService);
+//# sourceMappingURL=approvals.service.js.map

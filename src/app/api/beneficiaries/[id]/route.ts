@@ -36,9 +36,17 @@ export async function PUT(
     const result = await BeneficiaryService.updateApplication(id, input, actor);
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
+    const msg = String(error?.message || 'เกิดข้อผิดพลาดในการแก้ไขคำร้อง');
+    const status = msg.startsWith('LOCKED_AFTER_SUBMIT')
+      ? 403
+      : msg.startsWith('LOCKED_STATUS') || msg.startsWith('LOCKED_AFTER_APPROVAL')
+      ? 409
+      : msg.startsWith('ไม่พบคำร้อง')
+      ? 404
+      : 400;
     return NextResponse.json(
-      { success: false, error: error.message || 'เกิดข้อผิดพลาดในการแก้ไขคำร้อง' },
-      { status: 400 }
+      { success: false, error: msg },
+      { status }
     );
   }
 }

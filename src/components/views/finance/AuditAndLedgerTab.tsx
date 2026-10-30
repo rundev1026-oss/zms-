@@ -206,6 +206,13 @@ export function AuditAndLedgerTab() {
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-900 truncate max-w-[200px]">{t.fundName}</div>
                         <div className="text-[11px] text-slate-500 truncate max-w-[200px]">{t.category}</div>
+                        {t.subFundCategory && (
+                          <div className="mt-1">
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                              กองทุน: {t.subFundCategory}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       <td className="px-4 py-3">

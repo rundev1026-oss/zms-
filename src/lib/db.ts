@@ -811,8 +811,8 @@ export async function initDb(): Promise<void> {
       });
     } else {
       await db.execute({
-        sql: 'UPDATE assistance_types SET type_group = ?, order_index = ?, name = ?, category = ?, description = ? WHERE code = ?',
-        args: [st.group, st.order, st.name, st.category, st.desc, st.code],
+        sql: 'UPDATE assistance_types SET type_group = COALESCE(type_group, ?) WHERE code = ?',
+        args: [st.group, st.code],
       });
     }
   }
@@ -2094,6 +2094,717 @@ export async function initDb(): Promise<void> {
         args: [c.id, c.code, c.name, c.group, c.limit, c.order]
       });
     }
+  }
+
+  // =========================================================================
+  // 3-Tier Fund Allocation & Assistance Type Relational Migration (Phase 2)
+  // Level 1: Primary Fund Group (asnaf_allocations <-> fund_accounts)
+  // Level 2: Specific Fund Group (faqir_miskin_sub_funds with primary_group_code & parent_fund_id)
+  // Level 3: Assistance Types (assistance_types with specific_fund_id & primary_group_code)
+  // =========================================================================
+
+  // 1) Extend fund_accounts
+  const faCols = await db.execute(`PRAGMA table_info(fund_accounts)`);
+  const faColNames = faCols.rows.map((c) => String(c.name));
+  const faNewCols: [string, string][] = [
+    ['name_en', 'TEXT'],
+    ['primary_asnaf_code', 'TEXT'],
+    ['is_active', 'INTEGER DEFAULT 1'],
+    ['effective_date', "TEXT DEFAULT '2026-10-01'"],
+    ['deactivated_at', 'TEXT'],
+    ['deactivated_by', 'TEXT'],
+    ['deactivated_reason', 'TEXT'],
+  ];
+  for (const [col, colType] of faNewCols) {
+    if (!faColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE fund_accounts ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+
+  const faBackfills: [string, string, string][] = [
+    ['fund-1', 'faqir_miskin', 'Faqir & Miskin Zakat Fund'],
+    ['fund-2', 'gharimin', 'Gharimin Debt Relief Zakat Fund'],
+    ['fund-3', 'fisabilillah', 'Fi Sabilillah Education & Youth Zakat Fund'],
+    ['fund-4', 'ibnsabil', 'Ibn Sabil Stranded Traveler Zakat Fund'],
+    ['fund-5', 'humanitarian', 'General Sadaqah & Humanitarian Fund'],
+    ['fund-6', 'amil', 'Amil & Foundation Operations Fund'],
+  ];
+  for (const [fId, asnafCode, nameEn] of faBackfills) {
+    await db.execute({
+      sql: `UPDATE fund_accounts
+            SET primary_asnaf_code = COALESCE(primary_asnaf_code, ?),
+                name_en = COALESCE(name_en, ?),
+                is_active = COALESCE(is_active, 1),
+                effective_date = COALESCE(effective_date, '2026-10-01')
+            WHERE id = ?`,
+      args: [asnafCode, nameEn, fId],
+    });
+  }
+
+  // 2) Extend asnaf_allocations & asnaf_allocation_history (Level 1)
+  const aaCols = await db.execute(`PRAGMA table_info(asnaf_allocations)`);
+  const aaColNames = aaCols.rows.map((c) => String(c.name));
+  const aaNewCols: [string, string][] = [
+    ['name_en', 'TEXT'],
+    ['fund_account_id', 'TEXT'],
+    ['description', 'TEXT'],
+    ['committed_amount', 'REAL DEFAULT 0'],
+    ['budget_adjustment', 'REAL DEFAULT 0'],
+    ['effective_date', "TEXT DEFAULT '2026-10-01'"],
+    ['is_active', 'INTEGER DEFAULT 1'],
+    ['sort_order', 'INTEGER DEFAULT 0'],
+  ];
+  for (const [col, colType] of aaNewCols) {
+    if (!aaColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE asnaf_allocations ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+
+  const aaBackfills: [string, string, string, string, number][] = [
+    ['faqir_miskin', 'fund-1', 'Faqir & Miskin', 'กลุ่มหลักสำหรับช่วยเหลือผู้ยากไร้และผู้ขัดสนด้านปัจจัยยังชีพ ที่อยู่อาศัย อาชีพ การศึกษา และเหตุฉุกเฉิน', 1],
+    ['amil', 'fund-6', 'Amil (Zakat Operations)', 'ส่วนจัดสรรสำหรับเจ้าหน้าที่และภารกิจบริหารจัดการระบบซะกาตตามหลักชะรีอะฮ์', 2],
+    ['fisabilillah', 'fund-3', 'Fi Sabilillah', 'กลุ่มส่งเสริมการศึกษา ศาสนา เยาวชน และสาธารณประโยชน์ในหนทางของอัลลอฮ์', 3],
+    ['humanitarian', 'fund-5', 'Humanitarian Relief', 'กลุ่มสงเคราะห์ด้านมนุษยธรรมและบรรเทาทุกข์ผู้ประสบภาวะวิกฤติ', 4],
+    ['muallaf', 'fund-5', 'Muallaf (New Muslims)', 'กลุ่มสงเคราะห์และเสริมสร้างความมั่นคงในการดำรงชีวิตแก่ผู้เข้ารับอิสลามใหม่', 5],
+    ['gharimin', 'fund-2', 'Al-Gharimin (Indebted)', 'กลุ่มปลดเปลื้องภาระหนี้สินจำเป็นเพื่อการดำรงชีพ รักษาพยาบาล หรือการศึกษา', 6],
+    ['ibnsabil', 'fund-4', 'Ibn Sabil (Wayfarers)', 'กลุ่มช่วยเหลือผู้เดินทางตกยากและผู้พลัดถิ่นที่ขาดแคลนทุนทรัพย์', 7],
+  ];
+  for (const [aCode, fAccId, nameEn, desc, sortOrd] of aaBackfills) {
+    await db.execute({
+      sql: `UPDATE asnaf_allocations
+            SET fund_account_id = COALESCE(fund_account_id, ?),
+                name_en = COALESCE(name_en, ?),
+                description = COALESCE(description, ?),
+                effective_date = COALESCE(effective_date, '2026-10-01'),
+                is_active = COALESCE(is_active, 1),
+                sort_order = CASE WHEN sort_order IS NULL OR sort_order = 0 THEN ? ELSE sort_order END
+            WHERE asnaf_code = ?`,
+      args: [fAccId, nameEn, desc, sortOrd, aCode],
+    });
+  }
+
+  const aahCols = await db.execute(`PRAGMA table_info(asnaf_allocation_history)`);
+  const aahColNames = aahCols.rows.map((c) => String(c.name));
+  const aahNewCols: [string, string][] = [
+    ['old_proportions_json', 'TEXT'],
+    ['effective_date', 'TEXT'],
+    ['approved_by_id', 'TEXT'],
+    ['approved_by_name', 'TEXT'],
+    ['affected_items_json', 'TEXT'],
+    ['action_type', "TEXT DEFAULT 'proportion_change'"],
+  ];
+  for (const [col, colType] of aahNewCols) {
+    if (!aahColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE asnaf_allocation_history ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+
+  // 3) Extend faqir_miskin_sub_funds & faqir_miskin_history (Level 2: Specific Fund Group)
+  const sfCols = await db.execute(`PRAGMA table_info(faqir_miskin_sub_funds)`);
+  const sfColNames = sfCols.rows.map((c) => String(c.name));
+  const sfNewCols: [string, string][] = [
+    ['fund_code', 'TEXT'],
+    ['name_en', 'TEXT'],
+    ['primary_group_code', "TEXT DEFAULT 'faqir_miskin'"],
+    ['fund_account_id', "TEXT DEFAULT 'fund-1'"],
+    ['parent_fund_id', 'TEXT'],
+    ['fund_type', "TEXT DEFAULT 'specific'"],
+    ['description', 'TEXT'],
+    ['committed_amount', 'REAL DEFAULT 0'],
+    ['budget_adjustment', 'REAL DEFAULT 0'],
+    ['effective_date', "TEXT DEFAULT '2026-10-01'"],
+    ['sort_order', 'INTEGER DEFAULT 0'],
+    ['created_by_id', "TEXT DEFAULT 'u-1'"],
+    ['created_by_name', "TEXT DEFAULT 'ผู้ดูแลระบบสูงสุด'"],
+    ['created_at', 'DATETIME'],
+    ['deactivated_at', 'TEXT'],
+    ['deactivated_by_id', 'TEXT'],
+    ['deactivated_by_name', 'TEXT'],
+    ['deactivated_reason', 'TEXT'],
+  ];
+  for (const [col, colType] of sfNewCols) {
+    if (!sfColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE faqir_miskin_sub_funds ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_fmsf_primary_group ON faqir_miskin_sub_funds(primary_group_code, fiscal_year);`);
+  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fmsf_fund_code ON faqir_miskin_sub_funds(fiscal_year, fund_code) WHERE fund_code IS NOT NULL;`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_fmsf_parent ON faqir_miskin_sub_funds(parent_fund_id);`);
+
+  // Non-destructive backfill for the 5 Faqir-Miskin Specific Funds (preserves existing percentages!)
+  const fmSfBackfills: [string, string, string, string, string, number][] = [
+    ['living', 'SF-FM-01', 'Living & Subsistence Fund', 'specific', 'กองทุนช่วยเหลือค่าครองชีพ อาหาร น้ำดื่ม และสิ่งจำเป็นพื้นฐานในการดำรงชีวิตสำหรับผู้ยากไร้และขัดสน', 1],
+    ['housing', 'SF-FM-02', 'Housing Repair & Construction Fund', 'specific', 'กองทุนปรับปรุง ซ่อมแซม หรือจัดสร้างที่อยู่อาศัยให้มั่นคง ปลอดภัย และถูกสุขลักษณะ', 2],
+    ['career', 'SF-FM-03', 'Career & Livelihood Empowerment Fund', 'specific', 'กองทุนสนับสนุนเงินทุนหมุนเวียนและเครื่องมือประกอบอาชีพเพื่อการพึ่งพาตนเองอย่างยั่งยืน', 3],
+    ['education', 'SF-FM-04', 'Education Scholarship Fund', 'specific', 'กองทุนสนับสนุนค่าเล่าเรียน ชุดนักเรียน และอุปกรณ์การศึกษาแก่เยาวชนในครอบครัวยากไร้', 4],
+    ['emergency', 'SF-FM-05', 'Emergency & Disaster Relief Fund', 'emergency', 'กองทุนบรรเทาทุกข์เร่งด่วนกรณีประสบอุบัติภัย อัคคีภัย อุทกภัย หรือภาวะวิกฤตฉุกเฉิน', 5],
+  ];
+  for (const [sfCode, fCode, nameEn, fType, desc, sortOrd] of fmSfBackfills) {
+    await db.execute({
+      sql: `UPDATE faqir_miskin_sub_funds
+            SET fund_code = COALESCE(fund_code, ?),
+                name_en = COALESCE(name_en, ?),
+                primary_group_code = COALESCE(primary_group_code, 'faqir_miskin'),
+                fund_account_id = COALESCE(fund_account_id, 'fund-1'),
+                fund_type = CASE WHEN fund_type IS NULL OR fund_type = '' THEN ? ELSE fund_type END,
+                description = COALESCE(description, ?),
+                effective_date = COALESCE(effective_date, '2026-10-01'),
+                sort_order = CASE WHEN sort_order IS NULL OR sort_order = 0 THEN ? ELSE sort_order END,
+                created_by_id = COALESCE(created_by_id, 'u-1'),
+                created_by_name = COALESCE(created_by_name, 'ผู้ดูแลระบบสูงสุด'),
+                created_at = COALESCE(created_at, updated_at)
+            WHERE code = ? AND fund_code IS NULL`,
+      args: [fCode, nameEn, fType, desc, sortOrd, sfCode],
+    });
+  }
+
+  // Ensure Specific Funds exist for the other Primary Asnaf Groups (100% within each primary group)
+  const otherPrimarySpecificFunds = [
+    {
+      id: 'subf-muallaf-1',
+      fundCode: 'SF-MLF-01',
+      code: 'muallaf_welfare',
+      name: 'กองทุนสงเคราะห์และพัฒนาศักยภาพมุสลิมใหม่',
+      nameEn: 'Muallaf Welfare & Integration Fund',
+      primaryGroupCode: 'muallaf',
+      fundAccountId: 'fund-5',
+      fundType: 'specific',
+      pct: 100.0,
+      desc: 'สนับสนุนการดำรงชีพ อุปกรณ์ศาสนกิจ และการอบรมความรู้พื้นฐานสำหรับผู้เข้ารับอิสลามใหม่',
+      order: 1,
+    },
+    {
+      id: 'subf-gharimin-1',
+      fundCode: 'SF-GHR-01',
+      code: 'gharimin_debt_relief',
+      name: 'กองทุนปลดเปลื้องภาระหนี้สินจำเป็น (อัล-ฆอรีมีน)',
+      nameEn: 'Gharimin Essential Debt Relief Fund',
+      primaryGroupCode: 'gharimin',
+      fundAccountId: 'fund-2',
+      fundType: 'specific',
+      pct: 100.0,
+      desc: 'ช่วยเหลือปลดเปลื้องหนี้สินจากการดำรงชีพ การรักษาพยาบาล หรือการศึกษาตามหลักเกณฑ์ชะรีอะฮ์',
+      order: 1,
+    },
+    {
+      id: 'subf-fisabilillah-1',
+      fundCode: 'SF-FSB-01',
+      code: 'fisabilillah_education_dawah',
+      name: 'กองทุนส่งเสริมการศึกษาและสาธารณประโยชน์ในหนทางอัลลอฮ์',
+      nameEn: 'Fi Sabilillah Education & Public Benefit Fund',
+      primaryGroupCode: 'fisabilillah',
+      fundAccountId: 'fund-3',
+      fundType: 'project',
+      pct: 100.0,
+      desc: 'สนับสนุนโครงการด้านการศึกษา ศาสนา และการพัฒนาเยาวชน/ชุมชนในหนทางของอัลลอฮ์',
+      order: 1,
+    },
+    {
+      id: 'subf-ibnsabil-1',
+      fundCode: 'SF-IBS-01',
+      code: 'ibnsabil_travel_aid',
+      name: 'กองทุนช่วยเหลือผู้เดินทางตกยากและผู้พลัดถิ่น',
+      nameEn: 'Ibn Sabil Stranded Traveler Aid Fund',
+      primaryGroupCode: 'ibnsabil',
+      fundAccountId: 'fund-4',
+      fundType: 'emergency',
+      pct: 100.0,
+      desc: 'ช่วยเหลือค่าเดินทาง ค่าอาหาร และที่พักชั่วคราวแก่ผู้เดินทางที่ขาดแคลนทุนทรัพย์กลับภูมิลำเนา',
+      order: 1,
+    },
+    {
+      id: 'subf-humanitarian-1',
+      fundCode: 'SF-HUM-01',
+      code: 'humanitarian_relief',
+      name: 'กองทุนสงเคราะห์ด้านมนุษยธรรมและบรรเทาทุกข์',
+      nameEn: 'Humanitarian & Crisis Relief Fund',
+      primaryGroupCode: 'humanitarian',
+      fundAccountId: 'fund-5',
+      fundType: 'emergency',
+      pct: 100.0,
+      desc: 'ให้ความช่วยเหลือด้านมนุษยธรรมแก่ผู้ลี้ภัย ผู้ไร้ที่พึ่ง และผู้ประสบภาวะวิกฤตรุนแรง',
+      order: 1,
+    },
+    {
+      id: 'subf-amil-1',
+      fundCode: 'SF-AML-01',
+      code: 'amil_operations',
+      name: 'กองทุนบริหารจัดการซะกาตและเจ้าหน้าที่ (อามีลีน)',
+      nameEn: 'Amil Zakat Operations Fund',
+      primaryGroupCode: 'amil',
+      fundAccountId: 'fund-6',
+      fundType: 'operational',
+      pct: 100.0,
+      desc: 'รองรับค่าตอบแทนและค่าใช้จ่ายปฏิบัติงานลงพื้นที่ของเจ้าหน้าที่จัดการซะกาตตามกรอบสัดส่วนที่อนุมัติ',
+      order: 1,
+    },
+  ];
+
+  for (const osf of otherPrimarySpecificFunds) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO faqir_miskin_sub_funds (
+              id, fiscal_year, fund_code, code, name, name_en, primary_group_code, fund_account_id,
+              fund_type, description, percentage, effective_date, sort_order, is_active,
+              created_by_id, created_by_name, updated_by_id, updated_by_name, created_at
+            ) VALUES (?, '2569', ?, ?, ?, ?, ?, ?, ?, ?, ?, '2026-10-01', ?, 1, 'u-1', 'ผู้ดูแลระบบสูงสุด', 'u-1', 'ผู้ดูแลระบบสูงสุด', CURRENT_TIMESTAMP)`,
+      args: [
+        osf.id, osf.fundCode, osf.code, osf.name, osf.nameEn, osf.primaryGroupCode,
+        osf.fundAccountId, osf.fundType, osf.desc, osf.pct, osf.order,
+      ],
+    });
+  }
+
+  const fmhCols = await db.execute(`PRAGMA table_info(faqir_miskin_history)`);
+  const fmhColNames = fmhCols.rows.map((c) => String(c.name));
+  const fmhNewCols: [string, string][] = [
+    ['primary_group_code', "TEXT DEFAULT 'faqir_miskin'"],
+    ['old_proportions_json', 'TEXT'],
+    ['effective_date', 'TEXT'],
+    ['approved_by_id', 'TEXT'],
+    ['approved_by_name', 'TEXT'],
+    ['affected_items_json', 'TEXT'],
+    ['action_type', "TEXT DEFAULT 'proportion_change'"],
+  ];
+  for (const [col, colType] of fmhNewCols) {
+    if (!fmhColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE faqir_miskin_history ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+
+  // Budget Adjustments Ledger Table (Approved budget additions / reductions)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS fund_budget_adjustments (
+      id TEXT PRIMARY KEY,
+      fiscal_year TEXT NOT NULL,
+      target_level TEXT NOT NULL DEFAULT 'specific',
+      primary_group_code TEXT NOT NULL,
+      specific_fund_id TEXT,
+      fund_account_id TEXT,
+      adjustment_type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      effective_date TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      policy_ref TEXT,
+      status TEXT NOT NULL DEFAULT 'approved',
+      requested_by_id TEXT NOT NULL,
+      requested_by_name TEXT NOT NULL,
+      approved_by_id TEXT,
+      approved_by_name TEXT,
+      approved_at TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_fba_fund ON fund_budget_adjustments(fiscal_year, primary_group_code, specific_fund_id);`);
+
+  // 4) Extend assistance_types (Level 3: Linked Assistance Types)
+  const astCols2 = await db.execute(`PRAGMA table_info(assistance_types)`);
+  const astColNames2 = astCols2.rows.map((c) => String(c.name));
+  const astNewCols: [string, string][] = [
+    ['specific_fund_id', 'TEXT'],
+    ['primary_group_code', 'TEXT'],
+    ['conditions_text', 'TEXT'],
+    ['assistance_format', 'TEXT'],
+    ['default_min_amount', 'REAL'],
+    ['default_max_amount', 'REAL'],
+    ['updated_at', 'DATETIME'],
+    ['deactivated_at', 'TEXT'],
+    ['deactivated_by', 'TEXT'],
+    ['deactivated_reason', 'TEXT'],
+  ];
+  for (const [col, colType] of astNewCols) {
+    if (!astColNames2.includes(col)) {
+      try { await db.execute(`ALTER TABLE assistance_types ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ast_specific_fund ON assistance_types(specific_fund_id);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ast_primary_group ON assistance_types(primary_group_code);`);
+
+  // One-time backfill of assistance_format & recommended min/max amounts when NULL (never overwrites admin edits)
+  await db.execute(`
+    UPDATE assistance_types
+    SET assistance_format = CASE
+      WHEN code = 'MONTHLY_ALLOWANCE' THEN 'monthly'
+      WHEN code IN ('EMERGENCY_AID', 'HUMANITARIAN_AID', 'IBN_SABIL') THEN 'emergency'
+      WHEN code = 'CAREER_SUPPORT' THEN 'career_capital'
+      WHEN code = 'HOUSING_REPAIR_BUILD' THEN 'project'
+      WHEN category = 'service' THEN 'service'
+      ELSE 'one_time'
+    END
+    WHERE assistance_format IS NULL;
+  `);
+
+  // One-time relational FK backfill for existing 10 standard assistance types (only when specific_fund_id IS NULL)
+  const astFkBackfills: {
+    code: string;
+    specificFundId: string;
+    primaryGroupCode: string;
+    conditions: string;
+    docs: string[];
+  }[] = [
+    {
+      code: 'LIVING_SUPPORT',
+      specificFundId: 'subf-1',
+      primaryGroupCode: 'faqir_miskin',
+      conditions: 'ครัวเรือนมีรายได้ต่ำกว่าเกณฑ์ยังชีพขั้นพื้นฐานและผ่านการสำรวจสถานะผู้มีสิทธิ์ฟากีรหรือมิสกีน',
+      docs: ['สำเนาบัตรประชาชน', 'สำเนาทะเบียนบ้าน', 'ภาพถ่ายสภาพความเป็นอยู่ปัจจุบัน'],
+    },
+    {
+      code: 'MONTHLY_ALLOWANCE',
+      specificFundId: 'subf-1',
+      primaryGroupCode: 'faqir_miskin',
+      conditions: 'ผู้สูงอายุไร้ผู้อุปการะ ผู้พิการ หรือผู้ป่วยติดเตียงที่ไม่สามารถประกอบอาชีพได้',
+      docs: ['สำเนาบัตรประชาชน', 'สำเนาทะเบียนบ้าน', 'ใบรับรองแพทย์หรือบัตรประจำตัวคนพิการ'],
+    },
+    {
+      code: 'HOUSING_REPAIR_BUILD',
+      specificFundId: 'subf-2',
+      primaryGroupCode: 'faqir_miskin',
+      conditions: 'สภาพบ้านชำรุดทรุดโทรม ไม่ปลอดภัยต่อการอยู่อาศัย และมีเอกสารสิทธิ์หรือหนังสือยินยอมใช้ที่ดินชัดเจน',
+      docs: ['สำเนาบัตรประชาชน', 'สำเนาทะเบียนบ้าน', 'เอกสารสิทธิ์ที่ดินหรือหนังสือยินยอมเจ้าของที่ดิน', 'ภาพถ่ายสภาพบ้านและจุดที่ชำรุด', 'ประมาณการค่าวัสดุ/ซ่อมแซม'],
+    },
+    {
+      code: 'CAREER_SUPPORT',
+      specificFundId: 'subf-3',
+      primaryGroupCode: 'faqir_miskin',
+      conditions: 'ผู้ขอรับมีความพร้อมและทักษะในการประกอบอาชีพสุจริตแต่ขาดแคลนเงินทุนหมุนเวียนตั้งต้น',
+      docs: ['สำเนาบัตรประชาชน', 'สำเนาทะเบียนบ้าน', 'แผนประกอบอาชีพและประมาณการต้นทุน'],
+    },
+    {
+      code: 'EDUCATION_GRANT',
+      specificFundId: 'subf-4',
+      primaryGroupCode: 'faqir_miskin',
+      conditions: 'นักเรียน/นักศึกษาในครอบครัวฟากีร–มิสกีน หรือเด็กกำพร้ายากไร้ที่กำลังศึกษาอยู่ในสถานศึกษา',
+      docs: ['สำเนาบัตรประชาชนนักเรียนและผู้ปกครอง', 'หนังสือรับรองสถานภาพการศึกษา/ใบแจ้งค่าเทอม', 'ผลการเรียนล่าสุด'],
+    },
+    {
+      code: 'EMERGENCY_AID',
+      specificFundId: 'subf-5',
+      primaryGroupCode: 'faqir_miskin',
+      conditions: 'ประสบเหตุวิกฤตฉุกเฉินกะทันหัน เช่น อุบัติเหตุ เจ็บป่วยเฉียบพลัน หรือขาดรายได้ฉับพลัน',
+      docs: ['สำเนาบัตรประชาชน', 'ภาพถ่ายเหตุการณ์หรือเอกสารรับรองเหตุฉุกเฉิน'],
+    },
+    {
+      code: 'MUALLAF_SUPPORT',
+      specificFundId: 'subf-muallaf-1',
+      primaryGroupCode: 'muallaf',
+      conditions: 'ผู้เข้ารับอิสลามใหม่ที่ต้องการความช่วยเหลือด้านการดำรงชีพหรือการปรับตัวตามหลักศาสนา',
+      docs: ['สำเนาบัตรประชาชน', 'หนังสือรับรองการเข้ารับอิสลามจากมัสยิดหรือองค์กรศาสนา'],
+    },
+    {
+      code: 'HUMANITARIAN_AID',
+      specificFundId: 'subf-humanitarian-1',
+      primaryGroupCode: 'humanitarian',
+      conditions: 'ผู้ประสบภาวะวิกฤตด้านมนุษยธรรม บุคคลไร้ที่พึ่ง หรือผู้ได้รับผลกระทบจากเหตุรุนแรง',
+      docs: ['เอกสารแสดงตัวตน (ถ้ามี)', 'ภาพถ่ายสภาพปัญหาและหนังสือรับรองจากผู้นำชุมชน'],
+    },
+    {
+      code: 'GHARIMUN_DEBT',
+      specificFundId: 'subf-gharimin-1',
+      primaryGroupCode: 'gharimin',
+      conditions: 'มีภาระหนี้สินจำเป็นสุจริต (ค่ารักษาพยาบาล ค่าเล่าเรียน หรือค่าครองชีพจำเป็น) ที่พ้นวิสัยจะชำระได้เอง',
+      docs: ['สำเนาบัตรประชาชน', 'สัญญาเงินกู้/ใบแจ้งหนี้/หลักฐานยอดหนี้คงค้าง', 'หนังสือรับรองจากผู้นำศาสนา/ชุมชน'],
+    },
+    {
+      code: 'IBN_SABIL',
+      specificFundId: 'subf-ibnsabil-1',
+      primaryGroupCode: 'ibnsabil',
+      conditions: 'ผู้เดินทางในภารกิจสุจริตที่ประสบเหตุขัดข้อง ขาดแคลนค่าพาหนะหรือค่าที่พักในการกลับภูมิลำเนา',
+      docs: ['สำเนาบัตรประชาชนหรือหนังสือเดินทาง', 'หลักฐานการเดินทางหรือใบบันทึกประจำวัน (กรณีทรัพย์สินสูญหาย)'],
+    },
+  ];
+
+  for (const item of astFkBackfills) {
+    await db.execute({
+      sql: `UPDATE assistance_types
+            SET specific_fund_id = COALESCE(specific_fund_id, ?),
+                primary_group_code = COALESCE(primary_group_code, ?),
+                conditions_text = COALESCE(conditions_text, ?),
+                required_docs = COALESCE(required_docs, ?)
+            WHERE code = ? AND specific_fund_id IS NULL`,
+      args: [item.specificFundId, item.primaryGroupCode, item.conditions, JSON.stringify(item.docs), item.code],
+    });
+  }
+
+  // Backfill legacy pre-existing assistance_types rows (ast-1..ast-9) so zero orphan rows remain
+  const legacyAstBackfills: {
+    code: string;
+    specificFundId: string;
+    primaryGroupCode: string;
+    deactivateDuplicate: boolean;
+    conditions: string;
+  }[] = [
+    { code: 'CASH_LIVING', specificFundId: 'subf-1', primaryGroupCode: 'faqir_miskin', deactivateDuplicate: true, conditions: 'รายการเดิม (รวมเข้ากับหมวดปัจจัยยังชีพ)' },
+    { code: 'FOOD_SURVIVAL', specificFundId: 'subf-1', primaryGroupCode: 'faqir_miskin', deactivateDuplicate: true, conditions: 'รายการเดิม (รวมเข้ากับหมวดสนับสนุนอาหารและสิ่งจำเป็น)' },
+    { code: 'HOUSING_REPAIR', specificFundId: 'subf-2', primaryGroupCode: 'faqir_miskin', deactivateDuplicate: true, conditions: 'รายการเดิม (รวมเข้ากับหมวดซ่อมและสร้างที่อยู่อาศัย)' },
+    { code: 'HOUSING_BUILD', specificFundId: 'subf-2', primaryGroupCode: 'faqir_miskin', deactivateDuplicate: true, conditions: 'รายการเดิม (รวมเข้ากับหมวดสร้างที่อยู่อาศัย)' },
+    { code: 'MEDICAL_AID', specificFundId: 'subf-5', primaryGroupCode: 'faqir_miskin', deactivateDuplicate: false, conditions: 'ค่ารักษาพยาบาลจำเป็นหรืออุปกรณ์ทางการแพทย์ฉุกเฉินสำหรับผู้ยากไร้' },
+    { code: 'LIVELIHOOD_CAPITAL', specificFundId: 'subf-3', primaryGroupCode: 'faqir_miskin', deactivateDuplicate: true, conditions: 'รายการเดิม (รวมเข้ากับหมวดสนับสนุนอาชีพ)' },
+    { code: 'DEBT_RELIEF', specificFundId: 'subf-gharimin-1', primaryGroupCode: 'gharimin', deactivateDuplicate: true, conditions: 'รายการเดิม (รวมเข้ากับหมวดผู้มีหนี้สินล้นตัว)' },
+    { code: 'OTHER_AID', specificFundId: 'subf-humanitarian-1', primaryGroupCode: 'humanitarian', deactivateDuplicate: false, conditions: 'ความช่วยเหลือเฉพาะกิจกรณีอื่นตามมติคณะกรรมการพิจารณาซะกาต' },
+  ];
+
+  for (const leg of legacyAstBackfills) {
+    await db.execute({
+      sql: `UPDATE assistance_types
+            SET specific_fund_id = ?,
+                primary_group_code = ?,
+                conditions_text = COALESCE(conditions_text, ?),
+                is_active = CASE WHEN ? = 1 THEN 0 ELSE is_active END,
+                deactivated_reason = CASE WHEN ? = 1 THEN COALESCE(deactivated_reason, 'รวมรายการซ้ำเข้ากับโครงสร้างกองทุน 3 ระดับมาตรฐาน') ELSE deactivated_reason END
+            WHERE code = ? AND specific_fund_id IS NULL`,
+      args: [leg.specificFundId, leg.primaryGroupCode, leg.conditions, leg.deactivateDuplicate ? 1 : 0, leg.deactivateDuplicate ? 1 : 0, leg.code],
+    });
+  }
+
+  // Catch-all safety: ensure any remaining custom assistance_types row has a valid FK
+  await db.execute(`
+    UPDATE assistance_types
+    SET specific_fund_id = 'subf-1',
+        primary_group_code = 'faqir_miskin'
+    WHERE specific_fund_id IS NULL
+  `);
+
+  // Seed granular Assistance Types under the 3-tier hierarchy (INSERT OR IGNORE only)
+  const additionalGranularTypes = [
+    {
+      id: 'ast-fm-food',
+      code: 'FOOD_ESSENTIALS_SUPPORT',
+      name: 'สนับสนุนอาหารและสิ่งจำเป็น',
+      category: 'in_kind',
+      group: 'core',
+      specificFundId: 'subf-1',
+      primaryGroupCode: 'faqir_miskin',
+      desc: 'สนับสนุนถุงยังชีพ ข้าวสาร อาหารแห้ง นมผงเด็ก เวชภัณฑ์สามัญ และของใช้จำเป็นในครัวเรือน',
+      conditions: 'ครัวเรือนขาดแคลนอาหารและสิ่งจำเป็นในการดำรงชีพประจำวัน',
+      docs: ['สำเนาบัตรประชาชน', 'ภาพถ่ายสภาพครัวเรือน'],
+      order: 11,
+    },
+    {
+      id: 'ast-fm-house-build',
+      code: 'HOUSING_CONSTRUCTION',
+      name: 'สร้างที่อยู่อาศัย',
+      category: 'housing',
+      group: 'core',
+      specificFundId: 'subf-2',
+      primaryGroupCode: 'faqir_miskin',
+      desc: 'จัดสร้างบ้านพักอาศัยหลังใหม่ขนาดพอเพียงสำหรับครอบครัวผู้ยากไร้ที่บ้านเดิมพังทลายหรือไม่สามารถซ่อมแซมได้',
+      conditions: 'บ้านพักเดิมไม่สามารถซ่อมแซมได้ มีกรรมสิทธิ์ที่ดินหรือได้รับอนุญาตให้ปลูกสร้างเป็นลายลักษณ์อักษร และผ่านมติคณะกรรมการพื้นที่',
+      docs: ['สำเนาบัตรประชาชน', 'สำเนาทะเบียนบ้าน', 'โฉนดที่ดินหรือหนังสือยินยอมให้ปลูกสร้าง', 'ภาพถ่ายสถานที่ปลูกสร้าง', 'แบบแปลนและใบเสนอราคาวัสดุก่อสร้าง'],
+      order: 12,
+    },
+    {
+      id: 'ast-fm-career-equip',
+      code: 'CAREER_EQUIPMENT',
+      name: 'อุปกรณ์ประกอบอาชีพ',
+      category: 'in_kind',
+      group: 'core',
+      specificFundId: 'subf-3',
+      primaryGroupCode: 'faqir_miskin',
+      desc: 'จัดซื้อเครื่องมือทำกิน รถเข็น จักรเย็บผ้า อุปกรณ์ประมง/เกษตร หรือเครื่องครัวประกอบอาชีพ',
+      conditions: 'ผู้ขอรับมีทักษะพร้อมเริ่มประกอบอาชีพได้ทันทีเมื่อได้รับเครื่องมือทำกิน',
+      docs: ['สำเนาบัตรประชาชน', 'ใบเสนอราคาอุปกรณ์ประกอบอาชีพ', 'ภาพถ่ายสถานที่ประกอบอาชีพ'],
+      order: 13,
+    },
+    {
+      id: 'ast-fm-edu-supplies',
+      code: 'EDUCATION_SUPPLIES',
+      name: 'ค่าอุปกรณ์การศึกษา',
+      category: 'education',
+      group: 'core',
+      specificFundId: 'subf-4',
+      primaryGroupCode: 'faqir_miskin',
+      desc: 'สนับสนุนชุดนักเรียน รองเท้า กระเป๋า ตำราเรียน และอุปกรณ์การเรียนที่จำเป็น',
+      conditions: 'บุตรหลานในครอบครัวฟากีร–มิสกีนที่กำลังศึกษาอยู่ในระดับอนุบาล–อุดมศึกษา',
+      docs: ['สำเนาบัตรประชาชนผู้ปกครอง', 'หลักฐานการเป็นนักเรียน/ใบรายการอุปกรณ์การเรียน'],
+      order: 14,
+    },
+    {
+      id: 'ast-fm-disaster',
+      code: 'DISASTER_RELIEF',
+      name: 'ช่วยเหลือผู้ประสบภัย',
+      category: 'cash',
+      group: 'core',
+      specificFundId: 'subf-5',
+      primaryGroupCode: 'faqir_miskin',
+      desc: 'เงินและสิ่งของเยียวยาผู้ประสบอุทกภัย วาตภัย อัคคีภัย หรือภัยพิบัติทางธรรมชาติ',
+      conditions: 'ที่อยู่อาศัยหรือเครื่องมือทำกินได้รับความเสียหายจากภัยพิบัติ',
+      docs: ['สำเนาบัตรประชาชน', 'ภาพถ่ายความเสียหายจากภัยพิบัติ', 'หนังสือรับรองผู้ประสบภัยจากผู้นำชุมชน/ท้องถิ่น'],
+      order: 15,
+    },
+    {
+      id: 'ast-spec-11',
+      code: 'FISABILILLAH_GRANT',
+      name: 'ทุนส่งเสริมศาสนาและสาธารณประโยชน์',
+      category: 'education',
+      group: 'specific',
+      specificFundId: 'subf-fisabilillah-1',
+      primaryGroupCode: 'fisabilillah',
+      desc: 'สนับสนุนครูสอนศาสนา โรงเรียนตาดีกา กิจกรรมเยาวชน และโครงการสาธารณประโยชน์ในหนทางของอัลลอฮ์',
+      conditions: 'เป็นโครงการหรือผู้ปฏิบัติงานเพื่อส่วนรวมในหนทางของอัลลอฮ์ที่ผ่านการรับรองจากคณะกรรมการ',
+      docs: ['สำเนาบัตรประชาชนผู้รับผิดชอบ', 'รายละเอียดโครงการและประมาณการค่าใช้จ่าย', 'หนังสือรับรองจากมัสยิดหรือองค์กร'],
+      order: 16,
+    },
+  ];
+
+  for (const agt of additionalGranularTypes) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO assistance_types (
+              id, code, name, category, description, type_group, specific_fund_id,
+              primary_group_code, conditions_text, required_docs, order_index, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      args: [
+        agt.id, agt.code, agt.name, agt.category, agt.desc, agt.group,
+        agt.specificFundId, agt.primaryGroupCode, agt.conditions, JSON.stringify(agt.docs), agt.order,
+      ],
+    });
+  }
+
+  // 5) Extend Downstream Workflow & Finance Tables with 3-Tier Foreign Keys
+  const appCols3 = await db.execute(`PRAGMA table_info(assistance_applications)`);
+  const appColNames3 = appCols3.rows.map((c) => String(c.name));
+  const appFundCols: [string, string][] = [
+    ['primary_group_code', 'TEXT'],
+    ['specific_fund_id', 'TEXT'],
+    ['specific_fund_code', 'TEXT'],
+    ['specific_fund_name', 'TEXT'],
+    ['approved_fund_id', 'TEXT'],
+    ['approved_specific_fund_id', 'TEXT'],
+    ['classification_snapshot', 'TEXT'],
+    ['fiscal_year', "TEXT DEFAULT '2569'"],
+  ];
+  for (const [col, colType] of appFundCols) {
+    if (!appColNames3.includes(col)) {
+      try { await db.execute(`ALTER TABLE assistance_applications ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_specific_fund ON assistance_applications(specific_fund_id);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_primary_group ON assistance_applications(primary_group_code);`);
+
+  const assCols = await db.execute(`PRAGMA table_info(beneficiary_assessments)`);
+  const assColNames = assCols.rows.map((c) => String(c.name));
+  if (!assColNames.includes('recommended_specific_fund_id')) {
+    try { await db.execute(`ALTER TABLE beneficiary_assessments ADD COLUMN recommended_specific_fund_id TEXT;`); } catch {}
+  }
+
+  const ftCols2 = await db.execute(`PRAGMA table_info(financial_transactions)`);
+  const ftColNames2 = ftCols2.rows.map((c) => String(c.name));
+  if (!ftColNames2.includes('specific_fund_id')) {
+    try { await db.execute(`ALTER TABLE financial_transactions ADD COLUMN specific_fund_id TEXT;`); } catch {}
+  }
+  if (!ftColNames2.includes('assistance_type_id')) {
+    try { await db.execute(`ALTER TABLE financial_transactions ADD COLUMN assistance_type_id TEXT;`); } catch {}
+  }
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ft_specific_fund ON financial_transactions(specific_fund_id);`);
+
+  const cfwCols2 = await db.execute(`PRAGMA table_info(cash_flow_withdrawals)`);
+  const cfwColNames2 = cfwCols2.rows.map((c) => String(c.name));
+  if (!cfwColNames2.includes('target_specific_fund_id')) {
+    try { await db.execute(`ALTER TABLE cash_flow_withdrawals ADD COLUMN target_specific_fund_id TEXT;`); } catch {}
+  }
+
+  const cfdiCols2 = await db.execute(`PRAGMA table_info(cash_flow_disbursement_items)`);
+  const cfdiColNames2 = cfdiCols2.rows.map((c) => String(c.name));
+  if (!cfdiColNames2.includes('specific_fund_id')) {
+    try { await db.execute(`ALTER TABLE cash_flow_disbursement_items ADD COLUMN specific_fund_id TEXT;`); } catch {}
+  }
+
+  const aerCols2 = await db.execute(`PRAGMA table_info(assistance_execution_records)`);
+  const aerColNames2 = aerCols2.rows.map((c) => String(c.name));
+  if (!aerColNames2.includes('specific_fund_id')) {
+    try { await db.execute(`ALTER TABLE assistance_execution_records ADD COLUMN specific_fund_id TEXT;`); } catch {}
+  }
+  if (!aerColNames2.includes('assistance_type_id')) {
+    try { await db.execute(`ALTER TABLE assistance_execution_records ADD COLUMN assistance_type_id TEXT;`); } catch {}
+  }
+
+  const arrCols2 = await db.execute(`PRAGMA table_info(assistance_refund_records)`);
+  const arrColNames2 = arrCols2.rows.map((c) => String(c.name));
+  if (!arrColNames2.includes('specific_fund_id')) {
+    try { await db.execute(`ALTER TABLE assistance_refund_records ADD COLUMN specific_fund_id TEXT;`); } catch {}
+  }
+
+  // 6) Safe One-Time Relational Backfill for Existing Historical Applications & Transactions
+  try {
+    const unlinkedApps = await db.execute(`
+      SELECT a.id, a.application_no, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.status,
+             ass.recommended_fund_id
+      FROM assistance_applications a
+      LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
+      WHERE a.id != 'REGISTRY-DOCS' AND a.specific_fund_id IS NULL
+    `);
+
+    if (unlinkedApps.rows.length > 0) {
+      const allTypesRes = await db.execute(`SELECT id, code, name, specific_fund_id, primary_group_code FROM assistance_types`);
+      const allSfRes = await db.execute(`SELECT id, code, name, primary_group_code, fund_account_id FROM faqir_miskin_sub_funds`);
+      const sfById = new Map(allSfRes.rows.map((s) => [String(s.id), s]));
+
+      for (const appRow of unlinkedApps.rows) {
+        const rawAsnaf = String(appRow.asnaf_category || 'miskin');
+        const primaryGroup = ['faqir', 'miskin', 'faqir_miskin'].includes(rawAsnaf)
+          ? 'faqir_miskin'
+          : (['amil', 'muallaf', 'gharimin', 'fisabilillah', 'ibnsabil', 'humanitarian'].includes(rawAsnaf) ? rawAsnaf : 'faqir_miskin');
+
+        const rawType = String(appRow.assistance_type || '');
+        const rawTypeId = appRow.assistance_type_id ? String(appRow.assistance_type_id) : '';
+
+        // Match assistance_types by id, code, or Thai name
+        let matchedType = allTypesRes.rows.find(
+          (t) => String(t.id) === rawTypeId || String(t.code) === rawType || String(t.name) === rawType
+        );
+
+        if (!matchedType) {
+          if (primaryGroup === 'gharimin') matchedType = allTypesRes.rows.find((t) => String(t.code) === 'GHARIMUN_DEBT');
+          else if (primaryGroup === 'muallaf') matchedType = allTypesRes.rows.find((t) => String(t.code) === 'MUALLAF_SUPPORT');
+          else if (primaryGroup === 'fisabilillah') matchedType = allTypesRes.rows.find((t) => String(t.code) === 'FISABILILLAH_GRANT');
+          else if (primaryGroup === 'ibnsabil') matchedType = allTypesRes.rows.find((t) => String(t.code) === 'IBN_SABIL');
+          else if (primaryGroup === 'humanitarian') matchedType = allTypesRes.rows.find((t) => String(t.code) === 'HUMANITARIAN_AID');
+          else if (rawType.includes('บ้าน') || rawType.includes('housing')) matchedType = allTypesRes.rows.find((t) => String(t.code) === 'HOUSING_REPAIR_BUILD');
+          else if (rawType.includes('อาชีพ') || rawType.includes('career')) matchedType = allTypesRes.rows.find((t) => String(t.code) === 'CAREER_SUPPORT');
+          else if (rawType.includes('ศึกษา') || rawType.includes('education')) matchedType = allTypesRes.rows.find((t) => String(t.code) === 'EDUCATION_GRANT');
+          else if (rawType.includes('ฉุกเฉิน') || rawType.includes('ภัย')) matchedType = allTypesRes.rows.find((t) => String(t.code) === 'EMERGENCY_AID');
+          else matchedType = allTypesRes.rows.find((t) => String(t.code) === 'LIVING_SUPPORT');
+        }
+
+        const sfId = matchedType?.specific_fund_id ? String(matchedType.specific_fund_id) : 'subf-1';
+        const sfObj = sfById.get(sfId);
+        const sfCode = sfObj ? String(sfObj.code) : 'living';
+        const sfName = sfObj ? String(sfObj.name) : 'ปัจจัยยังชีพ';
+        const finalPrimary = sfObj?.primary_group_code ? String(sfObj.primary_group_code) : primaryGroup;
+        const defaultFundAcc = sfObj?.fund_account_id ? String(sfObj.fund_account_id) : 'fund-1';
+        const isPostApproval = ['approved', 'wait_disbursement', 'disbursed', 'followup', 'closed'].includes(String(appRow.status));
+        const approvedFund = isPostApproval ? (appRow.recommended_fund_id ? String(appRow.recommended_fund_id) : defaultFundAcc) : null;
+        const approvedSf = isPostApproval ? sfId : null;
+        const astId = matchedType ? String(matchedType.id) : (rawTypeId || 'ast-core-1');
+
+        await db.execute({
+          sql: `UPDATE assistance_applications
+                SET primary_group_code = COALESCE(primary_group_code, ?),
+                    specific_fund_id = COALESCE(specific_fund_id, ?),
+                    specific_fund_code = COALESCE(specific_fund_code, ?),
+                    specific_fund_name = COALESCE(specific_fund_name, ?),
+                    assistance_type_id = COALESCE(assistance_type_id, ?),
+                    approved_fund_id = COALESCE(approved_fund_id, ?),
+                    approved_specific_fund_id = COALESCE(approved_specific_fund_id, ?),
+                    fiscal_year = COALESCE(fiscal_year, '2569')
+                WHERE id = ?`,
+          args: [finalPrimary, sfId, sfCode, sfName, astId, approvedFund, approvedSf, String(appRow.id)],
+        });
+
+        // Link matching financial_transactions by application_id or application_no mention
+        await db.execute({
+          sql: `UPDATE financial_transactions
+                SET application_id = COALESCE(application_id, ?),
+                    specific_fund_id = COALESCE(specific_fund_id, ?),
+                    sub_fund_category = COALESCE(sub_fund_category, ?),
+                    assistance_type_id = COALESCE(assistance_type_id, ?)
+                WHERE (application_id = ? OR category LIKE ?) AND specific_fund_id IS NULL`,
+          args: [String(appRow.id), sfId, sfCode, astId, String(appRow.id), `%${String(appRow.application_no)}%`],
+        });
+      }
+    }
+  } catch (err) {
+    console.error('3-tier application backfill warning:', err);
   }
 
   })();

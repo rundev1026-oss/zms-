@@ -5,7 +5,8 @@ import {
   User, 
   UserRole, 
   AssistanceApplication, 
-  ApplicationStatus, 
+  ApplicationStatus,
+  AsnafCategory, 
   FundAccount, 
   FinancialTransaction, 
   AuditLogItem,
@@ -85,6 +86,12 @@ interface AppContextType {
     beneficiaryId?: string;
     nationalId?: string;
     memberId?: string;
+    asnafCategory?: AsnafCategory;
+    primaryGroupCode?: string;
+    specificFundId?: string;
+    fiscalYear?: string;
+    branchId?: string;
+    branchName?: string;
     assistanceType: any;
     assistanceTypeId?: string;
     assistanceGroup?: 'core' | 'specific';
@@ -102,7 +109,7 @@ interface AppContextType {
   updateChecklist: (appId: string, checklist: any) => Promise<boolean>;
   updateApplicationStatus: (appId: string, newStatus: ApplicationStatus, notes: string) => Promise<void>;
   submitAssessment: (appId: string, assessment: BeneficiaryAssessment) => Promise<boolean>;
-  approveApplication: (appId: string, approvedAmount: number, fundId: string, notes: string) => Promise<boolean>;
+  approveApplication: (appId: string, approvedAmount: number, fundId: string, notes: string, specificFundId?: string) => Promise<boolean>;
   rejectApplication: (appId: string, notes: string) => Promise<boolean>;
   returnApplication: (appId: string, notes: string) => Promise<boolean>;
   executeDisbursement: (appId: string, amount: number, paymentRef: string, proofUrl: string, notes: string) => Promise<boolean>;
@@ -534,7 +541,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     appId: string,
     approvedAmount: number,
     fundId: string,
-    notes: string
+    notes: string,
+    specificFundId?: string
   ): Promise<boolean> => {
     try {
       const res = await fetch(`/api/beneficiaries/${appId}/approve`, {
@@ -544,6 +552,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           approvedAmount,
           fundId,
           notes,
+          specificFundId,
           actor: {
             id: currentUser.id,
             name: currentUser.name,
@@ -1037,6 +1046,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     beneficiaryId?: string;
     nationalId?: string;
     memberId?: string;
+    asnafCategory?: AsnafCategory;
+    primaryGroupCode?: string;
+    specificFundId?: string;
+    fiscalYear?: string;
+    branchId?: string;
+    branchName?: string;
     assistanceType: any;
     assistanceTypeId?: string;
     assistanceGroup?: 'core' | 'specific';

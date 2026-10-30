@@ -284,3 +284,24 @@ export function validateAddress(
 
   return { isValid: true };
 }
+
+/**
+ * Official 13-Digit Thai National ID Checksum Validator
+ * Algorithm:
+ * 1. Multiply first 12 digits by weights (13 down to 2)
+ * 2. Sum the products
+ * 3. Calculate check digit: (11 - (sum % 11)) % 10
+ * 4. Verify check digit equals 13th digit
+ */
+export function isValidThaiNationalId(id: string): boolean {
+  if (!id) return false;
+  const clean = id.replace(/[^0-9]/g, '');
+  if (clean.length !== 13) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(clean.charAt(i), 10) * (13 - i);
+  }
+  const check = (11 - (sum % 11)) % 10;
+  return check === parseInt(clean.charAt(12), 10);
+}

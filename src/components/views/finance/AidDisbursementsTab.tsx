@@ -115,6 +115,7 @@ export function AidDisbursementsTab({
       setBeneficiaryName(app.beneficiaryName || 'ผู้ขอรับความช่วยเหลือ');
       setAmount(app.remainingAmount || app.approvedAmount || 10000);
       setAsnafCategory(app.asnafCategory || 'faqir_miskin');
+      setSubFundCategory((app as any).specificFundCode || 'living');
       setAidFormat(app.assistanceType || 'ปัจจัยยังชีพ');
       setNotes(`จ่ายเงินสวัสดิการตามคำร้องเลขที่ ${app.applicationNo}`);
     }
@@ -174,6 +175,8 @@ export function AidDisbursementsTab({
           bankAccountId: paymentMethod !== 'cash' ? bankAccountId : undefined,
           asnafCategory,
           subFundCategory,
+          specificFundId: (selectedAppObj as any)?.specificFundId,
+          assistanceTypeId: (selectedAppObj as any)?.assistanceTypeId,
           beneficiaryId: applicationId ? `ben-${applicationId}` : undefined,
           applicationId: applicationId || undefined,
         }

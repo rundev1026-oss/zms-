@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { AssistanceApplication } from '@/types';
+import { AssistanceApplication, FaqirMiskinSubFund } from '@/types';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -38,14 +38,51 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
   const [selectedFundId, setSelectedFundId] = useState<string>(
     selectedApp?.assessment?.recommendedFundId || 'fund-1'
   );
+  const [selectedSpecificFundId, setSelectedSpecificFundId] = useState<string>(
+    selectedApp?.assessment?.recommendedSpecificFundId || selectedApp?.specificFundId || 'subf-1'
+  );
+  const [specificFunds, setSpecificFunds] = useState<FaqirMiskinSubFund[]>([]);
   const [decisionNotes, setDecisionNotes] = useState('เห็นชอบตามผลการประเมินสภาพความเป็นอยู่ของเจ้าหน้าที่ ให้ความช่วยเหลือตามวงเงิน');
 
   // Modal for confirmation
   const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | 'return' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  // Load specific funds for Level 2 verification
+  const loadSpecificFunds = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/finance/allocations/faqir-miskin?fiscalYear=2569');
+      const data = await res.json();
+      if (data && Array.isArray(data.subFunds)) {
+        setSpecificFunds(data.subFunds);
+      }
+    } catch (err) {
+      console.error('Failed to load specific funds in ApprovalsView', err);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadSpecificFunds();
+  }, [loadSpecificFunds]);
+
+  React.useEffect(() => {
+    if (selectedApp) {
+      setApprovalAmount(selectedApp.assessment?.recommendedAmount || selectedApp.requestedAmount);
+      if (selectedApp.assessment?.recommendedFundId) setSelectedFundId(selectedApp.assessment.recommendedFundId);
+      if (selectedApp.assessment?.recommendedSpecificFundId) {
+        setSelectedSpecificFundId(selectedApp.assessment.recommendedSpecificFundId);
+      } else if (selectedApp.specificFundId) {
+        setSelectedSpecificFundId(selectedApp.specificFundId);
+      }
+    }
+  }, [selectedApp]);
+
   const selectedFund = funds.find((f) => f.id === selectedFundId) || funds[0];
   const isFundSufficient = selectedFund ? selectedFund.availableAmount >= approvalAmount : false;
+
+  const selectedSpecificFund = specificFunds.find((sf) => sf.id === selectedSpecificFundId) || specificFunds[0];
+  const isSpecificFundSufficient = selectedSpecificFund ? (selectedSpecificFund.remainingAmount ?? 0) >= approvalAmount : true;
+  const isAllBudgetSufficient = isFundSufficient && isSpecificFundSufficient;
 
   const handleExecuteApproval = async () => {
     if (!selectedApp || isSubmitting) return;
@@ -57,7 +94,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
 
     setIsSubmitting(true);
     try {
-      const success = await approveApplication(selectedApp.id, approvalAmount, selectedFundId, decisionNotes);
+      const success = await approveApplication(selectedApp.id, approvalAmount, selectedFundId, decisionNotes, selectedSpecificFundId);
       if (success) {
         setConfirmAction(null);
         setSelectedApp(null);
@@ -192,13 +229,19 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                       {selectedApp.applicationNo} • พื้นที่: {selectedApp.community}, {selectedApp.province}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs text-slate-400 block">หมวดหมู่อัสนาฟ</span>
-                    <span className="font-bold text-emerald-800 text-sm">
-                      {selectedApp.asnafCategory === 'miskin' ? 'มิสเกน (ผู้ขัดสน)' :
-                       selectedApp.asnafCategory === 'faqir' ? 'ฟะกีร (ผู้ยากไร้)' :
-                       selectedApp.asnafCategory === 'gharimin' ? 'ฆอริมูน (มีหนี้สิน)' : 'ฟีสะบีลิลลาฮ์'}
-                    </span>
+                  <div className="text-right space-y-1">
+                    <span className="text-[10px] text-slate-400 block uppercase font-mono">โครงสร้าง 3 ระดับที่ขอรับ</span>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        {selectedApp.primaryGroupName || selectedApp.asnafCategory}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+                        {selectedApp.specificFundName || selectedApp.specificFundCode || 'กองทุนเฉพาะเจาะจง'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                        {selectedApp.assistanceType || 'ประเภทความช่วยเหลือ'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -258,24 +301,31 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                 />
               </div>
 
-              {/* Fund Budget Verification Card */}
+              {/* Fund Budget Verification Card (Multi-Tier Solvency) */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
                 <div className="flex items-center justify-between border-b pb-2">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                     <Wallet className="w-4 h-4 text-emerald-700" />
-                    ตรวจสอบความพร้อมของบัญชีกองทุน (Fund Solvency Verification)
+                    ตรวจสอบความพร้อมงบประมาณ 3 ระดับ (Multi-Tier Solvency Verification)
                   </h3>
-                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                    isFundSufficient ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                  }`}>
-                    {isFundSufficient ? '✓ งบประมาณเพียงพอ' : '✕ ยอดเงินในกองทุนไม่เพียงพอ'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                      isFundSufficient ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      บัญชีกองทุน: {isFundSufficient ? '✓ เพียงพอ' : '✕ ไม่เพียงพอ'}
+                    </span>
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                      isSpecificFundSufficient ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      กองทุนเฉพาะเจาะจง: {isSpecificFundSufficient ? '✓ เพียงพอ' : '✕ ไม่เพียงพอ'}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      เลือกบัญชีกองทุนสำหรับตัดยอด <span className="text-rose-500">*</span>
+                      1. บัญชีกองทุนหลัก <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={selectedFundId}
@@ -292,7 +342,24 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      วงเงินอนุมัติจ่ายจริง (บาท) <span className="text-rose-500">*</span>
+                      2. กองทุนเฉพาะเจาะจง (Level 2) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={selectedSpecificFundId}
+                      onChange={(e) => setSelectedSpecificFundId(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-emerald-900"
+                    >
+                      {specificFunds.map((sf) => (
+                        <option key={sf.id} value={sf.id}>
+                          {sf.fundCode ? `[${sf.fundCode}] ` : ''}{sf.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      3. วงเงินอนุมัติจ่ายจริง (บาท) <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="number"
@@ -304,9 +371,42 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-50 text-[11px] text-slate-600 flex items-center justify-between">
-                  <span>ยอดคงเหลือจัดสรรได้ในกองทุน: <strong className="text-slate-800">฿{selectedFund.availableAmount.toLocaleString()}</strong></span>
-                  <span>หลังอนุมัติจะคงเหลือ: <strong className="text-emerald-700">฿{(selectedFund.availableAmount - approvalAmount).toLocaleString()}</strong></span>
+                {/* Specific Fund Live Solvency Card */}
+                {selectedSpecificFund && (
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                        <Building className="w-4 h-4 text-emerald-700" />
+                        สถานะงบประมาณ: {selectedSpecificFund.fundCode ? `[${selectedSpecificFund.fundCode}] ` : ''}{selectedSpecificFund.name}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        สัดส่วน {selectedSpecificFund.percentage}% ของกลุ่ม
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px]">
+                      <div className="p-2 rounded-lg bg-white border border-slate-200/60">
+                        <span className="text-slate-400 block text-[10px]">งบเป้าหมาย</span>
+                        <strong className="text-slate-800">฿{selectedSpecificFund.targetAmount?.toLocaleString() || '0'}</strong>
+                      </div>
+                      <div className="p-2 rounded-lg bg-white border border-slate-200/60">
+                        <span className="text-slate-400 block text-[10px]">ยอดผูกพัน</span>
+                        <strong className="text-amber-700">฿{selectedSpecificFund.committedAmount?.toLocaleString() || '0'}</strong>
+                      </div>
+                      <div className="p-2 rounded-lg bg-white border border-slate-200/60">
+                        <span className="text-slate-400 block text-[10px]">จ่ายจริงแล้ว</span>
+                        <strong className="text-indigo-700">฿{selectedSpecificFund.disbursedAmount?.toLocaleString() || '0'}</strong>
+                      </div>
+                      <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200">
+                        <span className="text-emerald-700 block text-[10px] font-semibold">คงเหลือจัดสรรได้</span>
+                        <strong className="text-emerald-800 text-xs">฿{selectedSpecificFund.remainingAmount?.toLocaleString() || '0'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-3 rounded-xl bg-slate-50 text-[11px] text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <span>คงเหลือกองทุนหลัก: <strong className="text-slate-800">฿{selectedFund.availableAmount.toLocaleString()}</strong> (หลังอนุมัติ: ฿{(selectedFund.availableAmount - approvalAmount).toLocaleString()})</span>
+                  <span>คงเหลือกองทุนเฉพาะ: <strong className="text-slate-800">฿{(selectedSpecificFund?.remainingAmount ?? 0).toLocaleString()}</strong> (หลังอนุมัติ: ฿{((selectedSpecificFund?.remainingAmount ?? 0) - approvalAmount).toLocaleString()})</span>
                 </div>
               </div>
 
@@ -347,10 +447,10 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
 
                   <button
                     type="button"
-                    disabled={!isFundSufficient}
+                    disabled={!isAllBudgetSufficient}
                     onClick={() => setConfirmAction('approve')}
                     className={`flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-bold text-white shadow-xs ${
-                      isFundSufficient
+                      isAllBudgetSufficient
                         ? 'bg-emerald-700 hover:bg-emerald-800'
                         : 'bg-slate-300 cursor-not-allowed'
                     }`}

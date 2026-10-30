@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zms-postgres
+    restart: unless-stopped
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zms}
+      POSTGRES_DB: ${POSTGRES_DB:-zms}
+    volumes:
+      - zms_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-zms} -d ${POSTGRES_DB:-zms}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - zms-network
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: zms-api
+    restart: unless-stopped
+    ports:
+      - '${API_PORT:-4000}:4000'
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-zms}:${POSTGRES_PASSWORD:-zms}@postgres:5432/${POSTGRES_DB:-zms}?schema=public
+      API_PORT: 4000
+      API_PREFIX: api/v1
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-prod-secret-zms-enterprise-2026}
+      JWT_ACCESS_TTL_SECONDS: 900
+      REFRESH_TTL_SECONDS: 604800
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - zms-network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zms-web
+    restart: unless-stopped
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+    depends_on:
+      - api
+    networks:
+      - zms-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: zms-nginx
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+      - api
+    networks:
+      - zms-network
+
+volumes:
+  zms_pg_data:
+
+networks:
+  zms-network:
+    driver: bridge
+

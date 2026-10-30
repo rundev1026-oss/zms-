@@ -1,23 +1,37 @@
-import { NextResponse } from 'next/server';
-import { FinancialService } from '@/services/financialService';
+import { NextRequest, NextResponse } from 'next/server';
+import { proxyToNest } from '@/lib/apiProxy';
 
-export async function GET(req: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const fundId = searchParams.get('fundId') || undefined;
-    const type = searchParams.get('type') || undefined;
-    const status = searchParams.get('status') || undefined;
-    const search = searchParams.get('search') || undefined;
+    const { searchParams } = new URL(request.url);
+    const queryString = searchParams.toString();
+    const endpoint = `/finance/transactions${queryString ? `?${queryString}` : ''}`;
 
-    const transactions = await FinancialService.getTransactions({
-      fundId,
-      type,
-      status,
-      search,
+    const res = await proxyToNest(endpoint, request, { method: 'GET' });
+    const json = await res.json();
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { success: false, error: json.message || 'เกิดข้อผิดพลาดในการดึงรายการธุรกรรม' },
+        { status: res.status }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: json.items,
+      pagination: {
+        total: json.total,
+        page: json.page,
+        limit: json.limit,
+        totalPages: json.totalPages,
+      },
+      ...json,
     });
-
-    return NextResponse.json({ success: true, data: transactions });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลธุรกรรม' },
+      { status: 500 }
+    );
   }
 }

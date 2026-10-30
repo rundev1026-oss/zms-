@@ -1,24 +1,26 @@
-import { NextResponse } from 'next/server';
-import { FinancialService } from '@/services/financialService';
+import { NextRequest, NextResponse } from 'next/server';
+import { proxyToNest } from '@/lib/apiProxy';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const funds = await FinancialService.getFunds();
-    return NextResponse.json({ success: true, data: funds });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
-}
+    const res = await proxyToNest('/finance/funds', request, { method: 'GET' });
+    const json = await res.json();
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    if (body.action === 'reconcile') {
-      const result = await FinancialService.reconcileBalances();
-      return NextResponse.json({ success: true, data: result });
+    if (!res.ok) {
+      return NextResponse.json(
+        { success: false, error: json.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลกองทุน' },
+        { status: res.status }
+      );
     }
-    return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
+
+    return NextResponse.json({
+      success: true,
+      data: json,
+    });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลกองทุน' },
+      { status: 500 }
+    );
   }
 }

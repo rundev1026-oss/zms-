@@ -1,12 +1,23 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { proxyToNest } from '@/lib/apiProxy';
 import { FinancialService } from '@/services/financialService';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const res = await proxyToNest('/finance/bank-accounts', request, { method: 'GET' });
+    if (res.ok) {
+      const data = await res.json();
+      return NextResponse.json({ success: true, data });
+    }
     const accounts = await FinancialService.getBankAccounts();
     return NextResponse.json({ success: true, data: accounts });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    try {
+      const accounts = await FinancialService.getBankAccounts();
+      return NextResponse.json({ success: true, data: accounts });
+    } catch {
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
   }
 }
 

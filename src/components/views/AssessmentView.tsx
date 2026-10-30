@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { AssistanceApplication, BeneficiaryAssessment } from '@/types';
+import { AssistanceApplication, BeneficiaryAssessment, FaqirMiskinSubFund } from '@/types';
 import { 
   FileCheck2, 
   CheckCircle, 
@@ -43,7 +43,29 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
   const [officerRecommendation, setOfficerRecommendation] = useState<'recommend_full' | 'recommend_partial' | 'recommend_decline'>('recommend_full');
   const [recommendedAmount, setRecommendedAmount] = useState<number>(selectedApp ? selectedApp.requestedAmount : 15000);
   const [recommendedFundId, setRecommendedFundId] = useState<string>('fund-1');
+  const [recommendedSpecificFundId, setRecommendedSpecificFundId] = useState<string>('subf-1');
+  const [specificFundsList, setSpecificFundsList] = useState<FaqirMiskinSubFund[]>([]);
   const [generalNotes, setGeneralNotes] = useState('ตรวจสอบคุณสมบัติตรงตามเกณฑ์อัสนาฟ 8 จำพวก สมควรได้รับการสงเคราะห์');
+
+  React.useEffect(() => {
+    fetch('/api/finance/allocations/faqir-miskin?fiscalYear=2569')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.subFunds)) {
+          setSpecificFundsList(data.subFunds);
+        }
+      })
+      .catch((err) => console.error('Failed to load specific funds for assessment', err));
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedApp) {
+      setRecommendedAmount(selectedApp.requestedAmount);
+      if (selectedApp.specificFundId) {
+        setRecommendedSpecificFundId(selectedApp.specificFundId);
+      }
+    }
+  }, [selectedApp]);
 
   const handleVerifyDoc = (docId: string, status: 'verified' | 'rejected') => {
     if (!selectedApp) return;
@@ -79,6 +101,7 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
       officerRecommendation,
       recommendedAmount,
       recommendedFundId,
+      recommendedSpecificFundId,
       generalNotes,
     };
 
@@ -184,9 +207,17 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                       {selectedApp.applicationNo} • ปชช: {selectedApp.nationalIdMasked}
                     </div>
                   </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    หมวดอัสนาฟ: {selectedApp.asnafCategory}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      กลุ่มหลัก: {selectedApp.primaryGroupName || selectedApp.asnafCategory}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+                      กองทุน: {selectedApp.specificFundName || selectedApp.specificFundCode || '-'}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                      ประเภท: {selectedApp.assistanceType || '-'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -312,7 +343,7 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      กองทุนที่เสนอเบิกจ่าย
+                      บัญชีกองทุนหลักระดับ 1
                     </label>
                     <select
                       value={recommendedFundId}
@@ -322,6 +353,23 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                       {funds.map((f) => (
                         <option key={f.id} value={f.id}>
                           {f.name} (คงเหลือ: ฿{f.availableAmount.toLocaleString()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      กองทุนเฉพาะเจาะจงที่เสนอแนะ (Level 2 Specific Fund)
+                    </label>
+                    <select
+                      value={recommendedSpecificFundId}
+                      onChange={(e) => setRecommendedSpecificFundId(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-emerald-800"
+                    >
+                      {specificFundsList.map((sf) => (
+                        <option key={sf.id} value={sf.id}>
+                          {sf.fundCode ? `[${sf.fundCode}] ` : ''}{sf.name} (คงเหลือ: ฿{sf.remainingAmount?.toLocaleString() || '0'})
                         </option>
                       ))}
                     </select>

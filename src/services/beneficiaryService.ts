@@ -19,6 +19,7 @@ import { StorageService } from './storageService';
 import { calculateAge } from '@/utils/ageCalculator';
 import { validateAddress } from '@/lib/thaiAddress';
 import { FinancialService } from './financialService';
+import { normalizePrimaryGroupCode, getCentralAsnafByCode } from '@/lib/financeUtils';
 
 export interface HouseholdMemberInput {
   id?: string;
@@ -67,7 +68,10 @@ export interface BeneficiaryRegistrationInput {
   debtType?: string;
   otherHardshipDetail?: string;
 
-  // ส่วน C: ประเภทความช่วยเหลือ
+  // ส่วน C: ประเภทความช่วยเหลือและโครงสร้างกองทุน 3 ระดับ
+  primaryGroupCode?: string;
+  specificFundId?: string;
+  fiscalYear?: string;
   assistanceType?: string;
   assistanceTypeId?: string;
   assistanceTypeDetails?: string;
@@ -122,6 +126,7 @@ export interface AssessmentInput {
   officerRecommendation: 'recommend_full' | 'recommend_partial' | 'recommend_decline';
   recommendedAmount: number;
   recommendedFundId: string;
+  recommendedSpecificFundId?: string;
   generalNotes: string;
 }
 
@@ -142,6 +147,233 @@ export function maskNationalId(id?: string | null): string {
 }
 
 export class BeneficiaryService {
+  /**
+   * 0. Resolve AsnafCategory from Level-1 Primary Fund Group Code
+   */
+  static resolveAsnafCategoryFromPrimary(primaryGroupCode: string, explicitAsnaf?: string): AsnafCategory {
+    const norm = normalizePrimaryGroupCode(primaryGroupCode);
+    if (norm === 'faqir_miskin') {
+      if (explicitAsnaf === 'faqir' || explicitAsnaf === 'miskin') return explicitAsnaf;
+      return 'miskin';
+    }
+    if (norm === 'humanitarian') return 'riqab';
+    if (norm === 'muallaf') return 'muallaf';
+    if (norm === 'gharimin') return 'gharimin';
+    if (norm === 'fisabilillah') return 'fisabilillah';
+    if (norm === 'ibnsabil') return 'ibnsabil';
+    if (norm === 'amil') return 'amil';
+    return 'miskin';
+  }
+
+  /**
+   * 0.1 Server-Side 3-Tier Fund & Assistance Type Validator
+   * Verifies:
+   *  - requestedAmount > 0
+   *  - Level 3 (Assistance Type) exists and is active
+   *  - Level 2 (Specific Fund) exists, is active, and owns Level 3
+   *  - Level 1 (Primary Fund Group) exists, is active, and owns Level 2
+   */
+  static async validateAndResolveThreeTierSelection(params: {
+    fiscalYear?: string;
+    primaryGroupCode?: string;
+    asnafCategory?: string;
+    specificFundId?: string;
+    assistanceTypeId?: string;
+    assistanceType?: string;
+    requestedAmount?: number;
+    requireExplicitThreeTier?: boolean;
+  }) {
+    await initDb();
+    const db = getDb();
+    const fiscalYear = (params.fiscalYear || '2569').trim();
+
+    // 1. Validate Requested Amount > 0
+    const amount = Number(params.requestedAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('INVALID_AMOUNT: จำนวนเงินที่ขอรับความช่วยเหลือต้องมากกว่า 0 บาท');
+    }
+
+    if (params.requireExplicitThreeTier) {
+      if ((!params.primaryGroupCode || !String(params.primaryGroupCode).trim()) && (!params.asnafCategory || !String(params.asnafCategory).trim())) {
+        throw new Error('MISSING_PRIMARY_GROUP: กรุณาเลือกกลุ่มกองทุนหลัก (อัสนัฟ)');
+      }
+      if (!params.specificFundId || !String(params.specificFundId).trim()) {
+        throw new Error('MISSING_SPECIFIC_FUND: กรุณาเลือกกองทุนเฉพาะ (Specific Fund)');
+      }
+      if (!params.assistanceTypeId || !String(params.assistanceTypeId).trim()) {
+        throw new Error('MISSING_ASSISTANCE_TYPE: กรุณาเลือกประเภทความช่วยเหลือ');
+      }
+    } else {
+      if (params.specificFundId !== undefined && String(params.specificFundId).trim() === '') {
+        throw new Error('MISSING_SPECIFIC_FUND: กรุณาเลือกกองทุนเฉพาะ (Specific Fund)');
+      }
+      if (params.assistanceTypeId !== undefined && String(params.assistanceTypeId).trim() === '') {
+        throw new Error('MISSING_ASSISTANCE_TYPE: กรุณาเลือกประเภทความช่วยเหลือ');
+      }
+    }
+
+    // 2. Resolve & Validate Level 3: Assistance Type
+    let astRow: any = null;
+    const cleanAstId = params.assistanceTypeId ? String(params.assistanceTypeId).trim() : '';
+    const cleanAstName = params.assistanceType ? String(params.assistanceType).trim() : '';
+
+    if (cleanAstId) {
+      const astRes = await db.execute({
+        sql: 'SELECT * FROM assistance_types WHERE id = ? OR code = ? LIMIT 1',
+        args: [cleanAstId, cleanAstId],
+      });
+      if (astRes.rows.length === 0) {
+        throw new Error(`INVALID_ASSISTANCE_TYPE: ไม่พบประเภทความช่วยเหลือรหัส "${cleanAstId}" ในระบบ`);
+      }
+      astRow = astRes.rows[0];
+    } else if (cleanAstName) {
+      const legacyCodeMap: Record<string, string> = {
+        cash: 'LIVING_SUPPORT',
+        living: 'LIVING_SUPPORT',
+        housing: 'HOUSING_REPAIR_BUILD',
+        career: 'CAREER_SUPPORT',
+        education: 'EDUCATION_GRANT',
+        medical: 'MEDICAL_AID',
+        emergency: 'EMERGENCY_AID',
+        debt_relief: 'GHARIMUN_DEBT',
+      };
+      const mappedCode = legacyCodeMap[cleanAstName.toLowerCase()] || cleanAstName;
+      const astRes = await db.execute({
+        sql: 'SELECT * FROM assistance_types WHERE id = ? OR code = ? OR name = ? ORDER BY is_active DESC LIMIT 1',
+        args: [cleanAstName, mappedCode, cleanAstName],
+      });
+      if (astRes.rows.length > 0) {
+        astRow = astRes.rows[0];
+      }
+    }
+
+    if (!astRow) {
+      // Fallback only when legacy caller omitted assistanceTypeId: pick first active type in target fund/group
+      const fallbackPrimary = normalizePrimaryGroupCode(params.primaryGroupCode || params.asnafCategory || 'faqir_miskin');
+      const fallbackSf = params.specificFundId ? String(params.specificFundId).trim() : '';
+      const fbRes = fallbackSf
+        ? await db.execute({
+            sql: 'SELECT * FROM assistance_types WHERE specific_fund_id = ? AND is_active = 1 ORDER BY order_index ASC LIMIT 1',
+            args: [fallbackSf],
+          })
+        : await db.execute({
+            sql: 'SELECT * FROM assistance_types WHERE primary_group_code = ? AND is_active = 1 ORDER BY order_index ASC LIMIT 1',
+            args: [fallbackPrimary],
+          });
+      if (fbRes.rows.length === 0) {
+        throw new Error('INVALID_ASSISTANCE_TYPE: ไม่พบประเภทความช่วยเหลือที่เปิดใช้งานสำหรับกองทุนที่เลือก');
+      }
+      astRow = fbRes.rows[0];
+    }
+
+    if (Number(astRow.is_active ?? 1) !== 1) {
+      throw new Error(`INACTIVE_ASSISTANCE_TYPE: ประเภทความช่วยเหลือ "${String(astRow.name)}" ถูกปิดใช้งานแล้ว ไม่สามารถยื่นคำร้องได้`);
+    }
+
+    // 3. Resolve & Validate Level 2: Specific Fund
+    const targetSfKey = (params.specificFundId && String(params.specificFundId).trim())
+      ? String(params.specificFundId).trim()
+      : String(astRow.specific_fund_id || '');
+
+    if (!targetSfKey) {
+      throw new Error('INVALID_SPECIFIC_FUND: ประเภทความช่วยเหลือนี้ไม่ได้เชื่อมโยงกับกองทุนเฉพาะใด');
+    }
+
+    let sfRes = await db.execute({
+      sql: 'SELECT * FROM faqir_miskin_sub_funds WHERE (id = ? OR code = ? OR fund_code = ?) AND fiscal_year = ? LIMIT 1',
+      args: [targetSfKey, targetSfKey, targetSfKey, fiscalYear],
+    });
+    if (sfRes.rows.length === 0) {
+      sfRes = await db.execute({
+        sql: 'SELECT * FROM faqir_miskin_sub_funds WHERE id = ? OR code = ? OR fund_code = ? LIMIT 1',
+        args: [targetSfKey, targetSfKey, targetSfKey],
+      });
+    }
+    if (sfRes.rows.length === 0) {
+      throw new Error(`INVALID_SPECIFIC_FUND: ไม่พบกองทุนเฉพาะรหัส "${targetSfKey}" ในระบบ`);
+    }
+
+    const sfRow = sfRes.rows[0];
+    if (Number(sfRow.is_active ?? 1) !== 1) {
+      throw new Error(`INACTIVE_SPECIFIC_FUND: กองทุนเฉพาะ "${String(sfRow.name)}" ถูกปิดใช้งานแล้ว ไม่สามารถรับคำร้องใหม่ได้`);
+    }
+
+    if (String(astRow.specific_fund_id || '') !== String(sfRow.id)) {
+      throw new Error(
+        `MISMATCH_FUND_TYPE: ประเภทความช่วยเหลือ "${String(astRow.name)}" ไม่ได้สังกัดอยู่ในกองทุนเฉพาะ "${String(sfRow.name)}"`
+      );
+    }
+
+    // 4. Resolve & Validate Level 1: Primary Fund Group
+    const sfPrimaryCode = normalizePrimaryGroupCode(String(sfRow.primary_group_code || 'faqir_miskin'));
+    const hasExplicitPrimary = Boolean(
+      (params.primaryGroupCode && String(params.primaryGroupCode).trim()) ||
+      (params.asnafCategory && String(params.asnafCategory).trim())
+    );
+    const requestedPrimaryCode = (params.primaryGroupCode && String(params.primaryGroupCode).trim())
+      ? normalizePrimaryGroupCode(params.primaryGroupCode)
+      : (params.asnafCategory && String(params.asnafCategory).trim())
+      ? normalizePrimaryGroupCode(params.asnafCategory)
+      : sfPrimaryCode;
+
+    let pgRes = await db.execute({
+      sql: 'SELECT * FROM asnaf_allocations WHERE asnaf_code = ? AND fiscal_year = ? LIMIT 1',
+      args: [requestedPrimaryCode, fiscalYear],
+    });
+    if (pgRes.rows.length === 0) {
+      pgRes = await db.execute({
+        sql: 'SELECT * FROM asnaf_allocations WHERE asnaf_code = ? LIMIT 1',
+        args: [requestedPrimaryCode],
+      });
+    }
+    if (pgRes.rows.length === 0) {
+      throw new Error(`INVALID_PRIMARY_GROUP: ไม่พบกลุ่มกองทุนหลักรหัส "${requestedPrimaryCode}" ในระบบ`);
+    }
+
+    const pgRow = pgRes.rows[0];
+    if (Number(pgRow.is_active ?? 1) !== 1) {
+      throw new Error(`INACTIVE_PRIMARY_GROUP: กลุ่มกองทุนหลัก "${String(pgRow.asnaf_name)}" ถูกปิดใช้งานแล้ว ไม่สามารถรับคำร้องใหม่ได้`);
+    }
+
+    if (hasExplicitPrimary && sfPrimaryCode !== requestedPrimaryCode) {
+      throw new Error(
+        `MISMATCH_PRIMARY_GROUP: กองทุนเฉพาะ "${String(sfRow.name)}" สังกัดกลุ่มหลัก "${sfPrimaryCode}" ไม่ตรงกับกลุ่มหลักที่เลือก ("${requestedPrimaryCode}")`
+      );
+    }
+
+    const resolvedAsnafCategory = this.resolveAsnafCategoryFromPrimary(sfPrimaryCode, params.asnafCategory);
+    const centralDef = getCentralAsnafByCode(sfPrimaryCode);
+
+    return {
+      fiscalYear,
+      primaryGroupCode: sfPrimaryCode,
+      primaryGroupName: String(pgRow.asnaf_name || centralDef?.nameTh || sfPrimaryCode),
+      asnafCategory: resolvedAsnafCategory,
+      specificFundId: String(sfRow.id),
+      specificFundCode: String(sfRow.code),
+      specificFundName: String(sfRow.name),
+      fundAccountId: String(sfRow.fund_account_id || pgRow.fund_account_id || 'fund-1'),
+      assistanceTypeId: String(astRow.id),
+      assistanceTypeCode: String(astRow.code),
+      assistanceTypeName: String(astRow.name),
+      assistanceGroup: (astRow.type_group === 'specific' ? 'specific' : 'core') as 'core' | 'specific',
+      defaultMinAmount: astRow.default_min_amount !== null && astRow.default_min_amount !== undefined ? Number(astRow.default_min_amount) : undefined,
+      defaultMaxAmount: astRow.default_max_amount !== null && astRow.default_max_amount !== undefined ? Number(astRow.default_max_amount) : undefined,
+      classificationSnapshot: JSON.stringify({
+        fiscalYear,
+        primaryGroupCode: sfPrimaryCode,
+        primaryGroupName: String(pgRow.asnaf_name || centralDef?.nameTh || sfPrimaryCode),
+        specificFundId: String(sfRow.id),
+        specificFundCode: String(sfRow.code),
+        specificFundName: String(sfRow.name),
+        assistanceTypeId: String(astRow.id),
+        assistanceTypeCode: String(astRow.code),
+        assistanceTypeName: String(astRow.name),
+        timestamp: new Date().toISOString(),
+      }),
+    };
+  }
+
   /**
    * 1. Register Beneficiary with Duplicate Check & Full Survey Form (Sections A-I) Insertion
    */
@@ -207,6 +439,18 @@ export class BeneficiaryService {
         throw new Error(`ข้อมูลที่อยู่ไม่ถูกต้องหรือไม่สัมพันธ์กัน: ${addrCheck.message}`);
       }
     }
+
+    // Server-side 3-Tier Fund & Assistance Type Validation
+    const resolvedThreeTier = await this.validateAndResolveThreeTierSelection({
+      fiscalYear: input.fiscalYear || '2569',
+      primaryGroupCode: input.primaryGroupCode,
+      asnafCategory: input.asnafCategory,
+      specificFundId: input.specificFundId,
+      assistanceTypeId: input.assistanceTypeId,
+      assistanceType: input.assistanceType,
+      requestedAmount: input.requestedAmount !== undefined ? input.requestedAmount : 3000,
+      requireExplicitThreeTier: false,
+    });
 
     // Generate unique IDs
     const householdId = `hh-${Date.now()}`;
@@ -310,19 +554,21 @@ export class BeneficiaryService {
       ],
     });
 
-    // Insert Assistance Application (Section B, C & Workflow)
+    // Insert Assistance Application (Section B, C & 3-Tier Fund Workflow)
     await db.execute({
       sql: `INSERT INTO assistance_applications (
         id, application_no, beneficiary_id, asnaf_category, requested_amount,
         status, urgency_level, assigned_officer_id, assigned_officer_name, applied_date,
-        branch_id, branch_name, hardship_reasons, assistance_type, assistance_type_details, necessity_details, evaluator_checklist
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        branch_id, branch_name, hardship_reasons, assistance_type, assistance_type_id, assistance_group,
+        primary_group_code, specific_fund_id, specific_fund_code, specific_fund_name, fiscal_year,
+        assistance_type_details, necessity_details, evaluator_checklist
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         applicationId,
         applicationNo,
         beneficiaryId,
-        input.asnafCategory || 'miskin',
-        input.requestedAmount !== undefined ? input.requestedAmount : 0,
+        resolvedThreeTier.asnafCategory,
+        Number(input.requestedAmount !== undefined ? input.requestedAmount : 3000),
         initialStatus,
         input.urgencyLevel || 'normal',
         actor.id,
@@ -331,7 +577,14 @@ export class BeneficiaryService {
         input.branchId || 'br-hq',
         input.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
         input.hardshipReasons ? JSON.stringify(input.hardshipReasons) : null,
-        input.assistanceType || input.assistanceTypeId || 'cash',
+        resolvedThreeTier.assistanceTypeName,
+        resolvedThreeTier.assistanceTypeId,
+        resolvedThreeTier.assistanceGroup,
+        resolvedThreeTier.primaryGroupCode,
+        resolvedThreeTier.specificFundId,
+        resolvedThreeTier.specificFundCode,
+        resolvedThreeTier.specificFundName,
+        resolvedThreeTier.fiscalYear,
         input.assistanceTypeDetails || input.requestedItemsDetail || '',
         input.necessityDetails || input.urgencyReason || '',
         input.checklist ? JSON.stringify(input.checklist) : (input.evaluatorChecklist ? JSON.stringify(input.evaluatorChecklist) : null),
@@ -499,7 +752,7 @@ export class BeneficiaryService {
     }
 
     const appRes = await db.execute({
-      sql: 'SELECT id, application_no, status FROM assistance_applications WHERE id = ?',
+      sql: 'SELECT id, application_no, status, specific_fund_id FROM assistance_applications WHERE id = ?',
       args: [applicationId],
     });
 
@@ -516,8 +769,8 @@ export class BeneficiaryService {
       sql: `INSERT OR REPLACE INTO beneficiary_assessments (
         id, application_id, assessed_by_id, assessed_by_name, assessed_date,
         living_score, housing_condition, housing_notes, debt_burden_summary,
-        primary_hardship, officer_recommendation, recommended_amount, recommended_fund_id, general_notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        primary_hardship, officer_recommendation, recommended_amount, recommended_fund_id, recommended_specific_fund_id, general_notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         assessmentId,
         applicationId,
@@ -525,14 +778,15 @@ export class BeneficiaryService {
         actor.name,
         timestampNow,
         assessment.livingScore,
-        assessment.housingCondition,
-        assessment.housingNotes,
-        assessment.debtBurdenSummary,
-        assessment.primaryHardship,
-        assessment.officerRecommendation,
-        assessment.recommendedAmount,
-        assessment.recommendedFundId,
-        assessment.generalNotes,
+        assessment.housingCondition || 'moderate',
+        assessment.housingNotes || '',
+        assessment.debtBurdenSummary || '',
+        assessment.primaryHardship || '',
+        assessment.officerRecommendation || 'recommend_full',
+        assessment.recommendedAmount || 0,
+        assessment.recommendedFundId || 'fund-1',
+        assessment.recommendedSpecificFundId || null,
+        assessment.generalNotes || '',
       ],
     });
 
@@ -586,7 +840,8 @@ export class BeneficiaryService {
     approvedAmount: number,
     fundId: string,
     notes: string,
-    actor: ActorContext
+    actor: ActorContext,
+    specificFundId?: string
   ) {
     await initDb();
     const db = getDb();
@@ -596,9 +851,14 @@ export class BeneficiaryService {
       throw new Error(`บทบาท "${actor.role}" ไม่มีสิทธิ์พิจารณาอนุมัติคำร้องขอรับซะกาต`);
     }
 
-    // 2. Fetch Application
+    // 2. Fetch Application & Assessment details
     const appRes = await db.execute({
-      sql: 'SELECT id, application_no, assigned_officer_id, status FROM assistance_applications WHERE id = ?',
+      sql: `SELECT a.id, a.application_no, a.assigned_officer_id, a.status, a.beneficiary_id,
+                   a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.fiscal_year,
+                   ass.recommended_fund_id, ass.recommended_specific_fund_id
+            FROM assistance_applications a
+            LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
+            WHERE a.id = ?`,
       args: [applicationId],
     });
 
@@ -616,19 +876,45 @@ export class BeneficiaryService {
       );
     }
 
-    // State Check: Must be in pending_approval
-    if (app.status !== 'pending_approval') {
+    // State Check: Must be in pending_approval (or pre-approval states)
+    if (!['pending_approval', 'doc_review', 'assessment', 'submitted'].includes(String(app.status))) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ "${app.status}" ไม่สามารถอนุมัติได้ (ต้องอยู่ในสถานะรออนุมัติเท่านั้น)`);
     }
 
-    // 3. FUND SOLVENCY CHECK
+    const fiscalYear = String(app.fiscal_year || '2569');
+
+    // 3. Resolve Target Specific Fund (Level 2)
+    const targetSpecificFundId = specificFundId ||
+      (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
+      (app.specific_fund_id ? String(app.specific_fund_id) : undefined) ||
+      'subf-1';
+
+    const sfRes = await db.execute({
+      sql: 'SELECT id, fund_code, code, name, primary_group_code, fund_account_id, is_active FROM faqir_miskin_sub_funds WHERE id = ?',
+      args: [targetSpecificFundId],
+    });
+
+    if (sfRes.rows.length === 0) {
+      throw new Error(`ไม่พบข้อมูลกองทุนเฉพาะเจาะจงรหัส ${targetSpecificFundId}`);
+    }
+
+    const sf = sfRes.rows[0];
+    if (Number(sf.is_active ?? 1) === 0) {
+      throw new Error(`กองทุนเฉพาะเจาะจง "${sf.name}" (${sf.fund_code || sf.code}) ถูกปิดใช้งาน ไม่สามารถจัดสรรงบประมาณได้`);
+    }
+
+    const primaryGroupCode = String(sf.primary_group_code || app.primary_group_code || 'faqir_miskin');
+    const targetFundAccountId = fundId || String(sf.fund_account_id || 'fund-1');
+
+    // 4. SOLVENCY CHECKS ACROSS 3 TIERS:
+    // Tier 1: Check Fund Account
     const fundRes = await db.execute({
       sql: 'SELECT id, name, available_amount, committed_amount FROM fund_accounts WHERE id = ?',
-      args: [fundId],
+      args: [targetFundAccountId],
     });
 
     if (fundRes.rows.length === 0) {
-      throw new Error(`ไม่พบบัญชีกองทุนรหัส ${fundId}`);
+      throw new Error(`ไม่พบบัญชีกองทุนรหัส ${targetFundAccountId}`);
     }
 
     const fund = fundRes.rows[0];
@@ -636,30 +922,82 @@ export class BeneficiaryService {
 
     if (availableAmount < approvedAmount) {
       throw new Error(
-        `ยอดเงินคงเหลือจัดสรรได้ในกองทุน "${fund.name}" ไม่เพียงพอ! (คงเหลือ: ฿${availableAmount.toLocaleString()} บาท, ยอดที่ขออนุมัติ: ฿${approvedAmount.toLocaleString()} บาท)`
+        `ยอดเงินคงเหลือจัดสรรได้ในบัญชีกองทุน "${fund.name}" ไม่เพียงพอ! (คงเหลือ: ฿${availableAmount.toLocaleString()} บาท, ยอดที่ขออนุมัติ: ฿${approvedAmount.toLocaleString()} บาท)`
       );
+    }
+
+    // Tier 2: Check Specific Fund Solvency (get live dynamic metrics from FinancialService.getSpecificFunds)
+    const sfList = await FinancialService.getSpecificFunds({
+      fiscalYear,
+      primaryGroupCode,
+      status: 'all',
+    });
+    const liveSf = sfList.find((s) => s.id === targetSpecificFundId || s.code === sf.code);
+    if (liveSf) {
+      const sfRemaining = Number(liveSf.remainingAmount);
+      if (sfRemaining < approvedAmount) {
+        throw new Error(
+          `ยอดงบประมาณคงเหลือในกองทุนเฉพาะเจาะจง "${sf.name}" (${liveSf.fundCode || sf.fund_code || sf.code}) ไม่เพียงพอ! (คงเหลือจัดสรรได้: ฿${sfRemaining.toLocaleString()} บาท, ยอดที่ขออนุมัติ: ฿${approvedAmount.toLocaleString()} บาท)`
+        );
+      }
     }
 
     const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
     const approvedDateStr = new Date().toLocaleDateString('th-TH');
 
-    // 4. Atomic Execution: Update Fund (Commit Budget) & Update Application Status
+    // 5. Atomic Multi-Tier Commitment Updates
+    // A) Fund Accounts
     await db.execute({
       sql: `UPDATE fund_accounts 
             SET committed_amount = committed_amount + ?, available_amount = available_amount - ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
-      args: [approvedAmount, approvedAmount, fundId],
+      args: [approvedAmount, approvedAmount, targetFundAccountId],
     });
 
+    // B) Specific Funds (faqir_miskin_sub_funds)
+    await db.execute({
+      sql: `UPDATE faqir_miskin_sub_funds
+            SET committed_amount = committed_amount + ?, remaining_amount = MAX(0, remaining_amount - ?), updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [approvedAmount, approvedAmount, targetSpecificFundId],
+    });
+
+    // C) Primary Asnaf Allocation (asnaf_allocations)
+    await db.execute({
+      sql: `UPDATE asnaf_allocations
+            SET committed_amount = committed_amount + ?, remaining_amount = MAX(0, remaining_amount - ?)
+            WHERE asnaf_code = ? AND fiscal_year = ?`,
+      args: [approvedAmount, approvedAmount, primaryGroupCode, fiscalYear],
+    });
+
+    // D) Assistance Applications
     await db.execute({
       sql: `UPDATE assistance_applications
-            SET status = 'wait_disbursement', approved_amount = ?, approved_by_id = ?, approved_by_name = ?,
-                approved_date = ?, approval_notes = ?, updated_at = CURRENT_TIMESTAMP
+            SET status = 'wait_disbursement',
+                approved_amount = ?,
+                approved_fund_id = ?,
+                approved_specific_fund_id = ?,
+                specific_fund_id = COALESCE(specific_fund_id, ?),
+                approved_by_id = ?,
+                approved_by_name = ?,
+                approved_date = ?,
+                approval_notes = ?,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
-      args: [approvedAmount, actor.id, actor.name, approvedDateStr, notes, applicationId],
+      args: [
+        approvedAmount,
+        targetFundAccountId,
+        targetSpecificFundId,
+        targetSpecificFundId,
+        actor.id,
+        actor.name,
+        approvedDateStr,
+        notes,
+        applicationId,
+      ],
     });
 
-    // History & Audit
+    // E) History & Audit
     await db.execute({
       sql: `INSERT INTO application_history (id, application_id, status, timestamp, changed_by_id, changed_by_name, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -670,7 +1008,7 @@ export class BeneficiaryService {
         timestampNow,
         actor.id,
         actor.name,
-        `อนุมัติวงเงิน ฿${approvedAmount.toLocaleString()} บาท จาก ${fund.name} (${notes}) และส่งต่อฝ่ายการเงิน`,
+        `อนุมัติวงเงิน ฿${approvedAmount.toLocaleString()} บาท จาก "${fund.name}" -> กองทุน "${sf.name}" (${notes}) และส่งต่อฝ่ายการเงิน`,
       ],
     });
 
@@ -686,11 +1024,18 @@ export class BeneficiaryService {
         'APPLICATION_APPROVED',
         'application',
         String(app.application_no),
-        `อนุมัติคำร้องวงเงิน ฿${approvedAmount.toLocaleString()} บาท (กันยอดผูกพันจาก ${fund.name}) โดย ${actor.name}`,
+        `อนุมัติคำร้องวงเงิน ฿${approvedAmount.toLocaleString()} บาท (กันยอดผูกพันจาก ${fund.name} / ${sf.name}) โดย ${actor.name}`,
       ],
     });
 
-    return { applicationId, status: 'wait_disbursement', approvedAmount, fundName: String(fund.name) };
+    return {
+      applicationId,
+      status: 'wait_disbursement',
+      approvedAmount,
+      fundName: String(fund.name),
+      specificFundId: targetSpecificFundId,
+      specificFundName: String(sf.name),
+    };
   }
 
   /**
@@ -784,8 +1129,12 @@ export class BeneficiaryService {
 
     // 2. Fetch Application & Assessment for Fund linkage
     const appRes = await db.execute({
-      sql: `SELECT a.id, a.application_no, a.approved_amount, a.status, b.full_name,
-                   ass.recommended_fund_id
+      sql: `SELECT a.id, a.application_no, a.approved_amount, a.requested_amount, a.status,
+                   a.approved_by_id, a.approved_by_name, a.beneficiary_id,
+                   a.approved_fund_id, a.approved_specific_fund_id, a.specific_fund_id,
+                   a.primary_group_code, a.asnaf_category, a.assistance_type_id, a.assistance_type,
+                   a.fiscal_year, b.full_name,
+                   ass.recommended_fund_id, ass.recommended_specific_fund_id
             FROM assistance_applications a
             JOIN beneficiaries b ON a.beneficiary_id = b.id
             LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
@@ -799,26 +1148,56 @@ export class BeneficiaryService {
 
     const app = appRes.rows[0];
 
-    // State check: Must be wait_disbursement
-    if (app.status !== 'wait_disbursement') {
+    // SEGREGATION OF DUTIES: Approver CANNOT be the Disburser!
+    if (app.approved_by_id && actor.id && String(app.approved_by_id) === String(actor.id) && actor.role !== 'super_admin') {
+      throw new Error(
+        `การละเมิดหลักการแบ่งแยกหน้าที่ (Segregation of Duties): ผู้อนุมัติคำร้อง (${actor.name}) ไม่มีสิทธิ์ทำรายการเบิกจ่ายเงินด้วยตนเอง กรุณาให้เจ้าหน้าที่การเงินท่านอื่นดำเนินการ`
+      );
+    }
+
+    // State check: Must be wait_disbursement or approved
+    if (!['wait_disbursement', 'approved'].includes(String(app.status))) {
       throw new Error(`คำร้องไม่อยู่ในสถานะรอจ่ายเงิน (สถานะปัจจุบัน: ${app.status})`);
     }
 
-    // Duplicate Check on Payment Reference
+    // Duplicate Check on Payment Reference (Idempotency)
+    const cleanPaymentRef = paymentRef.trim();
+    if (!cleanPaymentRef) {
+      throw new Error('กรุณาระบุหมายเลขอ้างอิงการโอนเงิน (Payment Reference / Transaction Ref)');
+    }
+
     const dupCheck = await db.execute({
       sql: 'SELECT id, transaction_no FROM financial_transactions WHERE reference_no = ? AND status != ?',
-      args: [paymentRef.trim(), 'reversed'],
+      args: [cleanPaymentRef, 'reversed'],
     });
 
     if (dupCheck.rows.length > 0) {
       throw new Error(
-        `ตรวจพบธุรกรรมซ้ำ! หมายเลขอ้างอิงการโอนเงิน "${paymentRef}" เคยถูกบันทึกไว้ในระบบแล้ว (รายการเลขที่ ${dupCheck.rows[0].transaction_no})`
+        `ตรวจพบธุรกรรมซ้ำ! หมายเลขอ้างอิงการโอนเงิน "${cleanPaymentRef}" เคยถูกบันทึกไว้ในระบบแล้ว (รายการเลขที่ ${dupCheck.rows[0].transaction_no})`
       );
     }
 
-    const amount = Number(app.approved_amount);
-    const targetFundId = app.recommended_fund_id ? String(app.recommended_fund_id) : 'fund-1';
-    
+    const amount = Number(app.approved_amount || app.requested_amount);
+    const fiscalYear = String(app.fiscal_year || '2569');
+
+    // Resolve Specific Fund & Level 1 Fund
+    const targetSpecificFundId = (app.approved_specific_fund_id ? String(app.approved_specific_fund_id) : undefined) ||
+      (app.specific_fund_id ? String(app.specific_fund_id) : undefined) ||
+      (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
+      'subf-1';
+
+    const sfRes = await db.execute({
+      sql: 'SELECT id, fund_code, code, name, primary_group_code, fund_account_id FROM faqir_miskin_sub_funds WHERE id = ?',
+      args: [targetSpecificFundId],
+    });
+    const sf = sfRes.rows.length > 0 ? sfRes.rows[0] : null;
+
+    const primaryGroupCode = sf?.primary_group_code ? String(sf.primary_group_code) : (app.primary_group_code ? String(app.primary_group_code) : 'faqir_miskin');
+    const targetFundId = (app.approved_fund_id ? String(app.approved_fund_id) : undefined) ||
+      (sf?.fund_account_id ? String(sf.fund_account_id) : undefined) ||
+      (app.recommended_fund_id ? String(app.recommended_fund_id) : undefined) ||
+      'fund-1';
+
     // Look up actual fund name
     const fundInfo = await db.execute({
       sql: 'SELECT name FROM fund_accounts WHERE id = ?',
@@ -829,20 +1208,47 @@ export class BeneficiaryService {
     const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
     const disbursementDateStr = new Date().toLocaleDateString('th-TH');
 
-    // 3. Database Transaction: Release commitment, increment disbursement, record transaction
+    // 3. Multi-Level Atomic Updates: Release commitment, increment disbursement
+    // A) Fund Accounts
     await db.execute({
       sql: `UPDATE fund_accounts 
-            SET committed_amount = MAX(0, committed_amount - ?), disbursed_amount = disbursed_amount + ?, updated_at = CURRENT_TIMESTAMP
+            SET committed_amount = MAX(0, committed_amount - ?),
+                disbursed_amount = disbursed_amount + ?,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
       args: [amount, amount, targetFundId],
     });
 
+    // B) Specific Funds (faqir_miskin_sub_funds)
+    await db.execute({
+      sql: `UPDATE faqir_miskin_sub_funds
+            SET committed_amount = MAX(0, committed_amount - ?),
+                disbursed_amount = disbursed_amount + ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [amount, amount, targetSpecificFundId],
+    });
+
+    // C) Primary Asnaf Allocations (asnaf_allocations)
+    await db.execute({
+      sql: `UPDATE asnaf_allocations
+            SET committed_amount = MAX(0, committed_amount - ?),
+                disbursed_amount = disbursed_amount + ?
+            WHERE asnaf_code = ? AND fiscal_year = ?`,
+      args: [amount, amount, primaryGroupCode, fiscalYear],
+    });
+
+    // D) Financial Transactions (Ledger Entry with 3-tier relations)
     const txnNo = `TXN-DISB-2569-${Date.now().toString().slice(-5)}`;
+    const sfCode = sf?.code ? String(sf.code) : 'living';
+    const astId = app.assistance_type_id ? String(app.assistance_type_id) : null;
+
     await db.execute({
       sql: `INSERT INTO financial_transactions (
         id, transaction_no, date, type, fund_id, fund_name, category, amount, payment_method,
-        payer_or_payee, reference_no, slip_url, status, recorded_by_id, recorded_by_name, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        payer_or_payee, reference_no, slip_url, status, recorded_by_id, recorded_by_name, notes,
+        specific_fund_id, sub_fund_category, asnaf_category, assistance_type_id, application_id, beneficiary_id, zakat_year
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         `txn-${Date.now()}`,
         txnNo,
@@ -850,24 +1256,37 @@ export class BeneficiaryService {
         'disbursement',
         targetFundId,
         fundName,
-        `จ่ายเงินสวัสดิการผู้รับซะกาต (${app.application_no})`,
+        `จ่ายเงินสวัสดิการผู้รับซะกาต (${app.application_no} - ${sf?.name || 'กองทุนเฉพาะเจาะจง'})`,
         amount,
         'bank_transfer',
         `${app.full_name} (ผู้รับซะกาต)`,
-        paymentRef.trim(),
+        cleanPaymentRef,
         proofUrl,
         'completed',
         actor.id,
         actor.name,
         notes,
+        targetSpecificFundId,
+        sfCode,
+        primaryGroupCode,
+        astId,
+        applicationId,
+        String(app.beneficiary_id),
+        fiscalYear,
       ],
     });
 
-    // Update Application to 'disbursed'
+    // E) Update Application to 'disbursed'
     await db.execute({
       sql: `UPDATE assistance_applications 
-            SET status = 'disbursed', disbursed_amount = ?, disbursed_by_id = ?, disbursed_by_name = ?,
-                disbursement_date = ?, disbursement_ref = ?, disbursement_proof_url = ?, disbursement_notes = ?,
+            SET status = 'disbursed',
+                disbursed_amount = ?,
+                disbursed_by_id = ?,
+                disbursed_by_name = ?,
+                disbursement_date = ?,
+                disbursement_ref = ?,
+                disbursement_proof_url = ?,
+                disbursement_notes = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
       args: [
@@ -875,14 +1294,14 @@ export class BeneficiaryService {
         actor.id,
         actor.name,
         disbursementDateStr,
-        paymentRef,
+        cleanPaymentRef,
         proofUrl,
         notes,
         applicationId,
       ],
     });
 
-    // History & Audit
+    // F) History & Audit Logs
     await db.execute({
       sql: `INSERT INTO application_history (id, application_id, status, timestamp, changed_by_id, changed_by_name, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -893,7 +1312,7 @@ export class BeneficiaryService {
         timestampNow,
         actor.id,
         actor.name,
-        `ฝ่ายการเงินโอนเงินจำนวน ฿${amount.toLocaleString()} บาท เข้าบัญชีเรียบร้อย เลขอ้างอิง ${paymentRef}`,
+        `ฝ่ายการเงินโอนเงินจำนวน ฿${amount.toLocaleString()} บาท เข้าบัญชีเรียบร้อย เลขอ้างอิง ${cleanPaymentRef}`,
       ],
     });
 
@@ -909,7 +1328,7 @@ export class BeneficiaryService {
         'DISBURSEMENT_EXECUTED',
         'disbursement',
         String(app.application_no),
-        `จ่ายเงินสวัสดิการ ฿${amount.toLocaleString()} บาท แก่ ${app.full_name} อ้างอิง ${paymentRef}`,
+        `จ่ายเงินสวัสดิการ ฿${amount.toLocaleString()} บาท แก่ ${app.full_name} (กองทุน ${sf?.name || 'เฉพาะเจาะจง'}) อ้างอิง ${cleanPaymentRef}`,
       ],
     });
 
@@ -1005,14 +1424,23 @@ export class BeneficiaryService {
 
     let query = `
       SELECT 
-        a.id, a.application_no, a.beneficiary_id, a.asnaf_category, a.requested_amount,
+        a.id, a.application_no, a.beneficiary_id, a.member_id, a.asnaf_category, a.requested_amount,
         a.approved_amount, a.disbursed_amount, a.status, a.urgency_level, a.assigned_officer_id,
         a.assigned_officer_name, a.approved_by_id, a.approved_by_name, a.approved_date,
         a.approval_notes, a.disbursement_date, a.disbursed_by_id, a.disbursed_by_name,
         a.disbursement_ref, a.disbursement_proof_url, a.disbursement_notes, a.applied_date,
         COALESCE(b.registration_no, a.registration_no) as registration_no,
         a.branch_id as app_branch_id, a.branch_name as app_branch_name,
-        a.hardship_reasons, a.assistance_type, a.assistance_type_details, a.necessity_details,
+        a.hardship_reasons, a.assistance_type, a.assistance_type_id, a.assistance_group,
+        a.primary_group_code, a.specific_fund_id,
+        COALESCE(sf_req.code, a.specific_fund_code) as resolved_sf_code,
+        COALESCE(sf_req.name, a.specific_fund_name) as resolved_sf_name,
+        ast.code as resolved_ast_code,
+        ast.name as resolved_ast_name,
+        a.approved_fund_id, a.approved_specific_fund_id,
+        sf_app.name as resolved_approved_sf_name,
+        a.classification_snapshot, a.fiscal_year,
+        a.assistance_type_details, a.necessity_details,
         a.evaluator_checklist, a.rejection_reason,
         b.household_id, b.full_name, b.title_prefix, b.birth_date, b.age, b.national_id, b.phone, b.occupation,
         b.marital_status, b.postcode, b.subdistrict as ben_subdistrict, b.branch_id as ben_branch_id, b.branch_name as ben_branch_name,
@@ -1023,12 +1451,16 @@ export class BeneficiaryService {
         h.urgent_needs, h.dependent_burdens, h.coordinator_info, h.certifier_info,
         ass.id as assessment_id, ass.living_score as ass_living_score, ass.housing_condition as ass_housing_condition,
         ass.housing_notes as ass_housing_notes, ass.debt_burden_summary, ass.primary_hardship, ass.officer_recommendation,
-        ass.recommended_amount, ass.recommended_fund_id, ass.general_notes, ass.assessed_by_name, ass.assessed_date
+        ass.recommended_amount, ass.recommended_fund_id, ass.recommended_specific_fund_id,
+        ass.general_notes, ass.assessed_by_name, ass.assessed_date
       FROM assistance_applications a
       JOIN beneficiaries b ON a.beneficiary_id = b.id
       JOIN households h ON b.household_id = h.id
       LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
-      WHERE 1=1
+      LEFT JOIN faqir_miskin_sub_funds sf_req ON sf_req.id = a.specific_fund_id
+      LEFT JOIN faqir_miskin_sub_funds sf_app ON sf_app.id = a.approved_specific_fund_id
+      LEFT JOIN assistance_types ast ON ast.id = a.assistance_type_id
+      WHERE a.id != 'REGISTRY-DOCS'
     `;
 
     const args: any[] = [];
@@ -1113,6 +1545,14 @@ export class BeneficiaryService {
       let parsedChecklist: any = undefined;
       try { if (row.evaluator_checklist) parsedChecklist = JSON.parse(String(row.evaluator_checklist)); } catch {}
 
+      let parsedSnapshot: any = undefined;
+      try { if (row.classification_snapshot) parsedSnapshot = JSON.parse(String(row.classification_snapshot)); } catch {}
+
+      const resolvedPrimaryCode = row.primary_group_code
+        ? normalizePrimaryGroupCode(String(row.primary_group_code))
+        : normalizePrimaryGroupCode(String(row.asnaf_category || 'faqir_miskin'));
+      const resolvedPrimaryName = getCentralAsnafByCode(resolvedPrimaryCode)?.nameTh || resolvedPrimaryCode;
+
       // Calculate Net Income if breakdowns exist
       let calculatedNetIncome: number | undefined = undefined;
       if (parsedIncome && parsedExpense) {
@@ -1139,6 +1579,7 @@ export class BeneficiaryService {
         applicationNo: String(row.application_no),
         registrationNo: row.registration_no ? String(row.registration_no) : undefined,
         beneficiaryId: String(row.beneficiary_id),
+        memberId: row.member_id ? String(row.member_id) : undefined,
         fullName: String(row.full_name),
         titlePrefix: row.title_prefix ? String(row.title_prefix) : 'นาย',
         birthDate: row.birth_date ? String(row.birth_date) : undefined,
@@ -1156,6 +1597,19 @@ export class BeneficiaryService {
         branchId: row.app_branch_id ? String(row.app_branch_id) : (row.ben_branch_id ? String(row.ben_branch_id) : 'br-hq'),
         branchName: row.app_branch_name ? String(row.app_branch_name) : (row.ben_branch_name ? String(row.ben_branch_name) : 'สำนักงานใหญ่ กรุงเทพมหานคร'),
         asnafCategory: String(row.asnaf_category) as AsnafCategory,
+        primaryGroupCode: resolvedPrimaryCode,
+        primaryGroupName: resolvedPrimaryName,
+        specificFundId: row.specific_fund_id ? String(row.specific_fund_id) : undefined,
+        specificFundCode: row.resolved_sf_code ? String(row.resolved_sf_code) : undefined,
+        specificFundName: row.resolved_sf_name ? String(row.resolved_sf_name) : undefined,
+        assistanceTypeId: row.assistance_type_id ? String(row.assistance_type_id) : undefined,
+        assistanceTypeCode: row.resolved_ast_code ? String(row.resolved_ast_code) : undefined,
+        assistanceTypeGroup: (row.assistance_group === 'specific' ? 'specific' : 'core'),
+        approvedFundId: row.approved_fund_id ? String(row.approved_fund_id) : undefined,
+        approvedSpecificFundId: row.approved_specific_fund_id ? String(row.approved_specific_fund_id) : undefined,
+        approvedSpecificFundName: row.resolved_approved_sf_name ? String(row.resolved_approved_sf_name) : undefined,
+        classificationSnapshot: parsedSnapshot,
+        fiscalYear: row.fiscal_year ? String(row.fiscal_year) : '2569',
         appliedDate: String(row.applied_date),
         requestedAmount: Number(row.requested_amount),
         approvedAmount: row.approved_amount ? Number(row.approved_amount) : undefined,
@@ -1179,7 +1633,7 @@ export class BeneficiaryService {
         landTitleType: row.land_title_type ? String(row.land_title_type) as any : undefined,
         landTitleNotes: row.land_title_notes ? String(row.land_title_notes) : undefined,
         hardshipReasons: parsedHardship,
-        assistanceType: row.assistance_type ? String(row.assistance_type) : 'cash',
+        assistanceType: row.resolved_ast_name ? String(row.resolved_ast_name) : (row.assistance_type ? String(row.assistance_type) : 'เงินสงเคราะห์ยังชีพ'),
         assistanceTypeDetails: row.assistance_type_details ? String(row.assistance_type_details) : undefined,
         necessityDetails: row.necessity_details ? String(row.necessity_details) : undefined,
         pastAssistance: parsedPast,
@@ -1240,6 +1694,7 @@ export class BeneficiaryService {
           officerRecommendation: String(row.officer_recommendation) as any,
           recommendedAmount: Number(row.recommended_amount),
           recommendedFundId: String(row.recommended_fund_id),
+          recommendedSpecificFundId: row.recommended_specific_fund_id ? String(row.recommended_specific_fund_id) : undefined,
           generalNotes: String(row.general_notes),
         } : undefined,
 
@@ -1320,9 +1775,11 @@ export class BeneficiaryService {
     await initDb();
     const db = getDb();
 
-    // Check application exists
+    // Check application exists along with current 3-tier fund classification
     const appRes = await db.execute({
-      sql: `SELECT a.id, a.application_no, a.beneficiary_id, b.household_id, a.status 
+      sql: `SELECT a.id, a.application_no, a.beneficiary_id, b.household_id, a.status,
+                   a.asnaf_category, a.primary_group_code, a.specific_fund_id, a.specific_fund_code, a.specific_fund_name,
+                   a.assistance_type_id, a.assistance_type, a.assistance_group, a.requested_amount, a.fiscal_year
             FROM assistance_applications a
             JOIN beneficiaries b ON a.beneficiary_id = b.id
             WHERE a.id = ?`,
@@ -1334,9 +1791,68 @@ export class BeneficiaryService {
     }
 
     const app = appRes.rows[0];
+    const currentStatus = String(app.status || 'submitted');
     const beneficiaryId = String(app.beneficiary_id);
     const householdId = String(app.household_id);
     const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+
+    // Detect whether caller is attempting to modify 3-tier fund / assistance type classification or requested amount
+    const isChangingClassification = Boolean(
+      (input.primaryGroupCode !== undefined && normalizePrimaryGroupCode(input.primaryGroupCode) !== normalizePrimaryGroupCode(String(app.primary_group_code || app.asnaf_category || ''))) ||
+      (input.specificFundId !== undefined && String(input.specificFundId) !== String(app.specific_fund_id || '')) ||
+      (input.assistanceTypeId !== undefined && String(input.assistanceTypeId) !== String(app.assistance_type_id || '')) ||
+      (input.assistanceType !== undefined && String(input.assistanceType) !== String(app.assistance_type || '')) ||
+      (input.asnafCategory !== undefined && String(input.asnafCategory) !== String(app.asnaf_category || ''))
+    );
+    const isChangingRequestedAmount = input.requestedAmount !== undefined && Math.abs(Number(input.requestedAmount) - Number(app.requested_amount || 0)) > 0.001;
+
+    // 1. Disbursed / Followup / Closed / Cancelled -> Strictly lock fund, type, and requested amount
+    if (['disbursed', 'followup', 'closed', 'cancelled'].includes(currentStatus) && (isChangingClassification || isChangingRequestedAmount)) {
+      throw new Error(
+        `LOCKED_STATUS: คำร้อง ${app.application_no} อยู่ในสถานะ "${currentStatus}" ไม่สามารถแก้ไขกลุ่มกองทุน ประเภทความช่วยเหลือ หรือวงเงินคำร้องได้`
+      );
+    }
+
+    // 2. Approved / Wait Disbursement -> Strictly lock silent fund/type edits on the request form
+    if (['approved', 'wait_disbursement'].includes(currentStatus) && (isChangingClassification || isChangingRequestedAmount)) {
+      throw new Error(
+        `LOCKED_AFTER_APPROVAL: คำร้อง ${app.application_no} ได้รับการอนุมัติแล้ว ไม่สามารถแก้ไขกลุ่มกองทุน ประเภทความช่วยเหลือ หรือวงเงินคำร้องย้อนหลังโดยตรงได้`
+      );
+    }
+
+    // 3. Member / Public Applicant -> Lock fund/type edits after submission (status !== 'draft')
+    if (['member', 'public'].includes(actor.role) && currentStatus !== 'draft' && (isChangingClassification || isChangingRequestedAmount)) {
+      throw new Error(
+        `LOCKED_AFTER_SUBMIT: ผู้ยื่นคำร้องไม่สามารถแก้ไขกลุ่มกองทุน ประเภทความช่วยเหลือ หรือวงเงินหลังจากส่งคำร้องแล้ว กรุณาติดต่อเจ้าหน้าที่ผู้รับผิดชอบ`
+      );
+    }
+
+    if (input.requestedAmount !== undefined) {
+      const reqAmt = Number(input.requestedAmount);
+      if (!Number.isFinite(reqAmt) || reqAmt <= 0) {
+        throw new Error('INVALID_AMOUNT: จำนวนเงินที่ขอรับความช่วยเหลือต้องมากกว่า 0 บาท');
+      }
+    }
+
+    // 4. Validate & resolve 3-tier classification if any classification field was supplied on an editable pre-approval request
+    let resolvedClassification: Awaited<ReturnType<typeof BeneficiaryService.validateAndResolveThreeTierSelection>> | null = null;
+    if (
+      isChangingClassification ||
+      input.primaryGroupCode !== undefined ||
+      input.specificFundId !== undefined ||
+      input.assistanceTypeId !== undefined
+    ) {
+      resolvedClassification = await this.validateAndResolveThreeTierSelection({
+        fiscalYear: input.fiscalYear || (app.fiscal_year ? String(app.fiscal_year) : '2569'),
+        primaryGroupCode: input.primaryGroupCode ?? (app.primary_group_code ? String(app.primary_group_code) : undefined),
+        asnafCategory: input.asnafCategory ?? (input.primaryGroupCode ? undefined : (app.asnaf_category ? String(app.asnaf_category) : undefined)),
+        specificFundId: input.specificFundId ?? (input.primaryGroupCode && !input.specificFundId ? '' : (app.specific_fund_id ? String(app.specific_fund_id) : undefined)),
+        assistanceTypeId: input.assistanceTypeId ?? ((input.primaryGroupCode || input.specificFundId) && !input.assistanceTypeId && !input.assistanceType ? '' : (app.assistance_type_id ? String(app.assistance_type_id) : undefined)),
+        assistanceType: input.assistanceType,
+        requestedAmount: input.requestedAmount !== undefined ? Number(input.requestedAmount) : Number(app.requested_amount || 1),
+        requireExplicitThreeTier: Boolean(input.primaryGroupCode !== undefined || input.specificFundId !== undefined || input.assistanceTypeId !== undefined),
+      });
+    }
 
     // Server-side Birth Date & Age recalculation
     let updateBirthDate: string | null = null;
@@ -1460,25 +1976,37 @@ export class BeneficiaryService {
     await db.execute({
       sql: `UPDATE assistance_applications SET 
         asnaf_category = COALESCE(?, asnaf_category),
+        primary_group_code = COALESCE(?, primary_group_code),
+        specific_fund_id = COALESCE(?, specific_fund_id),
+        specific_fund_code = COALESCE(?, specific_fund_code),
+        specific_fund_name = COALESCE(?, specific_fund_name),
+        assistance_type_id = COALESCE(?, assistance_type_id),
+        assistance_type = COALESCE(?, assistance_type),
+        assistance_group = COALESCE(?, assistance_group),
         requested_amount = COALESCE(?, requested_amount),
         urgency_level = COALESCE(?, urgency_level),
         branch_id = COALESCE(?, branch_id),
         branch_name = COALESCE(?, branch_name),
         hardship_reasons = COALESCE(?, hardship_reasons),
-        assistance_type = COALESCE(?, assistance_type),
         assistance_type_details = COALESCE(?, assistance_type_details),
         necessity_details = COALESCE(?, necessity_details),
         evaluator_checklist = COALESCE(?, evaluator_checklist),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       args: [
-        input.asnafCategory || null,
-        input.requestedAmount !== undefined ? input.requestedAmount : null,
+        resolvedClassification ? resolvedClassification.asnafCategory : (input.asnafCategory || null),
+        resolvedClassification ? resolvedClassification.primaryGroupCode : null,
+        resolvedClassification ? resolvedClassification.specificFundId : null,
+        resolvedClassification ? resolvedClassification.specificFundCode : null,
+        resolvedClassification ? resolvedClassification.specificFundName : null,
+        resolvedClassification ? resolvedClassification.assistanceTypeId : null,
+        resolvedClassification ? resolvedClassification.assistanceTypeName : (input.assistanceType || null),
+        resolvedClassification ? resolvedClassification.assistanceGroup : null,
+        input.requestedAmount !== undefined ? Number(input.requestedAmount) : null,
         input.urgencyLevel || null,
         input.branchId || null,
         input.branchName || null,
         input.hardshipReasons ? JSON.stringify(input.hardshipReasons) : null,
-        input.assistanceType || null,
         input.assistanceTypeDetails || null,
         input.necessityDetails || null,
         input.checklist ? JSON.stringify(input.checklist) : null,
@@ -1516,6 +2044,10 @@ export class BeneficiaryService {
       }
     }
 
+    const classificationChangeSummary = (resolvedClassification && isChangingClassification)
+      ? ` (เปลี่ยนกองทุน/ประเภทเป็น: ${resolvedClassification.primaryGroupName} → ${resolvedClassification.specificFundName} → ${resolvedClassification.assistanceTypeName})`
+      : '';
+
     // Add History & Audit Log
     await db.execute({
       sql: `INSERT INTO application_history (id, application_id, status, timestamp, changed_by_id, changed_by_name, notes)
@@ -1527,23 +2059,39 @@ export class BeneficiaryService {
         timestampNow,
         actor.id,
         actor.name,
-        `แก้ไขปรับปรุงข้อมูลแบบสำรวจคำร้องโดย ${actor.name}`,
+        `แก้ไขปรับปรุงข้อมูลคำร้องโดย ${actor.name}${classificationChangeSummary}`,
       ],
     });
 
     await db.execute({
-      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         `log-${Date.now()}`,
         timestampNow,
         actor.id,
         actor.name,
         actor.role,
-        'APPLICATION_UPDATED',
+        isChangingClassification ? 'UPDATE_CLASSIFICATION' : 'APPLICATION_UPDATED',
         'application',
-        String(app.application_no),
-        `แก้ไขข้อมูลแบบสำรวจคำร้อง ${app.application_no} โดย ${actor.name}`,
+        applicationId,
+        `แก้ไขข้อมูลคำร้อง ${app.application_no} โดย ${actor.name}${classificationChangeSummary}`,
+        JSON.stringify({
+          primaryGroupCode: app.primary_group_code,
+          specificFundId: app.specific_fund_id,
+          specificFundName: app.specific_fund_name,
+          assistanceTypeId: app.assistance_type_id,
+          assistanceType: app.assistance_type,
+          requestedAmount: Number(app.requested_amount || 0),
+        }),
+        JSON.stringify({
+          primaryGroupCode: resolvedClassification ? resolvedClassification.primaryGroupCode : app.primary_group_code,
+          specificFundId: resolvedClassification ? resolvedClassification.specificFundId : app.specific_fund_id,
+          specificFundName: resolvedClassification ? resolvedClassification.specificFundName : app.specific_fund_name,
+          assistanceTypeId: resolvedClassification ? resolvedClassification.assistanceTypeId : app.assistance_type_id,
+          assistanceType: resolvedClassification ? resolvedClassification.assistanceTypeName : (input.assistanceType || app.assistance_type),
+          requestedAmount: input.requestedAmount !== undefined ? Number(input.requestedAmount) : Number(app.requested_amount || 0),
+        }),
       ],
     });
 
@@ -1695,7 +2243,94 @@ export class BeneficiaryService {
   /**
    * 13. Fetch Active Assistance Types (Extensible by Admin)
    */
-  static async getAssistanceTypes() {
+  static async getAssistanceTypes(filters?: {
+    includeInactive?: boolean;
+    primaryGroupCode?: string;
+    specificFundId?: string;
+    activeFundOnly?: boolean;
+    search?: string;
+  }) {
+    await initDb();
+    const db = getDb();
+
+    let sql = `
+      SELECT ast.*,
+             sf.code as sf_code,
+             sf.fund_code as sf_fund_code,
+             sf.name as sf_name,
+             sf.is_active as sf_is_active,
+             sf.primary_group_code as sf_primary_code,
+             aa.asnaf_name as primary_name,
+             aa.is_active as aa_is_active,
+             (SELECT COUNT(*) FROM assistance_applications app WHERE app.id != 'REGISTRY-DOCS' AND (app.assistance_type_id = ast.id OR app.assistance_type = ast.code)) as app_ref_count
+      FROM assistance_types ast
+      LEFT JOIN faqir_miskin_sub_funds sf ON ast.specific_fund_id = sf.id
+      LEFT JOIN asnaf_allocations aa ON COALESCE(ast.primary_group_code, sf.primary_group_code) = aa.asnaf_code AND aa.fiscal_year = '2569'
+      WHERE 1=1
+    `;
+    const args: any[] = [];
+
+    if (!filters?.includeInactive) {
+      sql += ' AND ast.is_active = 1';
+    }
+    if (filters?.activeFundOnly) {
+      sql += ' AND ast.is_active = 1 AND COALESCE(sf.is_active, 1) = 1 AND COALESCE(aa.is_active, 1) = 1';
+    }
+    if (filters?.primaryGroupCode && filters.primaryGroupCode !== 'all') {
+      const normalizedPrimary = ['faqir', 'miskin'].includes(filters.primaryGroupCode)
+        ? 'faqir_miskin'
+        : filters.primaryGroupCode;
+      sql += ' AND COALESCE(ast.primary_group_code, sf.primary_group_code) = ?';
+      args.push(normalizedPrimary);
+    }
+    if (filters?.specificFundId && filters.specificFundId !== 'all') {
+      sql += ' AND (ast.specific_fund_id = ? OR sf.code = ? OR sf.fund_code = ?)';
+      args.push(filters.specificFundId, filters.specificFundId, filters.specificFundId);
+    }
+    if (filters?.search?.trim()) {
+      const s = `%${filters.search.trim()}%`;
+      sql += ' AND (ast.code LIKE ? OR ast.name LIKE ? OR COALESCE(ast.description, "") LIKE ?)';
+      args.push(s, s, s);
+    }
+
+    sql += ' ORDER BY COALESCE(ast.order_index, 999) ASC, ast.code ASC';
+
+    const res = await db.execute({ sql, args });
+    return res.rows.map((r) => {
+      let reqDocs: string[] = [];
+      try { if (r.required_docs) reqDocs = JSON.parse(String(r.required_docs)); } catch {}
+      const pCode = r.primary_group_code
+        ? String(r.primary_group_code)
+        : (r.sf_primary_code ? String(r.sf_primary_code) : undefined);
+
+      return {
+        id: String(r.id),
+        code: String(r.code),
+        name: String(r.name),
+        group: (r.type_group ? String(r.type_group) : (pCode === 'faqir_miskin' ? 'core' : 'specific')) as 'core' | 'specific',
+        groupLabelTh: pCode === 'faqir_miskin' ? 'กลุ่มหลัก (ฟากีร–มิสกีน)' : 'กลุ่มเฉพาะตามอัสนัฟ',
+        category: String(r.category) as any,
+        description: r.description ? String(r.description) : undefined,
+        conditionsText: r.conditions_text ? String(r.conditions_text) : undefined,
+        assistanceFormat: (r.assistance_format ? String(r.assistance_format) : 'one_time') as any,
+        requiredDocuments: reqDocs,
+        defaultMinAmount: r.default_min_amount !== null && r.default_min_amount !== undefined ? Number(r.default_min_amount) : undefined,
+        defaultMaxAmount: r.default_max_amount !== null && r.default_max_amount !== undefined ? Number(r.default_max_amount) : undefined,
+        canHardDelete: (Number(r.app_ref_count) || 0) === 0,
+        specificFundId: r.specific_fund_id ? String(r.specific_fund_id) : undefined,
+        specificFundCode: r.sf_fund_code ? String(r.sf_fund_code) : (r.sf_code ? String(r.sf_code) : undefined),
+        specificFundName: r.sf_name ? String(r.sf_name) : undefined,
+        primaryGroupCode: pCode,
+        primaryGroupName: r.primary_name ? String(r.primary_name) : pCode,
+        linkedApplicationCount: Number(r.app_ref_count) || 0,
+        orderIndex: Number(r.order_index) || 0,
+        isActive: Boolean(r.is_active),
+        deactivatedReason: r.deactivated_reason ? String(r.deactivated_reason) : null,
+      };
+    });
+  }
+
+  private static async _legacyGetAssistanceTypesUnused() {
     await initDb();
     const db = getDb();
     const res = await db.execute('SELECT * FROM assistance_types WHERE is_active = 1 ORDER BY code ASC');
@@ -1713,6 +2348,363 @@ export class BeneficiaryService {
    * 14. Add New Assistance Type (Admin Extensible)
    */
   static async addAssistanceType(
+    nameOrInput:
+      | string
+      | {
+          code?: string;
+          name: string;
+          category: 'cash' | 'in_kind' | 'service' | 'housing' | 'education' | 'medical' | 'other';
+          specificFundId: string;
+          description?: string;
+          conditionsText?: string;
+          assistanceFormat?: 'one_time' | 'monthly' | 'project' | 'emergency' | 'career_capital' | 'service';
+          requiredDocuments?: string[];
+          defaultMinAmount?: number;
+          defaultMaxAmount?: number;
+          orderIndex?: number;
+        },
+    categoryArg?: 'cash' | 'in_kind' | 'service' | 'housing' | 'education' | 'medical' | 'other',
+    descriptionArg?: string,
+    actorArg?: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    const actor = actorArg || { id: 'u-1', name: 'ผู้ดูแลระบบสูงสุด', role: 'super_admin' };
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: เฉพาะผู้ดูแลระบบ ผู้บริหาร หรือฝ่ายการเงินเท่านั้นที่มีสิทธิ์เพิ่มประเภทความช่วยเหลือ');
+    }
+
+    const payload =
+      typeof nameOrInput === 'string'
+        ? {
+            name: nameOrInput,
+            category: categoryArg || 'cash',
+            specificFundId: 'subf-1',
+            description: descriptionArg || '',
+          }
+        : nameOrInput;
+
+    const cleanName = (payload.name || '').trim();
+    if (!cleanName) throw new Error('กรุณาระบุชื่อประเภทความช่วยเหลือ');
+    if (!payload.specificFundId) throw new Error('กรุณาเลือกกองทุนเฉพาะที่ต้องการผูกประเภทความช่วยเหลือ');
+
+    // Validate Specific Fund exists
+    const sfRes = await db.execute({
+      sql: 'SELECT id, code, fund_code, name, primary_group_code FROM faqir_miskin_sub_funds WHERE id = ? OR code = ? OR fund_code = ?',
+      args: [payload.specificFundId, payload.specificFundId, payload.specificFundId],
+    });
+    if (sfRes.rows.length === 0) {
+      throw new Error(`ไม่พบกองทุนเฉพาะรหัส ${payload.specificFundId}`);
+    }
+    const sf = sfRes.rows[0];
+    const resolvedSfId = String(sf.id);
+    const primaryGroupCode = String(sf.primary_group_code || 'faqir_miskin');
+
+    const code = (payload.code?.trim() || `AST_${Date.now().toString().slice(-5)}`)
+      .toUpperCase()
+      .replace(/[^A-Z0-9_]+/g, '_');
+
+    const dupCheck = await db.execute({
+      sql: 'SELECT id FROM assistance_types WHERE LOWER(code) = LOWER(?) OR (specific_fund_id = ? AND LOWER(name) = LOWER(?))',
+      args: [code, resolvedSfId, cleanName],
+    });
+    if (dupCheck.rows.length > 0) {
+      throw new Error(`รหัส "${code}" หรือชื่อ "${cleanName}" มีอยู่ในกองทุนนี้แล้ว`);
+    }
+
+    const id = `ast-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+    const groupType = primaryGroupCode === 'faqir_miskin' ? 'core' : 'specific';
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+
+    await db.execute({
+      sql: `INSERT INTO assistance_types (
+              id, code, name, category, description, type_group, specific_fund_id, primary_group_code,
+              conditions_text, assistance_format, required_docs, default_min_amount, default_max_amount, order_index, is_active, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`,
+      args: [
+        id,
+        code,
+        cleanName,
+        payload.category || 'cash',
+        payload.description?.trim() || '',
+        groupType,
+        resolvedSfId,
+        primaryGroupCode,
+        payload.conditionsText?.trim() || '',
+        ('assistanceFormat' in payload && payload.assistanceFormat) ? payload.assistanceFormat : 'one_time',
+        JSON.stringify(('requiredDocuments' in payload ? payload.requiredDocuments : undefined) || []),
+        ('defaultMinAmount' in payload && payload.defaultMinAmount !== undefined) ? Number(payload.defaultMinAmount) : null,
+        ('defaultMaxAmount' in payload && payload.defaultMaxAmount !== undefined) ? Number(payload.defaultMaxAmount) : null,
+        ('orderIndex' in payload && payload.orderIndex !== undefined) ? payload.orderIndex : 50,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values)
+            VALUES (?, ?, ?, ?, ?, 'ASSISTANCE_TYPE_CREATED', 'assistance_type', ?, ?, NULL, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        id,
+        `เพิ่มประเภทความช่วยเหลือ "${cleanName}" (${code}) ผูกกับกองทุน "${sf.name}"`,
+        JSON.stringify({ id, code, name: cleanName, specificFundId: resolvedSfId, primaryGroupCode }),
+      ],
+    });
+
+    const list = await this.getAssistanceTypes({ includeInactive: true });
+    return list.find((t) => t.id === id) || { id, code, name: cleanName, category: payload.category, specificFundId: resolvedSfId, primaryGroupCode };
+  }
+
+  static async updateAssistanceType(
+    id: string,
+    input: {
+      code?: string;
+      name?: string;
+      category?: 'cash' | 'in_kind' | 'service' | 'housing' | 'education' | 'medical' | 'other';
+      specificFundId?: string;
+      description?: string;
+      conditionsText?: string;
+      assistanceFormat?: 'one_time' | 'monthly' | 'project' | 'emergency' | 'career_capital' | 'service';
+      requiredDocuments?: string[];
+      defaultMinAmount?: number | null;
+      defaultMaxAmount?: number | null;
+      orderIndex?: number;
+      isActive?: boolean;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: เฉพาะผู้ดูแลระบบ ผู้บริหาร หรือฝ่ายการเงินเท่านั้นที่มีสิทธิ์แก้ไขประเภทความช่วยเหลือ');
+    }
+
+    const existingRes = await db.execute({
+      sql: 'SELECT * FROM assistance_types WHERE id = ?',
+      args: [id],
+    });
+    if (existingRes.rows.length === 0) {
+      throw new Error(`ไม่พบประเภทความช่วยเหลือรหัส ${id}`);
+    }
+    const existing = existingRes.rows[0];
+
+    const refRes = await db.execute({
+      sql: "SELECT COUNT(*) as cnt FROM assistance_applications WHERE id != 'REGISTRY-DOCS' AND (assistance_type_id = ? OR assistance_type = ?)",
+      args: [id, String(existing.code)],
+    });
+    const refCount = Number(refRes.rows[0]?.cnt) || 0;
+
+    const nextCode = input.code !== undefined ? input.code.trim().toUpperCase() : String(existing.code);
+    if (refCount > 0 && nextCode.toLowerCase() !== String(existing.code).toLowerCase()) {
+      throw new Error(`ไม่สามารถเปลี่ยนรหัสประเภทความช่วยเหลือได้ เนื่องจากมีคำร้องอ้างอิงแล้ว ${refCount} รายการ`);
+    }
+
+    let nextSfId = existing.specific_fund_id ? String(existing.specific_fund_id) : 'subf-1';
+    let nextPrimaryCode = existing.primary_group_code ? String(existing.primary_group_code) : 'faqir_miskin';
+
+    if (input.specificFundId && input.specificFundId !== nextSfId) {
+      const sfRes = await db.execute({
+        sql: 'SELECT id, primary_group_code FROM faqir_miskin_sub_funds WHERE id = ?',
+        args: [input.specificFundId],
+      });
+      if (sfRes.rows.length === 0) {
+        throw new Error(`ไม่พบกองทุนเฉพาะรหัส ${input.specificFundId}`);
+      }
+      const targetPrimary = String(sfRes.rows[0].primary_group_code || 'faqir_miskin');
+      if (refCount > 0 && targetPrimary !== nextPrimaryCode) {
+        throw new Error(`ไม่สามารถย้ายประเภทความช่วยเหลือข้ามกลุ่มหลักได้ เนื่องจากมีคำร้องอ้างอิงแล้ว ${refCount} รายการ`);
+      }
+      nextSfId = String(sfRes.rows[0].id);
+      nextPrimaryCode = targetPrimary;
+    }
+
+    const nextName = input.name !== undefined ? input.name.trim() : String(existing.name);
+    if (!nextName) throw new Error('กรุณาระบุชื่อประเภทความช่วยเหลือ');
+
+    const dupCheck = await db.execute({
+      sql: 'SELECT id FROM assistance_types WHERE id != ? AND (LOWER(code) = LOWER(?) OR (specific_fund_id = ? AND LOWER(name) = LOWER(?)))',
+      args: [id, nextCode, nextSfId, nextName],
+    });
+    if (dupCheck.rows.length > 0) {
+      throw new Error(`รหัส "${nextCode}" หรือชื่อ "${nextName}" ซ้ำกับรายการอื่นในระบบ`);
+    }
+
+    const nextCategory = input.category || String(existing.category);
+    const nextDesc = input.description !== undefined ? input.description.trim() : String(existing.description || '');
+    const nextCond = input.conditionsText !== undefined ? input.conditionsText.trim() : String(existing.conditions_text || '');
+    const nextFormat = input.assistanceFormat !== undefined ? input.assistanceFormat : String(existing.assistance_format || 'one_time');
+    const nextDocs = input.requiredDocuments !== undefined ? JSON.stringify(input.requiredDocuments) : (existing.required_docs ? String(existing.required_docs) : '[]');
+    const nextMin = input.defaultMinAmount !== undefined ? input.defaultMinAmount : (existing.default_min_amount !== null && existing.default_min_amount !== undefined ? Number(existing.default_min_amount) : null);
+    const nextMax = input.defaultMaxAmount !== undefined ? input.defaultMaxAmount : (existing.default_max_amount !== null ? Number(existing.default_max_amount) : null);
+    const nextOrder = input.orderIndex !== undefined ? Number(input.orderIndex) : Number(existing.order_index || 0);
+    const nextActive = input.isActive !== undefined ? (input.isActive ? 1 : 0) : Number(existing.is_active ?? 1);
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+
+    await db.execute({
+      sql: `UPDATE assistance_types
+            SET code = ?,
+                name = ?,
+                category = ?,
+                description = ?,
+                specific_fund_id = ?,
+                primary_group_code = ?,
+                type_group = ?,
+                conditions_text = ?,
+                assistance_format = ?,
+                required_docs = ?,
+                default_min_amount = ?,
+                default_max_amount = ?,
+                order_index = ?,
+                is_active = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [
+        nextCode,
+        nextName,
+        nextCategory,
+        nextDesc,
+        nextSfId,
+        nextPrimaryCode,
+        nextPrimaryCode === 'faqir_miskin' ? 'core' : 'specific',
+        nextCond,
+        nextFormat,
+        nextDocs,
+        nextMin,
+        nextMax,
+        nextOrder,
+        nextActive,
+        id,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values)
+            VALUES (?, ?, ?, ?, ?, 'ASSISTANCE_TYPE_UPDATED', 'assistance_type', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        id,
+        `แก้ไขประเภทความช่วยเหลือ "${nextName}" (${nextCode}) โดย ${actor.name}`,
+        JSON.stringify({ code: existing.code, name: existing.name, specificFundId: existing.specific_fund_id }),
+        JSON.stringify({ code: nextCode, name: nextName, specificFundId: nextSfId }),
+      ],
+    });
+
+    const list = await this.getAssistanceTypes({ includeInactive: true });
+    return list.find((t) => t.id === id);
+  }
+
+  static async deleteOrDeactivateAssistanceType(
+    id: string,
+    options: { mode: 'delete' | 'deactivate' | 'activate'; reason?: string },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: เฉพาะผู้ดูแลระบบ ผู้บริหาร หรือฝ่ายการเงินเท่านั้นที่มีสิทธิ์ลบหรือปิดใช้งานประเภทความช่วยเหลือ');
+    }
+
+    const existingRes = await db.execute({
+      sql: 'SELECT * FROM assistance_types WHERE id = ?',
+      args: [id],
+    });
+    if (existingRes.rows.length === 0) {
+      throw new Error(`ไม่พบประเภทความช่วยเหลือรหัส ${id}`);
+    }
+    const existing = existingRes.rows[0];
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+
+    const refRes = await db.execute({
+      sql: "SELECT COUNT(*) as cnt FROM assistance_applications WHERE id != 'REGISTRY-DOCS' AND (assistance_type_id = ? OR assistance_type = ?)",
+      args: [id, String(existing.code)],
+    });
+    const refCount = Number(refRes.rows[0]?.cnt) || 0;
+
+    if (options.mode === 'delete') {
+      if (refCount > 0) {
+        throw new Error(
+          `CANNOT_HARD_DELETE: ประเภทความช่วยเหลือ "${existing.name}" มีคำร้องอ้างอิงอยู่แล้ว ${refCount} รายการ ระบบไม่อนุญาตให้ลบถาวร กรุณาใช้การปิดใช้งาน (Deactivate) แทน`
+        );
+      }
+      await db.execute({ sql: 'DELETE FROM assistance_types WHERE id = ?', args: [id] });
+      await db.execute({
+        sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values)
+              VALUES (?, ?, ?, ?, ?, 'ASSISTANCE_TYPE_DELETED', 'assistance_type', ?, ?, ?, NULL)`,
+        args: [
+          `log-${Date.now()}`,
+          timestampNow,
+          actor.id,
+          actor.name,
+          actor.role,
+          id,
+          `ลบประเภทความช่วยเหลือ "${existing.name}" (${existing.code}) โดย ${actor.name}`,
+          JSON.stringify(existing),
+        ],
+      });
+      return { success: true, mode: 'delete', deletedId: id };
+    }
+
+    if (options.mode === 'deactivate') {
+      const reason = (options.reason || '').trim();
+      if (!reason) throw new Error('กรุณาระบุเหตุผลในการปิดใช้งานประเภทความช่วยเหลือ');
+
+      await db.execute({
+        sql: `UPDATE assistance_types
+              SET is_active = 0, deactivated_at = ?, deactivated_by = ?, deactivated_reason = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?`,
+        args: [timestampNow, actor.name, reason, id],
+      });
+      await db.execute({
+        sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values)
+              VALUES (?, ?, ?, ?, ?, 'ASSISTANCE_TYPE_DEACTIVATED', 'assistance_type', ?, ?, ?, ?)`,
+        args: [
+          `log-${Date.now()}`,
+          timestampNow,
+          actor.id,
+          actor.name,
+          actor.role,
+          id,
+          `ปิดใช้งานประเภทความช่วยเหลือ "${existing.name}" เหตุผล: ${reason}`,
+          JSON.stringify({ isActive: true }),
+          JSON.stringify({ isActive: false, reason }),
+        ],
+      });
+      return { success: true, mode: 'deactivate', id };
+    }
+
+    await db.execute({
+      sql: `UPDATE assistance_types
+            SET is_active = 1, deactivated_at = NULL, deactivated_by = NULL, deactivated_reason = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [id],
+    });
+    await db.execute({
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
+            VALUES (?, ?, ?, ?, ?, 'ASSISTANCE_TYPE_REACTIVATED', 'assistance_type', ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        id,
+        `เปิดใช้งานประเภทความช่วยเหลือ "${existing.name}" อีกครั้งโดย ${actor.name}`,
+      ],
+    });
+    return { success: true, mode: 'activate', id };
+  }
+
+  private static async _legacyAddAssistanceTypeUnused(
     name: string,
     category: 'cash' | 'in_kind' | 'service' | 'housing' | 'education' | 'medical' | 'other',
     description: string,

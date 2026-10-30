@@ -184,12 +184,49 @@ export function BeneficiaryRegistryView({
 
   // Assistance request creation dialog state (Creates independent assistance request)
   const [isAssistanceDialogOpen, setIsAssistanceDialogOpen] = useState<boolean>(false);
-  const [assistanceType, setAssistanceType] = useState<string>('cash');
+  const [regHierarchyData, setRegHierarchyData] = useState<any[]>([]);
+  const [quickPrimaryCode, setQuickPrimaryCode] = useState<string>('faqir_miskin');
+  const [quickSpecificFundId, setQuickSpecificFundId] = useState<string>('');
+  const [quickAssistanceTypeId, setQuickAssistanceTypeId] = useState<string>('');
+  const [assistanceType, setAssistanceType] = useState<string>('เงินสงเคราะห์ยังชีพ');
   const [assistanceDetails, setAssistanceDetails] = useState<string>('');
   const [requestedAmount, setRequestedAmount] = useState<number>(10000);
   const [urgencyLevel, setUrgencyLevel] = useState<string>('normal');
   const [necessityDetails, setNecessityDetails] = useState<string>('');
   const [isSubmittingAssistance, setIsSubmittingAssistance] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetch('/api/finance/allocations/asnaf?view=hierarchy&year=2569&activeOnly=true')
+      .then((res) => res.json())
+      .then((json) => {
+        const groups = Array.isArray(json.data?.primaryGroups) ? json.data.primaryGroups : (Array.isArray(json.data) ? json.data : []);
+        if (json.success && groups.length > 0) {
+          setRegHierarchyData(groups);
+        }
+      })
+      .catch((err) => console.error('Failed to load fund hierarchy in BeneficiaryRegistryView', err));
+  }, []);
+
+  const quickPrimaryObj = useMemo(
+    () => regHierarchyData.find((pg) => pg.asnafCode === quickPrimaryCode) || regHierarchyData[0] || null,
+    [regHierarchyData, quickPrimaryCode]
+  );
+  const quickSpecificFunds = useMemo(
+    () => quickPrimaryObj?.specificFunds || [],
+    [quickPrimaryObj]
+  );
+  const quickSpecificFundObj = useMemo(
+    () => quickSpecificFunds.find((sf: any) => sf.id === quickSpecificFundId) || quickSpecificFunds[0] || null,
+    [quickSpecificFunds, quickSpecificFundId]
+  );
+  const quickAssistanceTypes = useMemo(
+    () => quickSpecificFundObj?.assistanceTypes || [],
+    [quickSpecificFundObj]
+  );
+  const quickAssistanceTypeObj = useMemo(
+    () => quickAssistanceTypes.find((ast: any) => ast.id === quickAssistanceTypeId) || quickAssistanceTypes[0] || null,
+    [quickAssistanceTypes, quickAssistanceTypeId]
+  );
 
   // Checklist editing state
   const [checklist, setChecklist] = useState<EvaluatorChecklist | null>(null);
@@ -582,9 +619,17 @@ export function BeneficiaryRegistryView({
   // Open quick create assistance request
   const handleOpenAssistanceDialog = (reg: BeneficiaryRegistryItem) => {
     setSelectedRegistry(reg);
-    setAssistanceType('cash');
+    const pCode = ['faqir', 'miskin'].includes(reg.asnafCategory) ? 'faqir_miskin' : reg.asnafCategory;
+    const pg = regHierarchyData.find((p) => p.asnafCode === pCode) || regHierarchyData[0];
+    const sf = pg?.specificFunds?.[0];
+    const ast = sf?.assistanceTypes?.[0];
+
+    setQuickPrimaryCode(pg ? pg.asnafCode : 'faqir_miskin');
+    setQuickSpecificFundId(sf ? sf.id : '');
+    setQuickAssistanceTypeId(ast ? ast.id : '');
+    setAssistanceType(ast ? ast.name : 'เงินสงเคราะห์ยังชีพ');
     setAssistanceDetails('');
-    setRequestedAmount(reg.netIncome < 0 ? 10000 : 8000);
+    setRequestedAmount(ast?.defaultMinAmount || (reg.netIncome < 0 ? 10000 : 8000));
     setUrgencyLevel('normal');
     setNecessityDetails(`ขอรับการสนับสนุนสำหรับครัวเรือน ${reg.fullName} เนื่องจากมีรายได้ไม่เพียงพอต่อค่าครองชีพ`);
     setIsAssistanceDialogOpen(true);
@@ -597,7 +642,11 @@ export function BeneficiaryRegistryView({
     try {
       const res = await createAssistanceRequest({
         beneficiaryId: selectedRegistry.id,
-        assistanceType,
+        nationalId: selectedRegistry.nationalId,
+        primaryGroupCode: quickPrimaryCode,
+        specificFundId: quickSpecificFundId || undefined,
+        assistanceTypeId: quickAssistanceTypeId || undefined,
+        assistanceType: quickAssistanceTypeObj?.name || assistanceType,
         assistanceTypeDetails: assistanceDetails,
         urgencyLevel,
         requestedAmount: Number(requestedAmount),
@@ -1451,21 +1500,73 @@ export function BeneficiaryRegistryView({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-800 block mb-1">ประเภทความช่วยเหลือ:</label>
-                    <select
-                      value={assistanceType}
-                      onChange={(e) => setAssistanceType(e.target.value)}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                    >
-                      <option value="cash">เงินสงเคราะห์ยังชีพ</option>
-                      <option value="medical">ค่ารักษาพยาบาล</option>
-                      <option value="education">ทุนการศึกษา</option>
-                      <option value="housing">ซ่อมแซมที่อยู่อาศัย</option>
-                      <option value="emergency">บรรเทาสาธารณภัยฉุกเฉิน</option>
-                      <option value="debt_relief">ปลดเปลื้องหนี้สินจำเป็น</option>
-                    </select>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="font-bold text-slate-800 block mb-1">1. กลุ่มหลัก:</label>
+                      <select
+                        value={quickPrimaryCode}
+                        onChange={(e) => {
+                          const pCode = e.target.value;
+                          setQuickPrimaryCode(pCode);
+                          const pg = regHierarchyData.find((p) => p.asnafCode === pCode);
+                          const sf = pg?.specificFunds?.[0];
+                          const ast = sf?.assistanceTypes?.[0];
+                          setQuickSpecificFundId(sf ? sf.id : '');
+                          setQuickAssistanceTypeId(ast ? ast.id : '');
+                          if (ast?.defaultMinAmount) setRequestedAmount(ast.defaultMinAmount);
+                        }}
+                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs"
+                      >
+                        {regHierarchyData.map((pg) => (
+                          <option key={pg.asnafCode} value={pg.asnafCode}>
+                            {pg.asnafName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-800 block mb-1">2. กองทุนเฉพาะ:</label>
+                      <select
+                        value={quickSpecificFundId}
+                        onChange={(e) => {
+                          const sfId = e.target.value;
+                          setQuickSpecificFundId(sfId);
+                          const sf = quickSpecificFunds.find((s: any) => s.id === sfId);
+                          const ast = sf?.assistanceTypes?.[0];
+                          setQuickAssistanceTypeId(ast ? ast.id : '');
+                          if (ast?.defaultMinAmount) setRequestedAmount(ast.defaultMinAmount);
+                        }}
+                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs"
+                      >
+                        {quickSpecificFunds.map((sf: any) => (
+                          <option key={sf.id} value={sf.id}>
+                            [{sf.code}] {sf.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-800 block mb-1">3. ประเภทความช่วยเหลือ:</label>
+                      <select
+                        value={quickAssistanceTypeId}
+                        onChange={(e) => {
+                          const astId = e.target.value;
+                          setQuickAssistanceTypeId(astId);
+                          const ast = quickAssistanceTypes.find((a: any) => a.id === astId);
+                          if (ast?.defaultMinAmount) setRequestedAmount(ast.defaultMinAmount);
+                        }}
+                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs"
+                      >
+                        {quickAssistanceTypes.map((ast: any) => (
+                          <option key={ast.id} value={ast.id}>
+                            {ast.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div>

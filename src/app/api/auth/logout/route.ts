@@ -1,33 +1,44 @@
 import { NextResponse } from 'next/server';
-import { AuthService } from '@/services/authService';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization') || '';
-    let token = authHeader.replace('Bearer ', '').trim();
+    const cookieHeader = req.headers.get('cookie') || '';
 
-    // If not in header, check cookie
-    if (!token) {
-      const cookieHeader = req.headers.get('cookie') || '';
-      const match = cookieHeader.match(/zms_session=([^;]+)/);
-      if (match) {
-        token = decodeURIComponent(match[1]);
-      }
+    // Call NestJS logout
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-zms-csrf': '1',
+          Cookie: cookieHeader,
+        },
+      });
+    } catch {
+      // Ignore network errors on logout
     }
 
-    const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
-    if (token) {
-      await AuthService.logout(token, ip);
-    }
-
-    const response = NextResponse.json({ 
-      success: true, 
-      message: 'ออกจากระบบสำเร็จเรียบร้อย' 
+    const response = NextResponse.json({
+      success: true,
+      message: 'ออกจากระบบสำเร็จเรียบร้อย',
     });
-    
-    // Clear session cookie completely
+
+    // Clear session cookies
     response.cookies.set({
       name: 'zms_session',
+      value: '',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+      expires: new Date(0),
+    });
+
+    response.cookies.set({
+      name: 'zms_refresh',
       value: '',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

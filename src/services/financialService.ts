@@ -1,4 +1,10 @@
 import { getDb, initDb } from '@/lib/db';
+import {
+  CENTRAL_ASNAF_GROUPS,
+  normalizePrimaryGroupCode,
+  getCentralAsnafByCode,
+  calculatePennyAllocation as calcPennyExact,
+} from '@/lib/financeUtils';
 import { 
   FinancialTransaction, 
   FundAccount, 
@@ -29,7 +35,11 @@ import {
   AsnafAidExpenseItem,
   AssistanceTypeAidExpenseItem,
   MissingProofItem,
-  AidDrillDownItem
+  AidDrillDownItem,
+  AssistanceTypeItem,
+  ManagedFundType,
+  FundAllocationHistoryEntry,
+  FundBudgetAdjustment
 } from '@/types';
 
 export interface ActorContext {
@@ -74,6 +84,8 @@ export interface RecordExpenseInput {
   adminCategoryCode?: string;
   beneficiaryId?: string;
   applicationId?: string;
+  specificFundId?: string;
+  assistanceTypeId?: string;
 }
 
 export interface CreateBankAccountInput {
@@ -315,6 +327,8 @@ export class FinancialService {
     moneyType?: string;
     bankAccountId?: string;
     asnaf?: string;
+    specificFundId?: string;
+    assistanceTypeId?: string;
     year?: string;
     fromDate?: string;
     toDate?: string;
@@ -353,6 +367,16 @@ export class FinancialService {
     if (filters?.asnaf && filters.asnaf !== 'all') {
       sql += ` AND asnaf_category = ?`;
       args.push(filters.asnaf);
+    }
+
+    if (filters?.specificFundId && filters.specificFundId !== 'all') {
+      sql += ` AND (specific_fund_id = ? OR sub_fund_category = ?)`;
+      args.push(filters.specificFundId, filters.specificFundId);
+    }
+
+    if (filters?.assistanceTypeId && filters.assistanceTypeId !== 'all') {
+      sql += ` AND assistance_type_id = ?`;
+      args.push(filters.assistanceTypeId);
     }
 
     if (filters?.year && filters.year !== 'all') {
@@ -405,6 +429,8 @@ export class FinancialService {
       zakatYear: r.zakat_year ? String(r.zakat_year) : '2569',
       asnafCategory: r.asnaf_category ? String(r.asnaf_category) : undefined,
       subFundCategory: r.sub_fund_category ? String(r.sub_fund_category) : undefined,
+      specificFundId: r.specific_fund_id ? String(r.specific_fund_id) : undefined,
+      assistanceTypeId: r.assistance_type_id ? String(r.assistance_type_id) : undefined,
       beneficiaryId: r.beneficiary_id ? String(r.beneficiary_id) : undefined,
       applicationId: r.application_id ? String(r.application_id) : undefined,
       donorName: r.donor_name ? String(r.donor_name) : undefined,
@@ -635,7 +661,7 @@ export class FinancialService {
     let appData: any = null;
     if (input.applicationId) {
       const appRes = await db.execute({
-        sql: 'SELECT id, application_no, approved_by_id, approved_by_name, status, approved_amount, disbursed_amount FROM assistance_applications WHERE id = ?',
+        sql: 'SELECT id, application_no, approved_by_id, approved_by_name, status, approved_amount, disbursed_amount, specific_fund_id, approved_specific_fund_id, primary_group_code, asnaf_category, assistance_type_id, fiscal_year FROM assistance_applications WHERE id = ?',
         args: [input.applicationId],
       });
       if (appRes.rows.length > 0) {
@@ -709,12 +735,40 @@ export class FinancialService {
       });
     }
 
+    // Multi-tier resolution for expense disbursement
+    const resolvedSpecificFundId = input.specificFundId || appData?.approved_specific_fund_id || appData?.specific_fund_id || null;
+    const resolvedAssistanceTypeId = input.assistanceTypeId || appData?.assistance_type_id || null;
+    const resolvedPrimaryGroup = input.asnafCategory || appData?.primary_group_code || appData?.asnaf_category || null;
+    const resolvedYear = appData?.fiscal_year || '2569';
+
+    if (resolvedSpecificFundId) {
+      await db.execute({
+        sql: `UPDATE faqir_miskin_sub_funds
+              SET committed_amount = MAX(0, committed_amount - ?),
+                  disbursed_amount = disbursed_amount + ?,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?`,
+        args: [amount, amount, resolvedSpecificFundId],
+      });
+    }
+
+    if (resolvedPrimaryGroup) {
+      await db.execute({
+        sql: `UPDATE asnaf_allocations
+              SET committed_amount = MAX(0, committed_amount - ?),
+                  disbursed_amount = disbursed_amount + ?
+              WHERE asnaf_code = ? AND fiscal_year = ?`,
+        args: [amount, amount, resolvedPrimaryGroup, resolvedYear],
+      });
+    }
+
     await db.execute({
       sql: `INSERT INTO financial_transactions (
         id, transaction_no, date, type, fund_id, fund_name, category, amount, payment_method,
         payer_or_payee, reference_no, slip_url, status, recorded_by_id, recorded_by_name, notes,
-        bank_account_id, asnaf_category, sub_fund_category, beneficiary_id, application_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bank_account_id, asnaf_category, sub_fund_category, beneficiary_id, application_id,
+        specific_fund_id, assistance_type_id, zakat_year
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         txnId,
         txnNo,
@@ -732,10 +786,13 @@ export class FinancialService {
         actor.name,
         input.notes || '',
         input.bankAccountId || null,
-        input.asnafCategory || null,
+        resolvedPrimaryGroup,
         input.subFundCategory || null,
         input.beneficiaryId || null,
         input.applicationId || null,
+        resolvedSpecificFundId,
+        resolvedAssistanceTypeId,
+        resolvedYear,
       ],
     });
 
@@ -3292,12 +3349,18 @@ export class FinancialService {
         a.status,
         a.approved_date,
         b.phone,
-        a.approver_id,
-        a.approved_by
+        a.approved_by_id as approver_id,
+        a.approved_by_name as approved_by,
+        a.primary_group_code,
+        COALESCE(a.approved_specific_fund_id, a.specific_fund_id) as specific_fund_id,
+        COALESCE(sf.fund_code, a.specific_fund_code) as specific_fund_code,
+        COALESCE(sf.name, a.specific_fund_name) as specific_fund_name,
+        a.assistance_type_id
       FROM assistance_applications a
       JOIN beneficiaries b ON a.beneficiary_id = b.id
       LEFT JOIN households h ON b.household_id = h.id
       LEFT JOIN assistance_types at ON a.assistance_type_id = at.id
+      LEFT JOIN faqir_miskin_sub_funds sf ON COALESCE(a.approved_specific_fund_id, a.specific_fund_id) = sf.id
       WHERE a.status IN ('wait_disbursement', 'approved', 'partially_disbursed') 
         AND a.approved_amount > 0
         AND (a.disbursed_amount IS NULL OR a.disbursed_amount < a.approved_amount)
@@ -3349,6 +3412,11 @@ export class FinancialService {
       phone: r.phone ? String(r.phone) : undefined,
       approverId: r.approver_id ? String(r.approver_id) : undefined,
       approvedBy: r.approved_by ? String(r.approved_by) : undefined,
+      primaryGroupCode: r.primary_group_code ? String(r.primary_group_code) : undefined,
+      specificFundId: r.specific_fund_id ? String(r.specific_fund_id) : undefined,
+      specificFundCode: r.specific_fund_code ? String(r.specific_fund_code) : undefined,
+      specificFundName: r.specific_fund_name ? String(r.specific_fund_name) : undefined,
+      assistanceTypeId: r.assistance_type_id ? String(r.assistance_type_id) : undefined,
     }));
   }
 
@@ -5375,7 +5443,7 @@ export class FinancialService {
     const db = getDb();
 
     // Rule 7: Role check - Super Admin, Executive, Finance only
-    if (!['super_admin', 'executive', 'finance'].includes(actor.role)) {
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
       throw new Error('ไม่อนุญาต: เฉพาะผู้มีสิทธิ์ (Super Admin, Executive, Finance) เท่านั้นที่สามารถตรวจสอบและปิดรอบการเบิกเงินสดได้');
     }
 
@@ -5561,7 +5629,434 @@ export class FinancialService {
   // 10. Asnaf Allocations (8 Asnafs, 100% total)
   // =========================================================================
 
-  static async getAsnafAllocations(fiscalYear: string = '2569'): Promise<AsnafAllocation[]> {
+  static async getAsnafAllocations(
+    fiscalYear: string = '2569',
+    options?: { includeHierarchy?: boolean; includeInactive?: boolean }
+  ): Promise<AsnafAllocation[]> {
+    await initDb();
+    const db = getDb();
+
+    const [res, fundAccRes, adjRes, allSpecificFunds, directPrimaryCommittedRes, directPrimaryFtDisbRes, directPrimaryAppCountRes] =
+      await Promise.all([
+        db.execute({
+          sql: 'SELECT * FROM asnaf_allocations WHERE fiscal_year = ? ORDER BY COALESCE(sort_order, 99) ASC, percentage DESC',
+          args: [fiscalYear],
+        }),
+        db.execute('SELECT * FROM fund_accounts'),
+        db.execute({
+          sql: "SELECT * FROM fund_budget_adjustments WHERE fiscal_year = ? AND status = 'approved' AND target_level = 'primary'",
+          args: [fiscalYear],
+        }),
+        this.getSpecificFunds({
+          fiscalYear,
+          primaryGroupCode: 'all',
+          status: 'all',
+          includeAssistanceTypes: true,
+        }),
+        // Applications committed directly at primary group level (when specific_fund_id is null)
+        db.execute({
+          sql: `SELECT COALESCE(primary_group_code, asnaf_category) as p_code,
+                       SUM(MAX(0, COALESCE(approved_amount, requested_amount, 0) - COALESCE(disbursed_amount, 0))) as committed_sum
+                FROM assistance_applications
+                WHERE id != 'REGISTRY-DOCS'
+                  AND status IN ('approved', 'wait_disbursement')
+                  AND COALESCE(fiscal_year, '2569') = ?
+                  AND approved_specific_fund_id IS NULL
+                  AND specific_fund_id IS NULL
+                GROUP BY COALESCE(primary_group_code, asnaf_category)`,
+          args: [fiscalYear],
+        }),
+        // Financial transactions disbursed directly at primary group level (when specific_fund_id & sub_fund_category are null)
+        db.execute({
+          sql: `SELECT ft.asnaf_category as p_code,
+                       SUM(ft.amount) as ft_sum
+                FROM financial_transactions ft
+                LEFT JOIN assistance_applications app ON ft.application_id = app.id
+                WHERE ft.status = 'completed'
+                  AND ft.type IN ('disbursement', 'expense')
+                  AND COALESCE(ft.category, '') NOT IN ('bank_transfer_in', 'bank_transfer_out')
+                  AND COALESCE(ft.category, '') NOT LIKE '%โอนเงินภายใน%'
+                  AND COALESCE(ft.category, '') NOT LIKE 'ยอดยกมา%'
+                  AND COALESCE(ft.zakat_year, '2569') = ?
+                  AND ft.specific_fund_id IS NULL
+                  AND ft.sub_fund_category IS NULL
+                  AND app.approved_specific_fund_id IS NULL
+                  AND app.specific_fund_id IS NULL
+                GROUP BY ft.asnaf_category`,
+          args: [fiscalYear],
+        }),
+        db.execute(`
+          SELECT COALESCE(primary_group_code, asnaf_category) as p_code, COUNT(*) as cnt
+          FROM assistance_applications
+          WHERE id != 'REGISTRY-DOCS'
+            AND approved_specific_fund_id IS NULL
+            AND specific_fund_id IS NULL
+          GROUP BY COALESCE(primary_group_code, asnaf_category)
+        `),
+      ]);
+
+    const fundAccMap = new Map<string, any>();
+    let totalZakatPool = 0;
+    for (const fa of fundAccRes.rows) {
+      fundAccMap.set(String(fa.id), fa);
+      if (String(fa.category) === 'zakat') {
+        totalZakatPool += Number(fa.total_received) || 0;
+      }
+    }
+
+    const activePrimaryItems = res.rows
+      .filter((r) => Number(r.is_active ?? 1) === 1)
+      .map((r) => ({ code: String(r.asnaf_code), pct: Number(r.percentage) || 0 }));
+    const pennyTargetMap = this.calculatePennyAllocation(totalZakatPool, activePrimaryItems);
+
+    const primaryAdjLedgerMap = new Map<string, number>();
+    for (const adj of adjRes.rows) {
+      const pCode = normalizePrimaryGroupCode(String(adj.primary_group_code));
+      const amt = Number(adj.amount) || 0;
+      const signed = String(adj.adjustment_type) === 'decrease' ? -amt : amt;
+      primaryAdjLedgerMap.set(pCode, round2((primaryAdjLedgerMap.get(pCode) || 0) + signed));
+    }
+
+    const directCommittedByPrimary = new Map<string, number>();
+    for (const r of directPrimaryCommittedRes.rows) {
+      if (!r.p_code) continue;
+      const pCode = normalizePrimaryGroupCode(String(r.p_code));
+      directCommittedByPrimary.set(pCode, round2((directCommittedByPrimary.get(pCode) || 0) + (Number(r.committed_sum) || 0)));
+    }
+
+    const directDisbursedByPrimary = new Map<string, number>();
+    for (const r of directPrimaryFtDisbRes.rows) {
+      if (!r.p_code) continue;
+      const pCode = normalizePrimaryGroupCode(String(r.p_code));
+      directDisbursedByPrimary.set(pCode, round2((directDisbursedByPrimary.get(pCode) || 0) + (Number(r.ft_sum) || 0)));
+    }
+
+    const directAppCountByPrimary = new Map<string, number>();
+    for (const r of directPrimaryAppCountRes.rows) {
+      if (!r.p_code) continue;
+      const pCode = normalizePrimaryGroupCode(String(r.p_code));
+      directAppCountByPrimary.set(pCode, (directAppCountByPrimary.get(pCode) || 0) + (Number(r.cnt) || 0));
+    }
+
+    const sfByPrimary = new Map<string, FaqirMiskinSubFund[]>();
+    for (const sf of allSpecificFunds) {
+      const pCode = normalizePrimaryGroupCode(sf.primaryGroupCode);
+      const list = sfByPrimary.get(pCode) || [];
+      list.push(sf);
+      sfByPrimary.set(pCode, list);
+    }
+
+    return res.rows
+      .filter((r) => (options?.includeInactive === false ? Number(r.is_active ?? 1) === 1 : true))
+      .map((r) => {
+        const code = String(r.asnaf_code);
+        const centralDef = getCentralAsnafByCode(code);
+        const isActive = Number(r.is_active ?? 1) === 1;
+        const pct = Number(r.percentage) || 0;
+        const baseBudgetAmount = isActive ? (pennyTargetMap.get(code) || 0) : 0;
+        const targetAmount = baseBudgetAmount;
+        const budgetAdjustment = round2((Number(r.budget_adjustment) || 0) + (primaryAdjLedgerMap.get(code) || 0));
+        const adjustedBudgetAmount = round2(Math.max(0, targetAmount + budgetAdjustment));
+
+        const groupSfs = sfByPrimary.get(code) || [];
+        const activeSfs = groupSfs.filter((sf) => sf.isActive);
+
+        const sfCommittedSum = round2(groupSfs.reduce((s, sf) => s + (Number(sf.committedAmount) || 0), 0));
+        const sfDisbursedSum = round2(groupSfs.reduce((s, sf) => s + (Number(sf.netDisbursedAmount ?? sf.disbursedAmount) || 0), 0));
+        const sfAppCountSum = groupSfs.reduce((s, sf) => s + (Number(sf.linkedApplicationCount) || 0), 0);
+        const sfActiveTargetSum = round2(activeSfs.reduce((s, sf) => s + (Number(sf.targetAmount) || 0), 0));
+        const specificFundsTotalPercentage = round2(activeSfs.reduce((s, sf) => s + (Number(sf.percentage) || 0), 0));
+
+        const committedAmount = round2(sfCommittedSum + (directCommittedByPrimary.get(code) || 0));
+        const netDisbursedAmount = round2(sfDisbursedSum + (directDisbursedByPrimary.get(code) || 0));
+        const remainingAmount = round2(adjustedBudgetAmount - netDisbursedAmount);
+        const availableAfterCommitment = round2(adjustedBudgetAmount - netDisbursedAmount - committedAmount);
+        const linkedApplicationCount = sfAppCountSum + (directAppCountByPrimary.get(code) || 0);
+
+        const activeAssistanceTypesCount = activeSfs.reduce(
+          (s, sf) => s + (sf.assistanceTypes ? sf.assistanceTypes.filter((t) => t.isActive).length : Number(sf.assistanceTypeCount) || 0),
+          0
+        );
+
+        const fundAccId = r.fund_account_id ? String(r.fund_account_id) : (centralDef?.defaultFundAccountId || 'fund-1');
+        const fAcc = fundAccMap.get(fundAccId);
+
+        const unallocatedReserveAmount =
+          activeSfs.length > 0 ? round2(Math.max(0, adjustedBudgetAmount - sfActiveTargetSum)) : adjustedBudgetAmount;
+
+        return {
+          id: String(r.id),
+          fiscalYear: String(r.fiscal_year),
+          asnafCode: code,
+          asnafName: String(r.asnaf_name || centralDef?.nameTh || code),
+          nameEn: r.name_en ? String(r.name_en) : centralDef?.nameEn,
+          fundAccountId: fundAccId,
+          fundAccountCode: fAcc ? String(fAcc.code) : undefined,
+          fundAccountName: fAcc ? String(fAcc.name) : undefined,
+          description: r.description ? String(r.description) : centralDef?.description,
+          percentage: pct,
+          baseBudgetAmount,
+          budgetAdjustment,
+          adjustedBudgetAmount,
+          targetAmount,
+          allocatedAmount: adjustedBudgetAmount,
+          committedAmount,
+          disbursedAmount: netDisbursedAmount,
+          netDisbursedAmount,
+          remainingAmount,
+          availableAfterCommitment,
+          unallocatedReserveAmount,
+          effectiveDate: r.effective_date ? String(r.effective_date) : '2026-10-01',
+          isActive,
+          sortOrder: r.sort_order !== null && r.sort_order !== undefined ? Number(r.sort_order) : (centralDef?.sortOrder ?? 99),
+          specificFundCount: activeSfs.length,
+          assistanceTypeCount: activeAssistanceTypesCount,
+          linkedApplicationCount,
+          specificFundsTotalPercentage,
+          isSpecificFundSumValid: activeSfs.length === 0 || Math.abs(specificFundsTotalPercentage - 100) < 0.001,
+          specificFunds: options?.includeHierarchy ? groupSfs : undefined,
+          policyRef: r.policy_ref ? String(r.policy_ref) : undefined,
+          updatedById: r.updated_by_id ? String(r.updated_by_id) : undefined,
+          updatedByName: r.updated_by_name ? String(r.updated_by_name) : undefined,
+          updatedAt: String(r.updated_at),
+        };
+      });
+  }
+
+  /**
+   * Unified 3-Tier Fund Hierarchy (Primary Group -> Specific Fund -> Linked Assistance Type)
+   * With live relational integrity & penny reconciliation verification across all 3 levels.
+   */
+  static async getThreeTierFundHierarchy(
+    fiscalYear: string = '2569',
+    options?: { activeOnly?: boolean }
+  ) {
+    await initDb();
+    const db = getDb();
+
+    const [primaryGroupsRaw, poolRes, orphanSfRes, orphanAstRes] = await Promise.all([
+      this.getAsnafAllocations(fiscalYear, {
+        includeHierarchy: true,
+        includeInactive: !options?.activeOnly,
+      }),
+      db.execute("SELECT SUM(total_received) as pool FROM fund_accounts WHERE category = 'zakat'"),
+      db.execute({
+        sql: `SELECT COUNT(*) as cnt
+              FROM faqir_miskin_sub_funds sf
+              LEFT JOIN asnaf_allocations aa ON sf.primary_group_code = aa.asnaf_code AND sf.fiscal_year = aa.fiscal_year
+              LEFT JOIN fund_accounts fa ON sf.fund_account_id = fa.id
+              WHERE sf.fiscal_year = ? AND (aa.id IS NULL OR fa.id IS NULL)`,
+        args: [fiscalYear],
+      }),
+      db.execute(`
+        SELECT COUNT(*) as cnt
+        FROM assistance_types ast
+        LEFT JOIN faqir_miskin_sub_funds sf ON ast.specific_fund_id = sf.id
+        WHERE ast.specific_fund_id IS NULL
+           OR sf.id IS NULL
+           OR COALESCE(ast.primary_group_code, '') != COALESCE(sf.primary_group_code, '')
+      `),
+    ]);
+
+    const totalZakatPool = round2(Number(poolRes.rows[0]?.pool) || 0);
+
+    const primaryGroups = options?.activeOnly
+      ? primaryGroupsRaw
+          .filter((pg) => pg.isActive !== false)
+          .map((pg) => ({
+            ...pg,
+            specificFunds: (pg.specificFunds || [])
+              .filter((sf) => sf.isActive)
+              .map((sf) => ({
+                ...sf,
+                assistanceTypes: (sf.assistanceTypes || []).filter((ast) => ast.isActive),
+              })),
+          }))
+      : primaryGroupsRaw;
+
+    const activeGroups = primaryGroupsRaw.filter((pg) => pg.isActive !== false);
+    const totalActivePrimaryPercentage = round2(activeGroups.reduce((s, pg) => s + (Number(pg.percentage) || 0), 0));
+    const totalTargetAmount = round2(activeGroups.reduce((s, pg) => s + (Number(pg.targetAmount) || 0), 0));
+    const unallocatedPrimaryReserveAmount = round2(Math.max(0, totalZakatPool - totalTargetAmount));
+    const totalAdjustedBudget = round2(activeGroups.reduce((s, pg) => s + (Number(pg.adjustedBudgetAmount) || 0), 0));
+    const totalCommittedAmount = round2(primaryGroupsRaw.reduce((s, pg) => s + (Number(pg.committedAmount) || 0), 0));
+    const totalDisbursedAmount = round2(primaryGroupsRaw.reduce((s, pg) => s + (Number(pg.disbursedAmount) || 0), 0));
+    const totalRemainingAmount = round2(activeGroups.reduce((s, pg) => s + (Number(pg.remainingAmount) || 0), 0));
+
+    const orphanSpecificFundsCount = Number(orphanSfRes.rows[0]?.cnt) || 0;
+    const orphanAssistanceTypesCount = Number(orphanAstRes.rows[0]?.cnt) || 0;
+    const isPrimaryPoolReconciled = Math.abs(round2(totalTargetAmount + unallocatedPrimaryReserveAmount) - totalZakatPool) < 0.001;
+
+    return {
+      fiscalYear,
+      totalZakatPool,
+      totalActivePrimaryPercentage,
+      unallocatedPrimaryReserveAmount,
+      totalTargetAmount,
+      totalAdjustedBudget,
+      totalCommittedAmount,
+      totalDisbursedAmount,
+      totalRemainingAmount,
+      isPrimaryPoolReconciled,
+      integrityCheck: {
+        isHealthy: orphanSpecificFundsCount === 0 && orphanAssistanceTypesCount === 0 && isPrimaryPoolReconciled,
+        orphanSpecificFundsCount,
+        orphanAssistanceTypesCount,
+        centralRegistryCount: CENTRAL_ASNAF_GROUPS.length,
+      },
+      centralRegistry: CENTRAL_ASNAF_GROUPS,
+      primaryGroups,
+    };
+  }
+
+  /**
+   * Update Level 1 Primary Fund Group Metadata (referencing Central Asnaf Registry)
+   */
+  static async updatePrimaryFundGroup(
+    asnafCode: string,
+    input: {
+      fiscalYear?: string;
+      description?: string;
+      nameEn?: string;
+      fundAccountId?: string;
+      effectiveDate?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+      rebalanceAllocations?: { asnafCode: string; percentage: number }[];
+      policyRef?: string;
+      reason?: string;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: เฉพาะผู้ดูแลระบบ ผู้บริหาร หรือฝ่ายการเงินเท่านั้นที่มีสิทธิ์ตั้งค่ากลุ่มกองทุนหลัก');
+    }
+
+    const fiscalYear = (input.fiscalYear || '2569').trim();
+    const normalizedCode = normalizePrimaryGroupCode(asnafCode);
+    const centralDef = getCentralAsnafByCode(normalizedCode);
+    if (!centralDef) {
+      throw new Error(`รหัสกลุ่มหลัก "${asnafCode}" ไม่อยู่ในทะเบียนอัสนัฟกลางของระบบ`);
+    }
+
+    const existingRes = await db.execute({
+      sql: 'SELECT * FROM asnaf_allocations WHERE fiscal_year = ? AND asnaf_code = ?',
+      args: [fiscalYear, normalizedCode],
+    });
+    if (existingRes.rows.length === 0) {
+      throw new Error(`ไม่พบกลุ่มกองทุนหลัก "${normalizedCode}" ในปีงบประมาณ ${fiscalYear}`);
+    }
+    const existing = existingRes.rows[0];
+
+    const nextFundAccountId = input.fundAccountId?.trim() || (existing.fund_account_id ? String(existing.fund_account_id) : centralDef.defaultFundAccountId);
+    const faRes = await db.execute({
+      sql: 'SELECT id FROM fund_accounts WHERE id = ?',
+      args: [nextFundAccountId],
+    });
+    if (faRes.rows.length === 0) {
+      throw new Error(`ไม่พบบัญชีกองทุนหลักรหัส ${nextFundAccountId}`);
+    }
+
+    const currentActive = Number(existing.is_active ?? 1) === 1;
+    const nextActive = input.isActive !== undefined ? Boolean(input.isActive) : currentActive;
+    const currentPct = Number(existing.percentage) || 0;
+
+    if (currentActive && !nextActive) {
+      if (currentPct > 0 && (!input.rebalanceAllocations || input.rebalanceAllocations.length === 0)) {
+        throw new Error(
+          `กลุ่มกองทุนหลัก "${existing.asnaf_name}" ยังมีสัดส่วนงบประมาณ ${currentPct}% กรุณาปรับเกลี่ยสัดส่วนให้กลุ่มหลักอื่นครบ 100% ก่อนปิดใช้งาน`
+        );
+      }
+      const activeSfRes = await db.execute({
+        sql: 'SELECT COUNT(*) as cnt FROM faqir_miskin_sub_funds WHERE fiscal_year = ? AND primary_group_code = ? AND is_active = 1',
+        args: [fiscalYear, normalizedCode],
+      });
+      const activeSfCount = Number(activeSfRes.rows[0]?.cnt) || 0;
+      if (activeSfCount > 0) {
+        throw new Error(
+          `ไม่สามารถปิดใช้งานกลุ่มหลัก "${existing.asnaf_name}" ได้ เนื่องจากยังมีกองทุนเฉพาะเปิดใช้งานอยู่ ${activeSfCount} กองทุน กรุณาปิดใช้งานกองทุนเฉพาะภายใต้กลุ่มนี้ก่อน`
+        );
+      }
+    }
+
+    const nextDesc = input.description !== undefined ? input.description.trim() : String(existing.description || centralDef.description);
+    const nextNameEn = input.nameEn !== undefined ? input.nameEn.trim() : String(existing.name_en || centralDef.nameEn);
+    const nextEffective = input.effectiveDate !== undefined ? input.effectiveDate.trim() : String(existing.effective_date || '2026-10-01');
+    const nextSort = input.sortOrder !== undefined ? Number(input.sortOrder) : Number(existing.sort_order ?? centralDef.sortOrder);
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+
+    if (!nextActive && input.rebalanceAllocations && input.rebalanceAllocations.length > 0) {
+      const rebalSum = round2(
+        input.rebalanceAllocations
+          .filter((item) => normalizePrimaryGroupCode(item.asnafCode) !== normalizedCode)
+          .reduce((s, item) => s + (Number(item.percentage) || 0), 0)
+      );
+      if (Math.abs(rebalSum - 100) > 0.001) {
+        throw new Error(`ผลรวมสัดส่วนกลุ่มหลักที่เหลือต้องเท่ากับ 100% พอดี (ปัจจุบันรวมได้ ${rebalSum.toFixed(2)}%)`);
+      }
+      for (const item of input.rebalanceAllocations) {
+        const c = normalizePrimaryGroupCode(item.asnafCode);
+        await db.execute({
+          sql: 'UPDATE asnaf_allocations SET percentage = ?, updated_by_id = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP WHERE fiscal_year = ? AND asnaf_code = ?',
+          args: [c === normalizedCode ? 0 : round2(Number(item.percentage) || 0), actor.id, actor.name, fiscalYear, c],
+        });
+      }
+    }
+
+    await db.execute({
+      sql: `UPDATE asnaf_allocations
+            SET name_en = ?,
+                fund_account_id = ?,
+                description = ?,
+                effective_date = ?,
+                sort_order = ?,
+                is_active = ?,
+                percentage = CASE WHEN ? = 0 THEN 0 ELSE percentage END,
+                policy_ref = COALESCE(?, policy_ref),
+                updated_by_id = ?,
+                updated_by_name = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE fiscal_year = ? AND asnaf_code = ?`,
+      args: [
+        nextNameEn,
+        nextFundAccountId,
+        nextDesc,
+        nextEffective,
+        nextSort,
+        nextActive ? 1 : 0,
+        nextActive ? 1 : 0,
+        input.policyRef?.trim() || null,
+        actor.id,
+        actor.name,
+        fiscalYear,
+        normalizedCode,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values)
+            VALUES (?, ?, ?, ?, ?, 'PRIMARY_FUND_GROUP_UPDATED', 'asnaf_allocation', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        `${fiscalYear}:${normalizedCode}`,
+        `อัปเดตข้อมูลกลุ่มกองทุนหลัก "${existing.asnaf_name}" (${normalizedCode}) โดย ${actor.name}${input.reason ? ` เหตุผล: ${input.reason}` : ''}`,
+        JSON.stringify({ description: existing.description, fundAccountId: existing.fund_account_id, isActive: currentActive }),
+        JSON.stringify({ description: nextDesc, fundAccountId: nextFundAccountId, isActive: nextActive }),
+      ],
+    });
+
+    const updatedList = await this.getAsnafAllocations(fiscalYear, { includeHierarchy: true, includeInactive: true });
+    return updatedList.find((g) => g.asnafCode === normalizedCode);
+  }
+
+  private static async _legacyGetAsnafAllocationsUnused(fiscalYear: string = '2569'): Promise<AsnafAllocation[]> {
     await initDb();
     const db = getDb();
 
@@ -5610,6 +6105,205 @@ export class FinancialService {
   }
 
   static async updateAsnafAllocations(
+    allocations: { asnafCode: string; percentage: number }[],
+    fiscalYear: string = '2569',
+    policyRef: string,
+    reason: string,
+    actor: ActorContext,
+    options?: {
+      effectiveDate?: string;
+      approvedById?: string;
+      approvedByName?: string;
+      allowReserve?: boolean;
+    }
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'approver', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: สิทธิ์ไม่เพียงพอในการปรับเปลี่ยนสัดส่วนการจัดสรรซะกาตตามอัสนัฟ');
+    }
+
+    const cleanPolicyRef = (policyRef || '').trim();
+    const cleanReason = (reason || '').trim();
+    const effectiveDate = (options?.effectiveDate || new Date().toISOString().slice(0, 10)).trim();
+
+    if (!cleanPolicyRef) throw new Error('กรุณาระบุเลขที่มติหรือเอกสารอ้างอิงนโยบาย');
+    if (!cleanReason) throw new Error('กรุณาระบุเหตุผลในการปรับเปลี่ยนสัดส่วน');
+    if (!effectiveDate) throw new Error('กรุณาระบุวันที่เริ่มมีผลบังคับใช้');
+    if (!Array.isArray(allocations) || allocations.length === 0) {
+      throw new Error('กรุณาระบุรายการสัดส่วนกลุ่มกองทุนหลัก');
+    }
+
+    // Load current primary groups with real financial rollup BEFORE updating
+    const currentGroups = await this.getAsnafAllocations(fiscalYear, { includeInactive: true });
+    const groupMap = new Map<string, AsnafAllocation>();
+    for (const g of currentGroups) {
+      groupMap.set(g.asnafCode, g);
+    }
+
+    for (const item of allocations) {
+      const normCode = normalizePrimaryGroupCode(item.asnafCode);
+      const pct = Number(item.percentage);
+      if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+        throw new Error(`สัดส่วนของกลุ่มหลัก "${item.asnafCode}" ไม่ถูกต้อง (ต้องอยู่ระหว่าง 0% ถึง 100%)`);
+      }
+      const existingGroup = groupMap.get(normCode);
+      if (!existingGroup) {
+        throw new Error(`ไม่พบกลุ่มกองทุนหลัก "${item.asnafCode}" ในปีงบประมาณ ${fiscalYear}`);
+      }
+      if (existingGroup.isActive === false && pct > 0) {
+        throw new Error(`ไม่สามารถกำหนดสัดส่วนมากกว่า 0% ให้กลุ่มกองทุนหลักที่ปิดใช้งานแล้ว ("${existingGroup.asnafName}")`);
+      }
+    }
+
+    const totalPct = round2(allocations.reduce((acc, a) => acc + Number(a.percentage || 0), 0));
+    if (totalPct > 100.001) {
+      throw new Error(`ผลรวมเปอร์เซ็นต์ต้องไม่เกิน 100% (ปัจจุบันได้ ${totalPct.toFixed(2)}%)`);
+    }
+    if (!options?.allowReserve && Math.abs(totalPct - 100.0) > 0.001) {
+      throw new Error(
+        `ผลรวมเปอร์เซ็นต์ของกลุ่มหลักต้องเท่ากับ 100% พอดี (ปัจจุบันได้ ${totalPct.toFixed(2)}%) หากต้องการกันงบสำรองกรุณาเปิดใช้นโยบายสำรองงบ`
+      );
+    }
+
+    const poolRes = await db.execute("SELECT SUM(total_received) as pool FROM fund_accounts WHERE category = 'zakat'");
+    const totalZakatPool = round2(Number(poolRes.rows[0]?.pool) || 0);
+
+    const pendingAppRes = await db.execute({
+      sql: `SELECT COALESCE(primary_group_code, asnaf_category) as p_code, COUNT(*) as cnt
+            FROM assistance_applications
+            WHERE id != 'REGISTRY-DOCS'
+              AND status IN ('draft', 'submitted', 'doc_review', 'field_inspection', 'assessment', 'assessing', 'pending_approval', 'need_info')
+            GROUP BY COALESCE(primary_group_code, asnaf_category)`,
+      args: [],
+    });
+    const pendingByPrimary = new Map<string, number>();
+    for (const r of pendingAppRes.rows) {
+      if (r.p_code) {
+        const norm = normalizePrimaryGroupCode(String(r.p_code));
+        pendingByPrimary.set(norm, (pendingByPrimary.get(norm) || 0) + (Number(r.cnt) || 0));
+      }
+    }
+
+    const oldProportions = currentGroups.map((g) => ({
+      code: g.asnafCode,
+      name: g.asnafName,
+      percentage: Number(g.percentage) || 0,
+      targetAmount: g.targetAmount,
+    }));
+
+    const nextActiveItems = allocations
+      .map((a) => ({ code: normalizePrimaryGroupCode(a.asnafCode), pct: round2(Number(a.percentage) || 0) }))
+      .filter((a) => groupMap.get(a.code)?.isActive !== false);
+    const nextTargetMap = this.calculatePennyAllocation(totalZakatPool, nextActiveItems);
+
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const approverId = options?.approvedById || actor.id;
+    const approverName = options?.approvedByName || actor.name;
+
+    const newProportions: { code: string; name?: string; percentage: number; targetAmount?: number }[] = [];
+    const affectedItems: { id: string; label: string; count?: number }[] = [];
+    const deficitWarnings: { code: string; name: string; newBudget: number; usedAndCommitted: number }[] = [];
+
+    // Update each allocation ONLY in asnaf_allocations (NEVER retroactively alter historical transactions or disbursed applications)
+    for (const item of allocations) {
+      const normCode = normalizePrimaryGroupCode(item.asnafCode);
+      const nextPct = round2(Number(item.percentage) || 0);
+      const prev = groupMap.get(normCode)!;
+      const nextTarget = nextTargetMap.get(normCode) || 0;
+      const nextAdjusted = round2(Math.max(0, nextTarget + (prev.budgetAdjustment || 0)));
+
+      await db.execute({
+        sql: `UPDATE asnaf_allocations
+              SET percentage = ?, effective_date = ?, policy_ref = ?, updated_by_id = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE fiscal_year = ? AND asnaf_code = ?`,
+        args: [nextPct, effectiveDate, cleanPolicyRef, actor.id, actor.name, fiscalYear, normCode],
+      });
+
+      newProportions.push({
+        code: normCode,
+        name: prev.asnafName,
+        percentage: nextPct,
+        targetAmount: nextTarget,
+      });
+
+      if (Math.abs((prev.percentage || 0) - nextPct) > 0.0001) {
+        affectedItems.push({
+          id: prev.id,
+          label: `${prev.asnafName}: ${(prev.percentage || 0).toFixed(2)}% (${prev.targetAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บ.) -> ${nextPct.toFixed(2)}% (${nextTarget.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บ.)`,
+          count: pendingByPrimary.get(normCode) || 0,
+        });
+      }
+
+      const usedAndCommitted = round2((prev.disbursedAmount || 0) + (prev.committedAmount || 0));
+      if (nextAdjusted < usedAndCommitted) {
+        deficitWarnings.push({
+          code: normCode,
+          name: prev.asnafName,
+          newBudget: nextAdjusted,
+          usedAndCommitted,
+        });
+      }
+    }
+
+    const unallocatedReservePct = round2(Math.max(0, 100 - totalPct));
+    const allocatedTargetSum = round2(Array.from(nextTargetMap.values()).reduce((s, v) => s + v, 0));
+    const unallocatedReserveAmount = round2(Math.max(0, totalZakatPool - allocatedTargetSum));
+
+    await db.execute({
+      sql: `INSERT INTO asnaf_allocation_history (
+              id, fiscal_year, action_type, old_proportions_json, proportions_json,
+              effective_date, changed_by_id, changed_by_name, approved_by_id, approved_by_name,
+              affected_items_json, policy_ref, reason, timestamp
+            ) VALUES (?, ?, 'proportion_change', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `aah-${Date.now()}`,
+        fiscalYear,
+        JSON.stringify(oldProportions),
+        JSON.stringify(newProportions),
+        effectiveDate,
+        actor.id,
+        actor.name,
+        approverId,
+        approverName,
+        JSON.stringify(affectedItems),
+        cleanPolicyRef,
+        cleanReason,
+        timestampNow,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values)
+            VALUES (?, ?, ?, ?, ?, 'ASNAF_PROPORTIONS_UPDATED', 'asnaf_allocation', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        fiscalYear,
+        `ปรับปรุงสัดส่วนจัดสรรกลุ่มหลักประจำปี ${fiscalYear} มีผล ${effectiveDate} ตามนโยบาย: "${cleanPolicyRef}" เหตุผล: ${cleanReason} (ไม่คำนวณย้อนหลังธุรกรรมเดิม)`,
+        JSON.stringify(oldProportions),
+        JSON.stringify(newProportions),
+      ],
+    });
+
+    return {
+      success: true,
+      effectiveDate,
+      totalPercentage: totalPct,
+      unallocatedReservePct,
+      unallocatedReserveAmount,
+      oldProportions,
+      newProportions,
+      affectedItems,
+      deficitWarnings,
+    };
+  }
+
+  private static async _legacyUpdateAsnafAllocationsUnused(
     allocations: { asnafCode: string; percentage: number }[],
     fiscalYear: string = '2569',
     policyRef: string,
@@ -5678,7 +6372,59 @@ export class FinancialService {
     return { success: true };
   }
 
-  static async getAsnafAllocationHistory(fiscalYear: string = '2569') {
+  static async getAsnafAllocationHistory(fiscalYear: string = '2569'): Promise<FundAllocationHistoryEntry[]> {
+    await initDb();
+    const db = getDb();
+
+    const res = await db.execute({
+      sql: 'SELECT * FROM asnaf_allocation_history WHERE fiscal_year = ? ORDER BY created_at DESC',
+      args: [fiscalYear],
+    });
+
+    return res.rows.map((r) => {
+      let oldProps: any[] | undefined = undefined;
+      let newProps: any[] = [];
+      let affected: any[] | undefined = undefined;
+      try { if (r.old_proportions_json) oldProps = JSON.parse(String(r.old_proportions_json)); } catch {}
+      try { if (r.proportions_json) newProps = JSON.parse(String(r.proportions_json)); } catch {}
+      try { if (r.affected_items_json) affected = JSON.parse(String(r.affected_items_json)); } catch {}
+
+      // Normalize items that used `{ asnafCode, percentage }` into `{ code, asnafCode, name, percentage }`
+      const normProps = newProps.map((p: any) => ({
+        ...p,
+        code: p.code || p.asnafCode,
+        asnafCode: p.asnafCode || p.code,
+      }));
+      const normOld = oldProps
+        ? oldProps.map((p: any) => ({
+            ...p,
+            code: p.code || p.asnafCode,
+            asnafCode: p.asnafCode || p.code,
+          }))
+        : undefined;
+
+      return {
+        id: String(r.id),
+        fiscalYear: String(r.fiscal_year),
+        actionType: (r.action_type ? String(r.action_type) : 'proportion_change') as any,
+        oldProportions: normOld,
+        newProportions: normProps,
+        ...( { proportions: normProps } as any ),
+        effectiveDate: r.effective_date ? String(r.effective_date) : undefined,
+        policyRef: String(r.policy_ref),
+        reason: String(r.reason),
+        changedById: String(r.changed_by_id),
+        changedByName: String(r.changed_by_name),
+        approvedById: r.approved_by_id ? String(r.approved_by_id) : undefined,
+        approvedByName: r.approved_by_name ? String(r.approved_by_name) : undefined,
+        affectedItems: affected,
+        timestamp: String(r.timestamp),
+        createdAt: r.created_at ? String(r.created_at) : undefined,
+      };
+    });
+  }
+
+  private static async _legacyGetAsnafAllocationHistoryUnused(fiscalYear: string = '2569') {
     await initDb();
     const db = getDb();
 
@@ -5705,11 +6451,20 @@ export class FinancialService {
   // =========================================================================
 
   static async getFaqirMiskinSubFunds(fiscalYear: string = '2569'): Promise<FaqirMiskinSubFund[]> {
+    return this.getSpecificFunds({
+      fiscalYear,
+      primaryGroupCode: 'faqir_miskin',
+      status: 'all',
+      includeAssistanceTypes: true,
+    });
+  }
+
+  private static async _legacyGetFaqirMiskinSubFundsUnused(fiscalYear: string = '2569'): Promise<FaqirMiskinSubFund[]> {
     await initDb();
     const db = getDb();
 
     const res = await db.execute({
-      sql: 'SELECT * FROM faqir_miskin_sub_funds WHERE fiscal_year = ? ORDER BY percentage DESC',
+      sql: "SELECT * FROM faqir_miskin_sub_funds WHERE fiscal_year = ? AND COALESCE(primary_group_code, 'faqir_miskin') = 'faqir_miskin' ORDER BY percentage DESC",
       args: [fiscalYear],
     });
 
@@ -5762,6 +6517,10 @@ export class FinancialService {
    * Total = 1,438,311.34 THB (100% exact match)
    */
   static calculatePennyAllocation(poolAmount: number, items: { code: string; pct: number }[]): Map<string, number> {
+    return calcPennyExact(poolAmount, items);
+  }
+
+  private static _legacyCalculatePennyAllocationUnused(poolAmount: number, items: { code: string; pct: number }[]): Map<string, number> {
     const totalSatang = toSatang(poolAmount);
     const result = new Map<string, number>();
 
@@ -5792,6 +6551,34 @@ export class FinancialService {
   }
 
   static async updateFaqirMiskinSubFunds(
+    subFunds: { code: string; percentage: number }[],
+    fiscalYear: string = '2569',
+    policyRef: string,
+    reason: string,
+    actor: ActorContext,
+    extra?: {
+      primaryGroupCode?: string;
+      effectiveDate?: string;
+      approvedById?: string;
+      approvedByName?: string;
+    }
+  ) {
+    return this.updateSpecificFundProportions(
+      {
+        subFunds,
+        fiscalYear,
+        primaryGroupCode: extra?.primaryGroupCode || 'faqir_miskin',
+        policyRef,
+        reason,
+        effectiveDate: extra?.effectiveDate || new Date().toISOString().slice(0, 10),
+        approvedById: extra?.approvedById,
+        approvedByName: extra?.approvedByName,
+      },
+      actor
+    );
+  }
+
+  private static async _legacyUpdateFaqirMiskinSubFundsUnused(
     subFunds: { code: string; percentage: number }[],
     fiscalYear: string = '2569',
     policyRef: string,
@@ -5856,7 +6643,11 @@ export class FinancialService {
     return { success: true };
   }
 
-  static async getFaqirMiskinHistory(fiscalYear: string = '2569') {
+  static async getFaqirMiskinHistory(fiscalYear: string = '2569', primaryGroupCode?: string) {
+    return this.getSpecificFundHistory(fiscalYear, primaryGroupCode);
+  }
+
+  private static async _legacyGetFaqirMiskinHistoryUnused(fiscalYear: string = '2569') {
     await initDb();
     const db = getDb();
 
@@ -5879,6 +6670,2035 @@ export class FinancialService {
   }
 
   // =========================================================================
+  // =========================================================================
+  // 11B. 3-Tier Specific Fund CRUD, Real Financial Rollup & History Engine
+  // =========================================================================
+
+  static async getSpecificFunds(filters?: {
+    fiscalYear?: string;
+    primaryGroupCode?: string;
+    status?: 'all' | 'active' | 'inactive';
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    search?: string;
+    includeAssistanceTypes?: boolean;
+  }): Promise<FaqirMiskinSubFund[]> {
+    await initDb();
+    const db = getDb();
+
+    const fiscalYear = filters?.fiscalYear || '2569';
+    const primaryFilter = filters?.primaryGroupCode || 'faqir_miskin';
+
+    // 1. Load Level 1 Primary Groups & Fund Accounts
+    const [asnafRes, fundAccRes, adjRes] = await Promise.all([
+      db.execute({
+        sql: 'SELECT * FROM asnaf_allocations WHERE fiscal_year = ? ORDER BY COALESCE(sort_order, 99) ASC, percentage DESC',
+        args: [fiscalYear],
+      }),
+      db.execute('SELECT * FROM fund_accounts'),
+      db.execute({
+        sql: "SELECT * FROM fund_budget_adjustments WHERE fiscal_year = ? AND status = 'approved'",
+        args: [fiscalYear],
+      }),
+    ]);
+
+    const fundAccMap = new Map<string, any>();
+    let totalZakatPool = 0;
+    for (const fa of fundAccRes.rows) {
+      fundAccMap.set(String(fa.id), fa);
+      if (String(fa.category) === 'zakat') {
+        totalZakatPool += Number(fa.total_received) || 0;
+      }
+    }
+
+    // Calculate Primary Group base target budgets via Penny Allocation
+    const activeAsnafItems = asnafRes.rows
+      .filter((a) => Number(a.is_active ?? 1) === 1)
+      .map((a) => ({ code: String(a.asnaf_code), pct: Number(a.percentage) || 0 }));
+    const primaryTargetMap = this.calculatePennyAllocation(totalZakatPool, activeAsnafItems);
+
+    const primaryAdjMap = new Map<string, number>();
+    const specificAdjMap = new Map<string, number>();
+    for (const adj of adjRes.rows) {
+      const amt = Number(adj.amount) || 0;
+      const signed = String(adj.adjustment_type) === 'decrease' ? -amt : amt;
+      if (String(adj.target_level) === 'primary') {
+        const pCode = String(adj.primary_group_code);
+        primaryAdjMap.set(pCode, round2((primaryAdjMap.get(pCode) || 0) + signed));
+      } else if (adj.specific_fund_id) {
+        const sfId = String(adj.specific_fund_id);
+        specificAdjMap.set(sfId, round2((specificAdjMap.get(sfId) || 0) + signed));
+      }
+    }
+
+    const primaryMetaMap = new Map<string, { name: string; fundAccountId: string; poolAmount: number }>();
+    for (const a of asnafRes.rows) {
+      const pCode = String(a.asnaf_code);
+      const baseTarget = primaryTargetMap.get(pCode) || 0;
+      const pAdj = round2((Number(a.budget_adjustment) || 0) + (primaryAdjMap.get(pCode) || 0));
+      primaryMetaMap.set(pCode, {
+        name: String(a.asnaf_name),
+        fundAccountId: a.fund_account_id ? String(a.fund_account_id) : 'fund-1',
+        poolAmount: round2(Math.max(0, baseTarget + pAdj)),
+      });
+    }
+
+    // 2. Load ALL Specific Funds for this fiscalYear first so penny allocation per primary group is exact
+    const allSfRes = await db.execute({
+      sql: 'SELECT * FROM faqir_miskin_sub_funds WHERE fiscal_year = ? ORDER BY COALESCE(sort_order, 99) ASC, percentage DESC',
+      args: [fiscalYear],
+    });
+
+    const sfNameById = new Map<string, string>();
+    const sfIdByCode = new Map<string, string>();
+    const activeByPrimary = new Map<string, { code: string; pct: number }[]>();
+
+    for (const r of allSfRes.rows) {
+      const id = String(r.id);
+      const code = String(r.code);
+      const pCode = String(r.primary_group_code || 'faqir_miskin');
+      sfNameById.set(id, String(r.name));
+      sfIdByCode.set(`${pCode}:${code}`, id);
+      if (!sfIdByCode.has(code)) sfIdByCode.set(code, id);
+
+      if (Boolean(r.is_active)) {
+        const list = activeByPrimary.get(pCode) || [];
+        list.push({ code: id, pct: Number(r.percentage) || 0 });
+        activeByPrimary.set(pCode, list);
+      }
+    }
+
+    const sfTargetById = new Map<string, number>();
+    for (const [pCode, items] of activeByPrimary.entries()) {
+      const pMeta = primaryMetaMap.get(pCode);
+      const groupPool = pMeta ? pMeta.poolAmount : 0;
+      const allocated = this.calculatePennyAllocation(groupPool, items);
+      allocated.forEach((val, sfId) => sfTargetById.set(sfId, val));
+    }
+
+    // 3. Real Financial Metrics: Committed, Net Disbursed & Reference Counts
+    const [
+      committedRes,
+      ftDisbRes,
+      aerDisbRes,
+      refundRes,
+      appRefCountRes,
+      ftRefCountRes,
+      aerRefCountRes,
+      arrRefCountRes,
+      childCountRes,
+      astRes,
+      astAppRefRes,
+    ] = await Promise.all([
+      // Committed (approved / wait_disbursement, undisbursed portion)
+      db.execute({
+        sql: `SELECT COALESCE(approved_specific_fund_id, specific_fund_id) as sf_id,
+                     SUM(MAX(0, COALESCE(approved_amount, requested_amount, 0) - COALESCE(disbursed_amount, 0))) as committed_sum
+              FROM assistance_applications
+              WHERE id != 'REGISTRY-DOCS'
+                AND status IN ('approved', 'wait_disbursement')
+                AND COALESCE(fiscal_year, '2569') = ?
+              GROUP BY COALESCE(approved_specific_fund_id, specific_fund_id)`,
+        args: [fiscalYear],
+      }),
+      // Actual ledger disbursements/expenses (excluding reversals, internal transfers & opening cumulative lines)
+      db.execute({
+        sql: `SELECT COALESCE(ft.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id) as sf_id,
+                     ft.sub_fund_category as sf_code,
+                     SUM(ft.amount) as ft_sum
+              FROM financial_transactions ft
+              LEFT JOIN assistance_applications app ON ft.application_id = app.id
+              WHERE ft.status = 'completed'
+                AND ft.type IN ('disbursement', 'expense')
+                AND COALESCE(ft.category, '') NOT IN ('bank_transfer_in', 'bank_transfer_out')
+                AND COALESCE(ft.category, '') NOT LIKE '%โอนเงินภายใน%'
+                AND COALESCE(ft.category, '') NOT LIKE 'ยอดยกมา%'
+                AND COALESCE(ft.zakat_year, '2569') = ?
+              GROUP BY COALESCE(ft.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id), ft.sub_fund_category`,
+        args: [fiscalYear],
+      }),
+      // Confirmed cash-flow executions that don't already have a completed financial_transactions entry
+      db.execute({
+        sql: `SELECT COALESCE(aer.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id) as sf_id,
+                     SUM(aer.actual_disbursed_amount) as aer_sum
+              FROM assistance_execution_records aer
+              LEFT JOIN assistance_applications app ON aer.application_id = app.id
+              WHERE aer.is_confirmed = 1
+                AND aer.status != 'cancelled'
+                AND COALESCE(app.fiscal_year, '2569') = ?
+                AND NOT EXISTS (
+                  SELECT 1 FROM financial_transactions ft
+                  WHERE ft.application_id = aer.application_id
+                    AND ft.status = 'completed'
+                    AND ft.type IN ('disbursement', 'expense')
+                )
+              GROUP BY COALESCE(aer.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id)`,
+        args: [fiscalYear],
+      }),
+      // Completed refunds linked to specific fund
+      db.execute({
+        sql: `SELECT COALESCE(arr.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id) as sf_id,
+                     SUM(arr.refund_amount) as refund_sum
+              FROM assistance_refund_records arr
+              LEFT JOIN assistance_applications app ON arr.application_id = app.id
+              WHERE arr.status = 'completed'
+                AND COALESCE(app.fiscal_year, '2569') = ?
+              GROUP BY COALESCE(arr.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id)`,
+        args: [fiscalYear],
+      }),
+      // All-time application reference counts
+      db.execute(`
+        SELECT sf_id, COUNT(*) as cnt FROM (
+          SELECT COALESCE(approved_specific_fund_id, specific_fund_id) as sf_id, id
+          FROM assistance_applications
+          WHERE id != 'REGISTRY-DOCS' AND (specific_fund_id IS NOT NULL OR approved_specific_fund_id IS NOT NULL)
+        ) GROUP BY sf_id
+      `),
+      // All-time financial_transactions reference counts
+      db.execute(`
+        SELECT COALESCE(ft.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id) as sf_id,
+               ft.sub_fund_category as sf_code,
+               COUNT(*) as cnt
+        FROM financial_transactions ft
+        LEFT JOIN assistance_applications app ON ft.application_id = app.id
+        WHERE ft.specific_fund_id IS NOT NULL
+           OR ft.sub_fund_category IS NOT NULL
+           OR app.specific_fund_id IS NOT NULL
+        GROUP BY COALESCE(ft.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id), ft.sub_fund_category
+      `),
+      db.execute(`
+        SELECT COALESCE(aer.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id) as sf_id, COUNT(*) as cnt
+        FROM assistance_execution_records aer
+        LEFT JOIN assistance_applications app ON aer.application_id = app.id
+        GROUP BY COALESCE(aer.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id)
+      `),
+      db.execute(`
+        SELECT COALESCE(arr.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id) as sf_id, COUNT(*) as cnt
+        FROM assistance_refund_records arr
+        LEFT JOIN assistance_applications app ON arr.application_id = app.id
+        GROUP BY COALESCE(arr.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id)
+      `),
+      db.execute(`
+        SELECT parent_fund_id as sf_id, COUNT(*) as cnt
+        FROM faqir_miskin_sub_funds
+        WHERE parent_fund_id IS NOT NULL
+        GROUP BY parent_fund_id
+      `),
+      db.execute(`SELECT * FROM assistance_types ORDER BY order_index ASC, code ASC`),
+      db.execute(`
+        SELECT ast.specific_fund_id as sf_id, COUNT(app.id) as cnt
+        FROM assistance_types ast
+        JOIN assistance_applications app ON app.assistance_type_id = ast.id
+        WHERE app.id != 'REGISTRY-DOCS' AND ast.specific_fund_id IS NOT NULL
+        GROUP BY ast.specific_fund_id
+      `),
+    ]);
+
+    const committedBySf = new Map<string, number>();
+    for (const r of committedRes.rows) {
+      if (r.sf_id) committedBySf.set(String(r.sf_id), round2(Number(r.committed_sum) || 0));
+    }
+
+    const grossDisbBySf = new Map<string, number>();
+    for (const r of ftDisbRes.rows) {
+      const resolvedId = r.sf_id ? String(r.sf_id) : (r.sf_code ? sfIdByCode.get(String(r.sf_code)) : undefined);
+      if (resolvedId) {
+        grossDisbBySf.set(resolvedId, round2((grossDisbBySf.get(resolvedId) || 0) + (Number(r.ft_sum) || 0)));
+      }
+    }
+    for (const r of aerDisbRes.rows) {
+      if (r.sf_id) {
+        const sfId = String(r.sf_id);
+        grossDisbBySf.set(sfId, round2((grossDisbBySf.get(sfId) || 0) + (Number(r.aer_sum) || 0)));
+      }
+    }
+
+    const refundBySf = new Map<string, number>();
+    for (const r of refundRes.rows) {
+      if (r.sf_id) refundBySf.set(String(r.sf_id), round2(Number(r.refund_sum) || 0));
+    }
+
+    const appCountBySf = new Map<string, number>();
+    for (const r of appRefCountRes.rows) {
+      if (r.sf_id) appCountBySf.set(String(r.sf_id), Number(r.cnt) || 0);
+    }
+
+    const txnCountBySf = new Map<string, number>();
+    for (const r of ftRefCountRes.rows) {
+      const resolvedId = r.sf_id ? String(r.sf_id) : (r.sf_code ? sfIdByCode.get(String(r.sf_code)) : undefined);
+      if (resolvedId) {
+        txnCountBySf.set(resolvedId, (txnCountBySf.get(resolvedId) || 0) + (Number(r.cnt) || 0));
+      }
+    }
+    for (const r of aerRefCountRes.rows) {
+      if (r.sf_id) txnCountBySf.set(String(r.sf_id), (txnCountBySf.get(String(r.sf_id)) || 0) + (Number(r.cnt) || 0));
+    }
+    for (const r of arrRefCountRes.rows) {
+      if (r.sf_id) txnCountBySf.set(String(r.sf_id), (txnCountBySf.get(String(r.sf_id)) || 0) + (Number(r.cnt) || 0));
+    }
+
+    const childCountBySf = new Map<string, number>();
+    for (const r of childCountRes.rows) {
+      if (r.sf_id) childCountBySf.set(String(r.sf_id), Number(r.cnt) || 0);
+    }
+
+    const astAppRefBySf = new Map<string, number>();
+    for (const r of astAppRefRes.rows) {
+      if (r.sf_id) astAppRefBySf.set(String(r.sf_id), Number(r.cnt) || 0);
+    }
+
+    const astListBySf = new Map<string, AssistanceTypeItem[]>();
+    for (const t of astRes.rows) {
+      const sfId = t.specific_fund_id ? String(t.specific_fund_id) : '';
+      if (!sfId) continue;
+      let reqDocs: string[] = [];
+      try { if (t.required_docs) reqDocs = JSON.parse(String(t.required_docs)); } catch {}
+      const list = astListBySf.get(sfId) || [];
+      list.push({
+        id: String(t.id),
+        code: String(t.code),
+        name: String(t.name),
+        group: (t.type_group ? String(t.type_group) : 'core') as 'core' | 'specific',
+        category: String(t.category) as any,
+        description: t.description ? String(t.description) : undefined,
+        conditionsText: t.conditions_text ? String(t.conditions_text) : undefined,
+        assistanceFormat: (t.assistance_format ? String(t.assistance_format) : 'one_time') as any,
+        defaultMinAmount: t.default_min_amount !== null && t.default_min_amount !== undefined ? Number(t.default_min_amount) : undefined,
+        requiredDocuments: reqDocs,
+        defaultMaxAmount: t.default_max_amount !== null && t.default_max_amount !== undefined ? Number(t.default_max_amount) : undefined,
+        specificFundId: sfId,
+        primaryGroupCode: t.primary_group_code ? String(t.primary_group_code) : undefined,
+        orderIndex: Number(t.order_index) || 0,
+        isActive: Boolean(t.is_active),
+        deactivatedReason: t.deactivated_reason ? String(t.deactivated_reason) : null,
+      });
+      astListBySf.set(sfId, list);
+    }
+
+    // 4. Filter & Map Specific Funds
+    const searchTerm = filters?.search?.trim().toLowerCase() || '';
+    const statusFilter = filters?.status || 'all';
+
+    return allSfRes.rows
+      .filter((r) => {
+        const pCode = String(r.primary_group_code || 'faqir_miskin');
+        if (primaryFilter !== 'all' && pCode !== primaryFilter) return false;
+
+        const active = Boolean(r.is_active);
+        if (statusFilter === 'active' && !active) return false;
+        if (statusFilter === 'inactive' && active) return false;
+
+        const effDate = String(r.effective_date || '2026-10-01');
+        if (filters?.effectiveFrom && effDate < filters.effectiveFrom) return false;
+        if (filters?.effectiveTo && effDate > filters.effectiveTo) return false;
+
+        if (searchTerm) {
+          const hay = [
+            String(r.fund_code || ''),
+            String(r.code || ''),
+            String(r.name || ''),
+            String(r.name_en || ''),
+            String(r.description || ''),
+          ].join(' ').toLowerCase();
+          if (!hay.includes(searchTerm)) return false;
+        }
+        return true;
+      })
+      .map((r) => {
+        const id = String(r.id);
+        const code = String(r.code);
+        const pCode = String(r.primary_group_code || 'faqir_miskin');
+        const pMeta = primaryMetaMap.get(pCode);
+        const fAccId = r.fund_account_id ? String(r.fund_account_id) : (pMeta?.fundAccountId || 'fund-1');
+        const fAcc = fundAccMap.get(fAccId);
+
+        const baseBudgetAmount = pMeta ? pMeta.poolAmount : 0;
+        const targetAmount = Boolean(r.is_active) ? (sfTargetById.get(id) || 0) : 0;
+        const budgetAdjustment = round2((Number(r.budget_adjustment) || 0) + (specificAdjMap.get(id) || 0));
+        const adjustedBudgetAmount = round2(targetAmount + budgetAdjustment);
+        const committedAmount = committedBySf.get(id) || 0;
+        const grossDisb = grossDisbBySf.get(id) || 0;
+        const refunded = refundBySf.get(id) || 0;
+        const netDisbursedAmount = round2(Math.max(0, grossDisb - refunded));
+        const remainingAmount = round2(adjustedBudgetAmount - netDisbursedAmount);
+        const availableAfterCommitment = round2(adjustedBudgetAmount - netDisbursedAmount - committedAmount);
+
+        const linkedTypes = astListBySf.get(id) || [];
+        const activeLinkedTypesCount = linkedTypes.filter((t) => t.isActive).length;
+        const linkedApplicationCount = appCountBySf.get(id) || 0;
+        const linkedTransactionCount = txnCountBySf.get(id) || 0;
+        const childFundCount = childCountBySf.get(id) || 0;
+        const astRefCount = astAppRefBySf.get(id) || 0;
+        const canHardDelete =
+          linkedApplicationCount === 0 &&
+          linkedTransactionCount === 0 &&
+          childFundCount === 0 &&
+          astRefCount === 0 &&
+          linkedTypes.length === 0;
+
+        const parentFundId = r.parent_fund_id ? String(r.parent_fund_id) : null;
+
+        return {
+          id,
+          fiscalYear: String(r.fiscal_year),
+          fundCode: r.fund_code ? String(r.fund_code) : code.toUpperCase(),
+          code,
+          name: String(r.name),
+          nameEn: r.name_en ? String(r.name_en) : undefined,
+          primaryGroupCode: pCode,
+          primaryGroupName: pMeta?.name || pCode,
+          fundAccountId: fAccId,
+          fundAccountCode: fAcc ? String(fAcc.code) : undefined,
+          fundAccountName: fAcc ? String(fAcc.name) : undefined,
+          parentFundId,
+          parentFundName: parentFundId ? (sfNameById.get(parentFundId) || null) : null,
+          fundType: (r.fund_type ? String(r.fund_type) : 'specific') as ManagedFundType,
+          description: r.description ? String(r.description) : undefined,
+          percentage: Number(r.percentage),
+          baseBudgetAmount,
+          budgetAdjustment,
+          adjustedBudgetAmount,
+          targetAmount,
+          allocatedAmount: adjustedBudgetAmount,
+          committedAmount,
+          disbursedAmount: netDisbursedAmount,
+          netDisbursedAmount,
+          remainingAmount,
+          availableAfterCommitment,
+          effectiveDate: r.effective_date ? String(r.effective_date) : '2026-10-01',
+          sortOrder: Number(r.sort_order) || 0,
+          assistanceTypeCount: activeLinkedTypesCount,
+          assistanceTypes: filters?.includeAssistanceTypes !== false ? linkedTypes : undefined,
+          linkedApplicationCount,
+          linkedTransactionCount,
+          canHardDelete,
+          isActive: Boolean(r.is_active),
+          createdById: r.created_by_id ? String(r.created_by_id) : undefined,
+          createdByName: r.created_by_name ? String(r.created_by_name) : undefined,
+          createdAt: r.created_at ? String(r.created_at) : undefined,
+          deactivatedAt: r.deactivated_at ? String(r.deactivated_at) : null,
+          deactivatedById: r.deactivated_by_id ? String(r.deactivated_by_id) : null,
+          deactivatedByName: r.deactivated_by_name ? String(r.deactivated_by_name) : null,
+          deactivatedReason: r.deactivated_reason ? String(r.deactivated_reason) : null,
+          updatedById: r.updated_by_id ? String(r.updated_by_id) : undefined,
+          updatedByName: r.updated_by_name ? String(r.updated_by_name) : undefined,
+          updatedAt: String(r.updated_at),
+        };
+      });
+  }
+
+  static async getSpecificFundById(fundId: string, fiscalYear: string = '2569') {
+    await initDb();
+    const db = getDb();
+
+    const all = await this.getSpecificFunds({
+      fiscalYear,
+      primaryGroupCode: 'all',
+      status: 'all',
+      includeAssistanceTypes: true,
+    });
+
+    const fund = all.find((f) => f.id === fundId || f.code === fundId || f.fundCode === fundId);
+    if (!fund) {
+      throw new Error(`ไม่พบข้อมูลกองทุนรหัส ${fundId}`);
+    }
+
+    const childFunds = all.filter((f) => f.parentFundId === fund.id);
+
+    const [recentAppsRes, recentTxnsRes, adjRes, hist] = await Promise.all([
+      db.execute({
+        sql: `SELECT a.id, a.application_no, a.status, a.requested_amount, a.approved_amount, a.disbursed_amount,
+                     a.applied_date, a.assistance_type, b.full_name, b.registration_no
+              FROM assistance_applications a
+              LEFT JOIN beneficiaries b ON a.beneficiary_id = b.id
+              WHERE a.id != 'REGISTRY-DOCS'
+                AND (a.specific_fund_id = ? OR a.approved_specific_fund_id = ?)
+              ORDER BY a.created_at DESC
+              LIMIT 20`,
+        args: [fund.id, fund.id],
+      }),
+      db.execute({
+        sql: `SELECT ft.id, ft.transaction_no, ft.date, ft.type, ft.category, ft.amount, ft.payer_or_payee, ft.status, ft.reference_no
+              FROM financial_transactions ft
+              LEFT JOIN assistance_applications app ON ft.application_id = app.id
+              WHERE ft.specific_fund_id = ?
+                 OR ft.sub_fund_category = ?
+                 OR app.specific_fund_id = ?
+                 OR app.approved_specific_fund_id = ?
+              ORDER BY ft.created_at DESC
+              LIMIT 20`,
+        args: [fund.id, fund.code, fund.id, fund.id],
+      }),
+      this.getFundBudgetAdjustments({ fiscalYear, specificFundId: fund.id }),
+      this.getSpecificFundHistory(fiscalYear, fund.primaryGroupCode),
+    ]);
+
+    return {
+      fund,
+      assistanceTypes: fund.assistanceTypes || [],
+      childFunds,
+      recentApplications: recentAppsRes.rows.map((r) => ({
+        id: String(r.id),
+        applicationNo: String(r.application_no),
+        beneficiaryName: r.full_name ? String(r.full_name) : '-',
+        registrationNo: r.registration_no ? String(r.registration_no) : undefined,
+        assistanceType: r.assistance_type ? String(r.assistance_type) : '-',
+        requestedAmount: Number(r.requested_amount) || 0,
+        approvedAmount: r.approved_amount !== null ? Number(r.approved_amount) : undefined,
+        disbursedAmount: r.disbursed_amount !== null ? Number(r.disbursed_amount) : undefined,
+        status: String(r.status),
+        appliedDate: String(r.applied_date),
+      })),
+      recentTransactions: recentTxnsRes.rows.map((t) => ({
+        id: String(t.id),
+        transactionNo: String(t.transaction_no),
+        date: String(t.date),
+        type: String(t.type),
+        category: String(t.category),
+        amount: Number(t.amount) || 0,
+        payerOrPayee: String(t.payer_or_payee),
+        status: String(t.status),
+        referenceNo: String(t.reference_no),
+      })),
+      budgetAdjustments: adjRes,
+      history: hist,
+    };
+  }
+
+  static async createSpecificFund(
+    input: {
+      fiscalYear?: string;
+      fundCode: string;
+      code?: string;
+      name: string;
+      nameEn?: string;
+      primaryGroupCode: string;
+      parentFundId?: string | null;
+      fundAccountId?: string;
+      fundType?: ManagedFundType;
+      description?: string;
+      percentage?: number;
+      rebalanceProportions?: { code: string; percentage: number }[];
+      isActive?: boolean;
+      effectiveDate: string;
+      sortOrder?: number;
+      assistanceTypeIds?: string[];
+      newAssistanceTypes?: {
+        code?: string;
+        name: string;
+        category: string;
+        description?: string;
+        conditionsText?: string;
+        requiredDocuments?: string[];
+      }[];
+      policyRef?: string;
+      reason?: string;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: เฉพาะผู้ดูแลระบบ ผู้บริหาร หรือฝ่ายการเงินเท่านั้นที่มีสิทธิ์เพิ่มกองทุน');
+    }
+
+    const fiscalYear = (input.fiscalYear || '2569').trim();
+    const fundCode = (input.fundCode || '').trim().toUpperCase();
+    const name = (input.name || '').trim();
+    const nameEn = input.nameEn?.trim() || null;
+    const primaryGroupCode = (input.primaryGroupCode || '').trim();
+    const effectiveDate = (input.effectiveDate || '').trim();
+
+    if (!fundCode) throw new Error('กรุณาระบุรหัสกองทุน (Fund Code)');
+    if (!name) throw new Error('กรุณาระบุชื่อกองทุนภาษาไทย');
+    if (!primaryGroupCode) throw new Error('กรุณาเลือกกลุ่มกองทุนหลัก (Primary Fund Group)');
+    if (!effectiveDate) throw new Error('กรุณาระบุวันที่เริ่มมีผลบังคับใช้');
+
+    const slugCode = (input.code || fundCode)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '') || `sf_${Date.now().toString().slice(-6)}`;
+
+    // 1. Validate Primary Group exists in central Asnaf configuration
+    const primaryRes = await db.execute({
+      sql: 'SELECT id, asnaf_code, asnaf_name, fund_account_id FROM asnaf_allocations WHERE fiscal_year = ? AND asnaf_code = ?',
+      args: [fiscalYear, primaryGroupCode],
+    });
+    if (primaryRes.rows.length === 0) {
+      throw new Error(`ไม่พบกลุ่มหลัก "${primaryGroupCode}" ในการตั้งค่าอัสนัฟกลางประจำปี ${fiscalYear}`);
+    }
+    const primaryRow = primaryRes.rows[0];
+    const resolvedFundAccId = input.fundAccountId?.trim() || (primaryRow.fund_account_id ? String(primaryRow.fund_account_id) : 'fund-1');
+
+    // Validate fund_account_id exists
+    const faCheck = await db.execute({
+      sql: 'SELECT id FROM fund_accounts WHERE id = ?',
+      args: [resolvedFundAccId],
+    });
+    if (faCheck.rows.length === 0) {
+      throw new Error(`ไม่พบบัญชีกองทุนหลักรหัส ${resolvedFundAccId}`);
+    }
+
+    // 2. Validate Parent Fund (prevent Orphan / Cross-Group Parent)
+    const parentFundId = input.parentFundId ? input.parentFundId.trim() : null;
+    if (parentFundId) {
+      const parentCheck = await db.execute({
+        sql: 'SELECT id, primary_group_code, is_active FROM faqir_miskin_sub_funds WHERE id = ? AND fiscal_year = ?',
+        args: [parentFundId, fiscalYear],
+      });
+      if (parentCheck.rows.length === 0) {
+        throw new Error('ไม่พบกองทุนแม่ที่อ้างอิง (ป้องกัน Orphan Parent)');
+      }
+      if (String(parentCheck.rows[0].primary_group_code) !== primaryGroupCode) {
+        throw new Error('กองทุนแม่ต้องอยู่ภายใต้กลุ่มหลักเดียวกัน');
+      }
+      if (!Boolean(parentCheck.rows[0].is_active)) {
+        throw new Error('ไม่สามารถเลือกกองทุนแม่ที่ถูกปิดใช้งานแล้ว');
+      }
+    }
+
+    // 3. Duplicate Code / Name Check
+    const dupCheck = await db.execute({
+      sql: `SELECT id, fund_code, code, name FROM faqir_miskin_sub_funds
+            WHERE fiscal_year = ?
+              AND (LOWER(COALESCE(fund_code, '')) = LOWER(?)
+                   OR LOWER(code) = LOWER(?)
+                   OR (primary_group_code = ? AND LOWER(name) = LOWER(?)))`,
+      args: [fiscalYear, fundCode, slugCode, primaryGroupCode, name],
+    });
+    if (dupCheck.rows.length > 0) {
+      const d = dupCheck.rows[0];
+      if (String(d.fund_code || '').toLowerCase() === fundCode.toLowerCase() || String(d.code || '').toLowerCase() === slugCode.toLowerCase()) {
+        throw new Error(`รหัสกองทุน "${fundCode}" มีอยู่ในระบบแล้ว ห้ามสร้างรหัสซ้ำ`);
+      }
+      throw new Error(`ชื่อกองทุน "${name}" มีอยู่แล้วในกลุ่มหลักนี้`);
+    }
+
+    // 4. Validate Initial Budget Percentage & Sibling Proportion Rule
+    const isActive = input.isActive !== false;
+    const initialPct = round2(Math.max(0, Number(input.percentage ?? 0)));
+    if (initialPct < 0 || initialPct > 100) {
+      throw new Error('สัดส่วนงบประมาณต้องอยู่ระหว่าง 0% ถึง 100%');
+    }
+
+    const existingSiblingsRes = await db.execute({
+      sql: 'SELECT id, code, name, percentage, is_active FROM faqir_miskin_sub_funds WHERE fiscal_year = ? AND primary_group_code = ?',
+      args: [fiscalYear, primaryGroupCode],
+    });
+    const oldProportions = existingSiblingsRes.rows
+      .filter((s) => Boolean(s.is_active))
+      .map((s) => ({ code: String(s.code), name: String(s.name), percentage: Number(s.percentage) || 0 }));
+
+    if (isActive && initialPct > 0) {
+      if (input.rebalanceProportions && input.rebalanceProportions.length > 0) {
+        const rebalSum = round2(
+          input.rebalanceProportions.reduce((s, item) => s + (Number(item.percentage) || 0), 0) + initialPct
+        );
+        if (Math.abs(rebalSum - 100.0) > 0.001) {
+          throw new Error(`ผลรวมสัดส่วนกองทุนในกลุ่มหลักหลังเพิ่มกองทุนต้องเท่ากับ 100% พอดี (ปัจจุบันรวมได้ ${rebalSum.toFixed(2)}%)`);
+        }
+      } else {
+        const currentActiveSum = round2(oldProportions.reduce((s, item) => s + item.percentage, 0));
+        if (existingSiblingsRes.rows.length > 0 && currentActiveSum + initialPct > 100.001) {
+          throw new Error(
+            `สัดส่วนรวมของกลุ่มหลักจะเท่ากับ ${(currentActiveSum + initialPct).toFixed(2)}% ซึ่งเกิน 100% กรุณากำหนดสัดส่วนเริ่มต้นเป็น 0% แล้วใช้เมนู "ปรับสัดส่วน" เกลี่ยให้ครบ 100% หรือส่งข้อมูลปรับเกลี่ยสัดส่วนมาพร้อมกัน`
+          );
+        }
+      }
+    }
+
+    const newFundId = `subf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const sortOrder = input.sortOrder ?? existingSiblingsRes.rows.length + 1;
+
+    await db.execute({
+      sql: `INSERT INTO faqir_miskin_sub_funds (
+              id, fiscal_year, fund_code, code, name, name_en, primary_group_code, fund_account_id,
+              parent_fund_id, fund_type, description, percentage, effective_date, sort_order,
+              is_active, created_by_id, created_by_name, updated_by_id, updated_by_name, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      args: [
+        newFundId,
+        fiscalYear,
+        fundCode,
+        slugCode,
+        name,
+        nameEn,
+        primaryGroupCode,
+        resolvedFundAccId,
+        parentFundId,
+        input.fundType || 'specific',
+        input.description?.trim() || '',
+        isActive ? initialPct : 0,
+        effectiveDate,
+        sortOrder,
+        isActive ? 1 : 0,
+        actor.id,
+        actor.name,
+        actor.id,
+        actor.name,
+      ],
+    });
+
+    // Apply rebalance if provided
+    if (isActive && initialPct > 0 && input.rebalanceProportions && input.rebalanceProportions.length > 0) {
+      for (const rb of input.rebalanceProportions) {
+        await db.execute({
+          sql: `UPDATE faqir_miskin_sub_funds
+                SET percentage = ?, updated_by_id = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE fiscal_year = ? AND primary_group_code = ? AND (code = ? OR id = ?)`,
+          args: [round2(Number(rb.percentage) || 0), actor.id, actor.name, fiscalYear, primaryGroupCode, rb.code, rb.code],
+        });
+      }
+    }
+
+    // Link existing assistance types if requested
+    if (input.assistanceTypeIds && input.assistanceTypeIds.length > 0) {
+      for (const astId of input.assistanceTypeIds) {
+        const astCheck = await db.execute({
+          sql: `SELECT ast.id, ast.name, ast.code, ast.primary_group_code,
+                       (SELECT COUNT(*) FROM assistance_applications app WHERE app.id != 'REGISTRY-DOCS' AND (app.assistance_type_id = ast.id OR app.assistance_type = ast.code)) as ref_cnt
+                FROM assistance_types ast WHERE ast.id = ?`,
+          args: [astId],
+        });
+        if (astCheck.rows.length === 0) {
+          throw new Error(`ไม่พบประเภทความช่วยเหลือรหัส ${astId}`);
+        }
+        const curPrimary = astCheck.rows[0].primary_group_code ? String(astCheck.rows[0].primary_group_code) : primaryGroupCode;
+        const refCnt = Number(astCheck.rows[0].ref_cnt) || 0;
+        if (refCnt > 0 && curPrimary !== primaryGroupCode) {
+          throw new Error(
+            `ไม่สามารถย้ายประเภทความช่วยเหลือ "${astCheck.rows[0].name}" ข้ามกลุ่มหลักได้ เนื่องจากมีคำร้องอ้างอิงแล้ว ${refCnt} รายการ`
+          );
+        }
+        await db.execute({
+          sql: `UPDATE assistance_types
+                SET specific_fund_id = ?, primary_group_code = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?`,
+          args: [newFundId, primaryGroupCode, astId],
+        });
+      }
+    }
+
+    // Create new assistance types under this fund if requested
+    if (input.newAssistanceTypes && input.newAssistanceTypes.length > 0) {
+      let idx = 1;
+      for (const nat of input.newAssistanceTypes) {
+        if (!nat.name?.trim()) continue;
+        const astId = `ast-${Date.now()}-${idx++}`;
+        const astCode = (nat.code?.trim() || `AST_${fundCode.replace(/[^A-Z0-9]/g, '')}_${idx}`).toUpperCase();
+        await db.execute({
+          sql: `INSERT INTO assistance_types (
+                  id, code, name, category, description, type_group, specific_fund_id, primary_group_code,
+                  conditions_text, required_docs, order_index, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+          args: [
+            astId,
+            astCode,
+            nat.name.trim(),
+            nat.category || 'cash',
+            nat.description?.trim() || '',
+            primaryGroupCode === 'faqir_miskin' ? 'core' : 'specific',
+            newFundId,
+            primaryGroupCode,
+            nat.conditionsText?.trim() || '',
+            JSON.stringify(nat.requiredDocuments || []),
+            idx,
+          ],
+        });
+      }
+    }
+
+    const updatedSiblingsRes = await db.execute({
+      sql: 'SELECT code, name, percentage FROM faqir_miskin_sub_funds WHERE fiscal_year = ? AND primary_group_code = ? AND is_active = 1',
+      args: [fiscalYear, primaryGroupCode],
+    });
+    const newProportions = updatedSiblingsRes.rows.map((s) => ({
+      code: String(s.code),
+      name: String(s.name),
+      percentage: Number(s.percentage) || 0,
+    }));
+
+    await db.execute({
+      sql: `INSERT INTO faqir_miskin_history (
+              id, fiscal_year, primary_group_code, action_type, old_proportions_json, proportions_json,
+              effective_date, changed_by_id, changed_by_name, approved_by_id, approved_by_name,
+              policy_ref, reason, timestamp
+            ) VALUES (?, ?, ?, 'fund_created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `fmh-${Date.now()}`,
+        fiscalYear,
+        primaryGroupCode,
+        JSON.stringify(oldProportions),
+        JSON.stringify(newProportions),
+        effectiveDate,
+        actor.id,
+        actor.name,
+        actor.id,
+        actor.name,
+        input.policyRef?.trim() || `สร้างกองทุนใหม่ ${fundCode}`,
+        input.reason?.trim() || `เพิ่มกองทุน "${name}" (${fundCode}) ภายใต้กลุ่มหลัก ${primaryRow.asnaf_name}`,
+        timestampNow,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+            ) VALUES (?, ?, ?, ?, ?, 'FUND_CREATED', 'specific_fund', ?, ?, NULL, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        newFundId,
+        `สร้างกองทุนใหม่ "${name}" (รหัส ${fundCode}) กลุ่มหลัก ${primaryGroupCode} สัดส่วนเริ่มต้น ${initialPct}% มีผล ${effectiveDate}`,
+        JSON.stringify({ id: newFundId, fundCode, code: slugCode, name, primaryGroupCode, percentage: initialPct, effectiveDate }),
+      ],
+    });
+
+    const created = await this.getSpecificFundById(newFundId, fiscalYear);
+    return created.fund;
+  }
+
+  static async updateSpecificFund(
+    fundId: string,
+    input: {
+      fundCode?: string;
+      code?: string;
+      name?: string;
+      nameEn?: string | null;
+      primaryGroupCode?: string;
+      parentFundId?: string | null;
+      fundAccountId?: string;
+      fundType?: ManagedFundType;
+      description?: string;
+      effectiveDate?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+      assistanceTypeIds?: string[];
+      reason?: string;
+      policyRef?: string;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: เฉพาะผู้ดูแลระบบ ผู้บริหาร หรือฝ่ายการเงินเท่านั้นที่มีสิทธิ์แก้ไขข้อมูลกองทุน');
+    }
+
+    const existingRes = await db.execute({
+      sql: 'SELECT * FROM faqir_miskin_sub_funds WHERE id = ?',
+      args: [fundId],
+    });
+    if (existingRes.rows.length === 0) {
+      throw new Error(`ไม่พบข้อมูลกองทุนรหัส ${fundId}`);
+    }
+    const existing = existingRes.rows[0];
+    const fiscalYear = String(existing.fiscal_year);
+    const currentDetail = await this.getSpecificFundById(fundId, fiscalYear);
+    const hasReferences =
+      (currentDetail.fund.linkedApplicationCount || 0) > 0 ||
+      (currentDetail.fund.linkedTransactionCount || 0) > 0;
+
+    // Reference Lock Enforcement: cannot alter fundCode, code, or primaryGroupCode if referenced
+    const nextFundCode = input.fundCode !== undefined ? input.fundCode.trim().toUpperCase() : String(existing.fund_code || existing.code);
+    const nextCode = input.code !== undefined ? input.code.trim().toLowerCase() : String(existing.code);
+    const nextPrimaryGroup = input.primaryGroupCode !== undefined ? input.primaryGroupCode.trim() : String(existing.primary_group_code || 'faqir_miskin');
+
+    if (hasReferences) {
+      if (
+        nextFundCode.toLowerCase() !== String(existing.fund_code || existing.code).toLowerCase() ||
+        nextCode.toLowerCase() !== String(existing.code).toLowerCase()
+      ) {
+        throw new Error(
+          `ไม่สามารถเปลี่ยนรหัสกองทุนได้ เนื่องจากกองทุนนี้มีข้อมูลอ้างอิงแล้ว (คำร้อง ${currentDetail.fund.linkedApplicationCount} รายการ, ธุรกรรม ${currentDetail.fund.linkedTransactionCount} รายการ)`
+        );
+      }
+      if (nextPrimaryGroup !== String(existing.primary_group_code || 'faqir_miskin')) {
+        throw new Error(
+          `ไม่สามารถเปลี่ยนกลุ่มกองทุนหลักได้ เนื่องจากกองทุนนี้มีคำร้องหรือธุรกรรมการเงินอ้างอิงอยู่แล้ว`
+        );
+      }
+    }
+
+    const nextName = input.name !== undefined ? input.name.trim() : String(existing.name);
+    if (!nextName) throw new Error('กรุณาระบุชื่อกองทุนภาษาไทย');
+    if (!nextFundCode) throw new Error('กรุณาระบุรหัสกองทุน');
+
+    // Validate Primary Group exists
+    const pRes = await db.execute({
+      sql: 'SELECT asnaf_code, fund_account_id FROM asnaf_allocations WHERE fiscal_year = ? AND asnaf_code = ?',
+      args: [fiscalYear, nextPrimaryGroup],
+    });
+    if (pRes.rows.length === 0) {
+      throw new Error(`ไม่พบกลุ่มหลัก "${nextPrimaryGroup}" ในระบบ`);
+    }
+
+    // Validate Parent Fund (no self-parent, no circular cycle, no cross-group, no orphan)
+    const nextParentId = input.parentFundId !== undefined ? (input.parentFundId ? input.parentFundId.trim() : null) : (existing.parent_fund_id ? String(existing.parent_fund_id) : null);
+    if (nextParentId) {
+      if (nextParentId === fundId) {
+        throw new Error('กองทุนไม่สามารถอ้างอิงตัวเองเป็นกองทุนแม่ได้');
+      }
+      let cursor: string | null = nextParentId;
+      const visited = new Set<string>([fundId]);
+      while (cursor) {
+        if (visited.has(cursor)) {
+          throw new Error('ตรวจพบการอ้างอิงกองทุนแม่เป็นวงกลม (Circular Parent Reference)');
+        }
+        visited.add(cursor);
+        const pRow: Awaited<ReturnType<typeof db.execute>> = await db.execute({
+          sql: 'SELECT id, parent_fund_id, primary_group_code FROM faqir_miskin_sub_funds WHERE id = ?',
+          args: [cursor],
+        });
+        if (pRow.rows.length === 0) {
+          throw new Error('ไม่พบกองทุนแม่ที่อ้างอิง (ป้องกัน Orphan Parent)');
+        }
+        if (String(pRow.rows[0].primary_group_code) !== nextPrimaryGroup) {
+          throw new Error('กองทุนแม่ต้องอยู่ในกลุ่มหลักเดียวกัน');
+        }
+        cursor = pRow.rows[0].parent_fund_id ? String(pRow.rows[0].parent_fund_id) : null;
+      }
+    }
+
+    // Check uniqueness excluding self
+    const dupCheck = await db.execute({
+      sql: `SELECT id, fund_code, name FROM faqir_miskin_sub_funds
+            WHERE fiscal_year = ? AND id != ?
+              AND (LOWER(COALESCE(fund_code, '')) = LOWER(?)
+                   OR LOWER(code) = LOWER(?)
+                   OR (primary_group_code = ? AND LOWER(name) = LOWER(?)))`,
+      args: [fiscalYear, fundId, nextFundCode, nextCode, nextPrimaryGroup, nextName],
+    });
+    if (dupCheck.rows.length > 0) {
+      throw new Error(`รหัสกองทุน "${nextFundCode}" หรือชื่อกองทุน "${nextName}" ซ้ำกับกองทุนอื่นในระบบ`);
+    }
+
+    const nextNameEn = input.nameEn !== undefined ? (input.nameEn ? input.nameEn.trim() : null) : (existing.name_en ? String(existing.name_en) : null);
+    const nextFundAccountId = input.fundAccountId?.trim() || String(existing.fund_account_id || pRes.rows[0].fund_account_id || 'fund-1');
+    const nextFundType = input.fundType || String(existing.fund_type || 'specific');
+    const nextDesc = input.description !== undefined ? input.description.trim() : String(existing.description || '');
+    const nextEffectiveDate = input.effectiveDate?.trim() || String(existing.effective_date || '2026-10-01');
+    const nextSortOrder = input.sortOrder !== undefined ? Number(input.sortOrder) : Number(existing.sort_order || 0);
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+
+    await db.execute({
+      sql: `UPDATE faqir_miskin_sub_funds
+            SET fund_code = ?,
+                code = ?,
+                name = ?,
+                name_en = ?,
+                primary_group_code = ?,
+                fund_account_id = ?,
+                parent_fund_id = ?,
+                fund_type = ?,
+                description = ?,
+                effective_date = ?,
+                sort_order = ?,
+                updated_by_id = ?,
+                updated_by_name = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [
+        nextFundCode,
+        nextCode,
+        nextName,
+        nextNameEn,
+        nextPrimaryGroup,
+        nextFundAccountId,
+        nextParentId,
+        nextFundType,
+        nextDesc,
+        nextEffectiveDate,
+        nextSortOrder,
+        actor.id,
+        actor.name,
+        fundId,
+      ],
+    });
+
+    // If primary group changed (on unreferenced fund), sync linked assistance_types
+    if (nextPrimaryGroup !== String(existing.primary_group_code || 'faqir_miskin')) {
+      await db.execute({
+        sql: 'UPDATE assistance_types SET primary_group_code = ? WHERE specific_fund_id = ?',
+        args: [nextPrimaryGroup, fundId],
+      });
+    }
+
+    // Re-assign linked assistance types if explicitly sent
+    if (input.assistanceTypeIds !== undefined) {
+      for (const astId of input.assistanceTypeIds) {
+        const astCheck = await db.execute({
+          sql: `SELECT ast.id, ast.name, ast.code, ast.primary_group_code,
+                       (SELECT COUNT(*) FROM assistance_applications app WHERE app.id != 'REGISTRY-DOCS' AND (app.assistance_type_id = ast.id OR app.assistance_type = ast.code)) as ref_cnt
+                FROM assistance_types ast WHERE ast.id = ?`,
+          args: [astId],
+        });
+        if (astCheck.rows.length === 0) {
+          throw new Error(`ไม่พบประเภทความช่วยเหลือรหัส ${astId}`);
+        }
+        const curPrimary = astCheck.rows[0].primary_group_code ? String(astCheck.rows[0].primary_group_code) : nextPrimaryGroup;
+        const refCnt = Number(astCheck.rows[0].ref_cnt) || 0;
+        if (refCnt > 0 && curPrimary !== nextPrimaryGroup) {
+          throw new Error(
+            `ไม่สามารถย้ายประเภทความช่วยเหลือ "${astCheck.rows[0].name}" ข้ามกลุ่มหลักได้ เนื่องจากมีคำร้องอ้างอิงแล้ว ${refCnt} รายการ`
+          );
+        }
+        await db.execute({
+          sql: `UPDATE assistance_types
+                SET specific_fund_id = ?, primary_group_code = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?`,
+          args: [fundId, nextPrimaryGroup, astId],
+        });
+      }
+    }
+
+    const oldValues = {
+      fundCode: existing.fund_code,
+      code: existing.code,
+      name: existing.name,
+      nameEn: existing.name_en,
+      primaryGroupCode: existing.primary_group_code,
+      parentFundId: existing.parent_fund_id,
+      fundType: existing.fund_type,
+      description: existing.description,
+      effectiveDate: existing.effective_date,
+    };
+    const newValues = {
+      fundCode: nextFundCode,
+      code: nextCode,
+      name: nextName,
+      nameEn: nextNameEn,
+      primaryGroupCode: nextPrimaryGroup,
+      parentFundId: nextParentId,
+      fundType: nextFundType,
+      description: nextDesc,
+      effectiveDate: nextEffectiveDate,
+    };
+
+    await db.execute({
+      sql: `INSERT INTO faqir_miskin_history (
+              id, fiscal_year, primary_group_code, action_type, old_proportions_json, proportions_json,
+              effective_date, changed_by_id, changed_by_name, policy_ref, reason, timestamp
+            ) VALUES (?, ?, ?, 'fund_updated', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `fmh-${Date.now()}`,
+        fiscalYear,
+        nextPrimaryGroup,
+        JSON.stringify([oldValues]),
+        JSON.stringify([newValues]),
+        nextEffectiveDate,
+        actor.id,
+        actor.name,
+        input.policyRef?.trim() || `แก้ไขข้อมูลกองทุน ${nextFundCode}`,
+        input.reason?.trim() || `อัปเดตข้อมูลกองทุน "${nextName}" (${nextFundCode})`,
+        timestampNow,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+            ) VALUES (?, ?, ?, ?, ?, 'FUND_UPDATED', 'specific_fund', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        fundId,
+        `แก้ไขข้อมูลกองทุน "${nextName}" (${nextFundCode}) โดย ${actor.name}`,
+        JSON.stringify(oldValues),
+        JSON.stringify(newValues),
+      ],
+    });
+
+    const updated = await this.getSpecificFundById(fundId, fiscalYear);
+    return updated.fund;
+  }
+
+  static async updateSpecificFundProportions(
+    params: {
+      subFunds: { code: string; percentage: number }[];
+      fiscalYear?: string;
+      primaryGroupCode?: string;
+      policyRef: string;
+      reason: string;
+      effectiveDate?: string;
+      approvedById?: string;
+      approvedByName?: string;
+      allowReserve?: boolean;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'approver', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: สิทธิ์ไม่เพียงพอในการปรับสัดส่วนการจัดสรรงบประมาณกองทุน');
+    }
+
+    const fiscalYear = params.fiscalYear || '2569';
+    const primaryGroupCode = normalizePrimaryGroupCode(params.primaryGroupCode || 'faqir_miskin');
+    const reason = (params.reason || '').trim();
+    const policyRef = (params.policyRef || '').trim();
+    const effectiveDate = (params.effectiveDate || new Date().toISOString().slice(0, 10)).trim();
+
+    if (!reason) throw new Error('กรุณาระบุเหตุผลในการปรับสัดส่วนงบประมาณ');
+    if (!policyRef) throw new Error('กรุณาระบุเลขที่มติหรือเอกสารอ้างอิงนโยบาย');
+    if (!effectiveDate) throw new Error('กรุณาระบุวันที่เริ่มมีผลบังคับใช้');
+
+    // Load current specific funds (both active and inactive) + primary group pool BEFORE updating
+    const [currentFunds, primaryGroups] = await Promise.all([
+      this.getSpecificFunds({ fiscalYear, primaryGroupCode, status: 'all', includeAssistanceTypes: false }),
+      this.getAsnafAllocations(fiscalYear, { includeInactive: true }),
+    ]);
+    const primaryGroup = primaryGroups.find((g) => g.asnafCode === primaryGroupCode);
+    const groupPool = primaryGroup ? (primaryGroup.adjustedBudgetAmount ?? primaryGroup.targetAmount) : 0;
+
+    for (const sf of params.subFunds) {
+      const pct = Number(sf.percentage);
+      if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+        throw new Error(`สัดส่วนของกองทุน "${sf.code}" ไม่ถูกต้อง (ต้องอยู่ระหว่าง 0% ถึง 100%)`);
+      }
+      const match = currentFunds.find((f) => f.code === sf.code || f.id === sf.code || f.fundCode === sf.code);
+      if (!match) {
+        throw new Error(`ไม่พบกองทุน "${sf.code}" ภายใต้กลุ่มหลัก ${primaryGroupCode}`);
+      }
+      if (!match.isActive && pct > 0) {
+        throw new Error(`ไม่สามารถกำหนดสัดส่วนมากกว่า 0% ให้กองทุนที่ปิดใช้งานแล้ว ("${match.name}")`);
+      }
+    }
+
+    const totalPct = round2(params.subFunds.reduce((acc, sf) => acc + Number(sf.percentage || 0), 0));
+    if (totalPct > 100.001 || totalPct < 0) {
+      throw new Error(`ผลรวมเปอร์เซ็นต์ต้องไม่เกิน 100% (ปัจจุบันได้ ${totalPct.toFixed(2)}%)`);
+    }
+    if (!params.allowReserve && Math.abs(totalPct - 100.0) > 0.001) {
+      throw new Error(
+        `ผลรวมเปอร์เซ็นต์ของกองทุนที่เปิดใช้งานต้องเท่ากับ 100% พอดี (ปัจจุบันได้ ${totalPct.toFixed(2)}%) หากต้องการกันงบสำรองกรุณาเปิดใช้นโยบายสำรองงบ`
+      );
+    }
+
+    const activeBefore = currentFunds.filter((f) => f.isActive);
+    const oldProportions = activeBefore.map((f) => ({
+      code: f.code,
+      name: f.name,
+      percentage: Number(f.percentage) || 0,
+      targetAmount: f.targetAmount,
+    }));
+
+    const nextPennyItems = params.subFunds
+      .map((sf) => {
+        const match = currentFunds.find((f) => f.code === sf.code || f.id === sf.code || f.fundCode === sf.code)!;
+        return { code: match.id, pct: round2(Number(sf.percentage) || 0), isActive: match.isActive };
+      })
+      .filter((x) => x.isActive);
+    const nextTargetById = this.calculatePennyAllocation(groupPool, nextPennyItems);
+
+    const pendingRes = await db.execute({
+      sql: `SELECT specific_fund_id, COUNT(*) as cnt
+            FROM assistance_applications
+            WHERE id != 'REGISTRY-DOCS'
+              AND status IN ('draft', 'submitted', 'doc_review', 'field_inspection', 'assessment', 'assessing', 'pending_approval', 'need_info')
+            GROUP BY specific_fund_id`,
+      args: [],
+    });
+    const pendingBySf = new Map<string, number>();
+    for (const p of pendingRes.rows) {
+      if (p.specific_fund_id) pendingBySf.set(String(p.specific_fund_id), Number(p.cnt) || 0);
+    }
+
+    const affectedItems: { id: string; label: string; count?: number }[] = [];
+    const newProportions: { code: string; name?: string; percentage: number; targetAmount?: number }[] = [];
+    const deficitWarnings: { code: string; name: string; newBudget: number; usedAndCommitted: number }[] = [];
+
+    // Update ONLY faqir_miskin_sub_funds percentages (NEVER retroactively mutate historical transactions or disbursed applications)
+    for (const item of params.subFunds) {
+      const match = currentFunds.find((f) => f.code === item.code || f.id === item.code || f.fundCode === item.code)!;
+      const nextPct = round2(Number(item.percentage));
+      const nextTarget = nextTargetById.get(match.id) || 0;
+      const nextAdjusted = round2(Math.max(0, nextTarget + (match.budgetAdjustment || 0)));
+
+      await db.execute({
+        sql: `UPDATE faqir_miskin_sub_funds
+              SET percentage = ?, effective_date = ?, updated_by_id = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?`,
+        args: [nextPct, effectiveDate, actor.id, actor.name, match.id],
+      });
+
+      newProportions.push({
+        code: match.code,
+        name: match.name,
+        percentage: nextPct,
+        targetAmount: nextTarget,
+      });
+
+      if (Math.abs(Number(match.percentage) - nextPct) > 0.0001) {
+        affectedItems.push({
+          id: match.id,
+          label: `${match.name}: ${Number(match.percentage).toFixed(2)}% (${match.targetAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บ.) -> ${nextPct.toFixed(2)}% (${nextTarget.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บ.)`,
+          count: pendingBySf.get(match.id) || 0,
+        });
+      }
+
+      const usedAndCommitted = round2((match.disbursedAmount || 0) + (match.committedAmount || 0));
+      if (nextAdjusted < usedAndCommitted) {
+        deficitWarnings.push({
+          code: match.code,
+          name: match.name,
+          newBudget: nextAdjusted,
+          usedAndCommitted,
+        });
+      }
+    }
+
+    const unallocatedReservePct = round2(Math.max(0, 100 - totalPct));
+    const allocatedTargetSum = round2(Array.from(nextTargetById.values()).reduce((s, v) => s + v, 0));
+    const unallocatedReserveAmount = round2(Math.max(0, groupPool - allocatedTargetSum));
+
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const approverId = params.approvedById || actor.id;
+    const approverName = params.approvedByName || actor.name;
+
+    await db.execute({
+      sql: `INSERT INTO faqir_miskin_history (
+              id, fiscal_year, primary_group_code, action_type, old_proportions_json, proportions_json,
+              effective_date, changed_by_id, changed_by_name, approved_by_id, approved_by_name,
+              affected_items_json, policy_ref, reason, timestamp
+            ) VALUES (?, ?, ?, 'proportion_change', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `fmh-${Date.now()}`,
+        fiscalYear,
+        primaryGroupCode,
+        JSON.stringify(oldProportions),
+        JSON.stringify(newProportions),
+        effectiveDate,
+        actor.id,
+        actor.name,
+        approverId,
+        approverName,
+        JSON.stringify(affectedItems),
+        policyRef,
+        reason,
+        timestampNow,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+            ) VALUES (?, ?, ?, ?, ?, 'SPECIFIC_FUND_PROPORTIONS_UPDATED', 'faqir_miskin_sub_funds', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        `${fiscalYear}:${primaryGroupCode}`,
+        `ปรับสัดส่วนกองทุนกลุ่ม ${primaryGroupCode} ปี ${fiscalYear} มีผล ${effectiveDate} นโยบาย: ${policyRef} เหตุผล: ${reason} (ไม่คำนวณย้อนหลังรายการจ่ายเดิม)`,
+        JSON.stringify(oldProportions),
+        JSON.stringify(newProportions),
+      ],
+    });
+
+    return {
+      success: true,
+      effectiveDate,
+      totalPercentage: totalPct,
+      unallocatedReservePct,
+      unallocatedReserveAmount,
+      oldProportions,
+      newProportions,
+      affectedItems,
+      deficitWarnings,
+    };
+  }
+
+  private static async _legacyUpdateSpecificFundProportionsUnused(
+    params: {
+      subFunds: { code: string; percentage: number }[];
+      fiscalYear?: string;
+      primaryGroupCode?: string;
+      policyRef: string;
+      reason: string;
+      effectiveDate?: string;
+      approvedById?: string;
+      approvedByName?: string;
+      allowReserve?: boolean;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'executive', 'approver', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: สิทธิ์ไม่เพียงพอในการปรับสัดส่วนการจัดสรรงบประมาณกองทุน');
+    }
+
+    const fiscalYear = params.fiscalYear || '2569';
+    const primaryGroupCode = params.primaryGroupCode || 'faqir_miskin';
+    const reason = (params.reason || '').trim();
+    const policyRef = (params.policyRef || '').trim();
+    const effectiveDate = (params.effectiveDate || new Date().toISOString().slice(0, 10)).trim();
+
+    if (!reason) throw new Error('กรุณาระบุเหตุผลในการปรับสัดส่วนงบประมาณ');
+    if (!policyRef) throw new Error('กรุณาระบุเลขที่มติหรือเอกสารอ้างอิงนโยบาย');
+    if (!effectiveDate) throw new Error('กรุณาระบุวันที่เริ่มมีผลบังคับใช้');
+
+    for (const sf of params.subFunds) {
+      if (Number(sf.percentage) < 0 || Number(sf.percentage) > 100 || Number.isNaN(Number(sf.percentage))) {
+        throw new Error(`สัดส่วนของกองทุน "${sf.code}" ไม่ถูกต้อง (ต้องอยู่ระหว่าง 0% ถึง 100%)`);
+      }
+    }
+
+    const totalPct = round2(params.subFunds.reduce((acc, sf) => acc + Number(sf.percentage || 0), 0));
+    if (params.allowReserve) {
+      if (totalPct > 100.001 || totalPct < 0) {
+        throw new Error(`ผลรวมเปอร์เซ็นต์ต้องไม่เกิน 100% (ปัจจุบันได้ ${totalPct.toFixed(2)}%)`);
+      }
+    } else if (Math.abs(totalPct - 100.0) > 0.001) {
+      throw new Error(`ผลรวมเปอร์เซ็นต์ของกองทุนที่เปิดใช้งานต้องเท่ากับ 100% พอดี (ปัจจุบันได้ ${totalPct.toFixed(2)}%)`);
+    }
+
+    // Load current active proportions BEFORE updating (for immutable audit trail)
+    const beforeRes = await db.execute({
+      sql: 'SELECT id, code, fund_code, name, percentage FROM faqir_miskin_sub_funds WHERE fiscal_year = ? AND primary_group_code = ? AND is_active = 1 ORDER BY COALESCE(sort_order, 99) ASC',
+      args: [fiscalYear, primaryGroupCode],
+    });
+    const oldProportions = beforeRes.rows.map((r) => ({
+      code: String(r.code),
+      name: String(r.name),
+      percentage: Number(r.percentage) || 0,
+    }));
+
+    // Count pending unapproved applications per fund (policy: pending unapproved requests keep fund link; historical approved/disbursed untouched)
+    const pendingRes = await db.execute({
+      sql: `SELECT specific_fund_id, COUNT(*) as cnt
+            FROM assistance_applications
+            WHERE id != 'REGISTRY-DOCS'
+              AND status IN ('draft', 'submitted', 'doc_review', 'field_inspection', 'assessment', 'assessing', 'pending_approval', 'need_info')
+            GROUP BY specific_fund_id`,
+      args: [],
+    });
+    const pendingBySf = new Map<string, number>();
+    for (const p of pendingRes.rows) {
+      if (p.specific_fund_id) pendingBySf.set(String(p.specific_fund_id), Number(p.cnt) || 0);
+    }
+
+    const affectedItems: { id: string; label: string; count?: number }[] = [];
+    const newProportions: { code: string; name?: string; percentage: number }[] = [];
+
+    for (const item of params.subFunds) {
+      const existingRow = beforeRes.rows.find(
+        (r) => String(r.code) === item.code || String(r.id) === item.code || String(r.fund_code) === item.code
+      );
+      const nextPct = round2(Number(item.percentage));
+
+      await db.execute({
+        sql: `UPDATE faqir_miskin_sub_funds
+              SET percentage = ?, effective_date = ?, updated_by_id = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE fiscal_year = ? AND primary_group_code = ? AND (code = ? OR id = ? OR fund_code = ?)`,
+        args: [nextPct, effectiveDate, actor.id, actor.name, fiscalYear, primaryGroupCode, item.code, item.code, item.code],
+      });
+
+      const resolvedName = existingRow ? String(existingRow.name) : item.code;
+      newProportions.push({ code: existingRow ? String(existingRow.code) : item.code, name: resolvedName, percentage: nextPct });
+
+      if (existingRow && Math.abs(Number(existingRow.percentage) - nextPct) > 0.0001) {
+        const sfId = String(existingRow.id);
+        affectedItems.push({
+          id: sfId,
+          label: `${resolvedName}: ${Number(existingRow.percentage).toFixed(2)}% -> ${nextPct.toFixed(2)}%`,
+          count: pendingBySf.get(sfId) || 0,
+        });
+      }
+    }
+
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const approverId = params.approvedById || actor.id;
+    const approverName = params.approvedByName || actor.name;
+
+    await db.execute({
+      sql: `INSERT INTO faqir_miskin_history (
+              id, fiscal_year, primary_group_code, action_type, old_proportions_json, proportions_json,
+              effective_date, changed_by_id, changed_by_name, approved_by_id, approved_by_name,
+              affected_items_json, policy_ref, reason, timestamp
+            ) VALUES (?, ?, ?, 'proportion_change', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `fmh-${Date.now()}`,
+        fiscalYear,
+        primaryGroupCode,
+        JSON.stringify(oldProportions),
+        JSON.stringify(newProportions),
+        effectiveDate,
+        actor.id,
+        actor.name,
+        approverId,
+        approverName,
+        JSON.stringify(affectedItems),
+        policyRef,
+        reason,
+        timestampNow,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+            ) VALUES (?, ?, ?, ?, ?, 'SPECIFIC_FUND_PROPORTIONS_UPDATED', 'faqir_miskin_sub_funds', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        `${fiscalYear}:${primaryGroupCode}`,
+        `ปรับสัดส่วนกองทุนกลุ่ม ${primaryGroupCode} ปี ${fiscalYear} มีผล ${effectiveDate} นโยบาย: ${policyRef} เหตุผล: ${reason} (ไม่คำนวณย้อนหลังรายการจ่ายเดิม)`,
+        JSON.stringify(oldProportions),
+        JSON.stringify(newProportions),
+      ],
+    });
+
+    return {
+      success: true,
+      effectiveDate,
+      oldProportions,
+      newProportions,
+      affectedItems,
+    };
+  }
+
+  static async deleteOrDeactivateSpecificFund(
+    fundId: string,
+    options: {
+      mode: 'delete' | 'deactivate' | 'activate';
+      reason?: string;
+      rebalanceProportions?: { code: string; percentage: number }[];
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: เฉพาะผู้ดูแลระบบ ผู้บริหาร หรือฝ่ายการเงินเท่านั้นที่มีสิทธิ์ลบหรือปิดใช้งานกองทุน');
+    }
+
+    const detail = await this.getSpecificFundById(fundId);
+    const fund = detail.fund;
+    const fiscalYear = fund.fiscalYear;
+    const primaryGroupCode = fund.primaryGroupCode || 'faqir_miskin';
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+
+    if (options.mode === 'delete') {
+      if (!fund.canHardDelete) {
+        throw new Error(
+          `CANNOT_HARD_DELETE: กองทุน "${fund.name}" (${fund.fundCode}) มีข้อมูลผูกพันหรือประวัติอ้างอิงอยู่ (คำร้อง ${fund.linkedApplicationCount || 0} รายการ, ธุรกรรมการเงิน ${fund.linkedTransactionCount || 0} รายการ, ประเภทความช่วยเหลือที่สังกัด ${detail.assistanceTypes.length} รายการ, กองทุนย่อย ${detail.childFunds.length} รายการ) ระบบไม่อนุญาตให้ลบถาวร กรุณาใช้การปิดใช้งาน (Deactivate) หรือย้ายประเภทความช่วยเหลือที่สังกัดก่อน`
+        );
+      }
+
+      if (fund.isActive && fund.percentage > 0) {
+        if (options.rebalanceProportions && options.rebalanceProportions.length > 0) {
+          const sumRebal = round2(options.rebalanceProportions.reduce((s, x) => s + Number(x.percentage || 0), 0));
+          if (Math.abs(sumRebal - 100.0) > 0.001) {
+            throw new Error(`ผลรวมสัดส่วนกองทุนที่เหลือหลังลบต้องเท่ากับ 100% พอดี (ปัจจุบันได้ ${sumRebal.toFixed(2)}%)`);
+          }
+          for (const rb of options.rebalanceProportions) {
+            await db.execute({
+              sql: `UPDATE faqir_miskin_sub_funds SET percentage = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE fiscal_year = ? AND primary_group_code = ? AND id != ? AND (code = ? OR id = ?)`,
+              args: [round2(Number(rb.percentage)), fiscalYear, primaryGroupCode, fund.id, rb.code, rb.code],
+            });
+          }
+        } else {
+          throw new Error(
+            `กองทุนนี้ยังมีสัดส่วนงบประมาณ ${fund.percentage}% กรุณาปรับสัดส่วนกองทุนนี้เป็น 0% (โอนสัดส่วนให้กองทุนอื่นครบ 100%) ก่อนลบถาวร`
+          );
+        }
+      }
+
+      // Delete unreferenced assistance_types attached solely to this new unreferenced fund
+      await db.execute({
+        sql: 'DELETE FROM assistance_types WHERE specific_fund_id = ?',
+        args: [fund.id],
+      });
+      await db.execute({
+        sql: 'DELETE FROM faqir_miskin_sub_funds WHERE id = ?',
+        args: [fund.id],
+      });
+
+      await db.execute({
+        sql: `INSERT INTO audit_logs (
+                id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+              ) VALUES (?, ?, ?, ?, ?, 'FUND_DELETED', 'specific_fund', ?, ?, ?, NULL)`,
+        args: [
+          `log-${Date.now()}`,
+          timestampNow,
+          actor.id,
+          actor.name,
+          actor.role,
+          fund.id,
+          `ลบกองทุนที่ยังไม่มีประวัติใช้งาน "${fund.name}" (${fund.fundCode}) โดย ${actor.name} เหตุผล: ${options.reason || 'ลบรายการที่ไม่ถูกใช้งาน'}`,
+          JSON.stringify(fund),
+        ],
+      });
+
+      return { success: true, mode: 'delete', deletedId: fund.id };
+    }
+
+    if (options.mode === 'deactivate') {
+      const reason = (options.reason || '').trim();
+      if (!reason) {
+        throw new Error('กรุณาระบุเหตุผลในการปิดใช้งานกองทุน');
+      }
+
+      // Check active siblings in same primary group
+      const activeSiblingsRes = await db.execute({
+        sql: 'SELECT id, code, name, percentage FROM faqir_miskin_sub_funds WHERE fiscal_year = ? AND primary_group_code = ? AND is_active = 1 AND id != ?',
+        args: [fiscalYear, primaryGroupCode, fund.id],
+      });
+
+      if (fund.percentage > 0 && activeSiblingsRes.rows.length > 0) {
+        if (options.rebalanceProportions && options.rebalanceProportions.length > 0) {
+          const sumRebal = round2(options.rebalanceProportions.reduce((s, x) => s + Number(x.percentage || 0), 0));
+          if (Math.abs(sumRebal - 100.0) > 0.001) {
+            throw new Error(`ผลรวมสัดส่วนของกองทุนที่ยังคงเปิดใช้งานต้องเท่ากับ 100% พอดี (ปัจจุบันได้ ${sumRebal.toFixed(2)}%)`);
+          }
+          for (const rb of options.rebalanceProportions) {
+            await db.execute({
+              sql: `UPDATE faqir_miskin_sub_funds SET percentage = ?, updated_by_id = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE fiscal_year = ? AND primary_group_code = ? AND id != ? AND (code = ? OR id = ?)`,
+              args: [round2(Number(rb.percentage)), actor.id, actor.name, fiscalYear, primaryGroupCode, fund.id, rb.code, rb.code],
+            });
+          }
+        } else {
+          throw new Error(
+            `กองทุน "${fund.name}" ยังถือสัดส่วนงบประมาณอยู่ ${fund.percentage}% กรุณาปรับเกลี่ยสัดส่วนให้กองทุนอื่นรวมครบ 100% ก่อนปิดใช้งาน หรือส่งข้อมูลปรับเกลี่ยสัดส่วนมาพร้อมกัน`
+          );
+        }
+      }
+
+      await db.execute({
+        sql: `UPDATE faqir_miskin_sub_funds
+              SET is_active = 0,
+                  percentage = CASE WHEN ? > 0 THEN 0 ELSE percentage END,
+                  deactivated_at = ?,
+                  deactivated_by_id = ?,
+                  deactivated_by_name = ?,
+                  deactivated_reason = ?,
+                  updated_by_id = ?,
+                  updated_by_name = ?,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?`,
+        args: [
+          activeSiblingsRes.rows.length,
+          timestampNow,
+          actor.id,
+          actor.name,
+          reason,
+          actor.id,
+          actor.name,
+          fund.id,
+        ],
+      });
+
+      await db.execute({
+        sql: `INSERT INTO faqir_miskin_history (
+                id, fiscal_year, primary_group_code, action_type, old_proportions_json, proportions_json,
+                effective_date, changed_by_id, changed_by_name, policy_ref, reason, timestamp
+              ) VALUES (?, ?, ?, 'fund_deactivated', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          `fmh-${Date.now()}`,
+          fiscalYear,
+          primaryGroupCode,
+          JSON.stringify([{ code: fund.code, name: fund.name, percentage: fund.percentage, isActive: true }]),
+          JSON.stringify([{ code: fund.code, name: fund.name, percentage: 0, isActive: false }]),
+          new Date().toISOString().slice(0, 10),
+          actor.id,
+          actor.name,
+          `ปิดใช้งานกองทุน ${fund.fundCode}`,
+          reason,
+          timestampNow,
+        ],
+      });
+
+      await db.execute({
+        sql: `INSERT INTO audit_logs (
+                id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+              ) VALUES (?, ?, ?, ?, ?, 'FUND_DEACTIVATED', 'specific_fund', ?, ?, ?, ?)`,
+        args: [
+          `log-${Date.now()}`,
+          timestampNow,
+          actor.id,
+          actor.name,
+          actor.role,
+          fund.id,
+          `ปิดใช้งานกองทุน "${fund.name}" (${fund.fundCode}) เหตุผล: ${reason} (อ้างอิงคำร้อง ${fund.linkedApplicationCount} รายการ, ธุรกรรม ${fund.linkedTransactionCount} รายการ)`,
+          JSON.stringify({ isActive: true, percentage: fund.percentage }),
+          JSON.stringify({ isActive: false, percentage: 0, deactivatedReason: reason }),
+        ],
+      });
+
+      const updated = await this.getSpecificFundById(fund.id, fiscalYear);
+      return { success: true, mode: 'deactivate', fund: updated.fund };
+    }
+
+    // mode === 'activate'
+    await db.execute({
+      sql: `UPDATE faqir_miskin_sub_funds
+            SET is_active = 1,
+                deactivated_at = NULL,
+                deactivated_by_id = NULL,
+                deactivated_by_name = NULL,
+                deactivated_reason = NULL,
+                updated_by_id = ?,
+                updated_by_name = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [actor.id, actor.name, fund.id],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+            ) VALUES (?, ?, ?, ?, ?, 'FUND_REACTIVATED', 'specific_fund', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        fund.id,
+        `เปิดใช้งานกองทุน "${fund.name}" (${fund.fundCode}) อีกครั้งโดย ${actor.name}`,
+        JSON.stringify({ isActive: false }),
+        JSON.stringify({ isActive: true }),
+      ],
+    });
+
+    const reactivated = await this.getSpecificFundById(fund.id, fiscalYear);
+    return { success: true, mode: 'activate', fund: reactivated.fund };
+  }
+
+  static async getSpecificFundHistory(
+    fiscalYear: string = '2569',
+    primaryGroupCode?: string
+  ): Promise<FundAllocationHistoryEntry[]> {
+    await initDb();
+    const db = getDb();
+
+    let sql = 'SELECT * FROM faqir_miskin_history WHERE fiscal_year = ?';
+    const args: any[] = [fiscalYear];
+    if (primaryGroupCode && primaryGroupCode !== 'all') {
+      sql += " AND COALESCE(primary_group_code, 'faqir_miskin') = ?";
+      args.push(primaryGroupCode);
+    }
+    sql += ' ORDER BY created_at DESC';
+
+    const res = await db.execute({ sql, args });
+    return res.rows.map((r) => {
+      let oldProps: any[] | undefined = undefined;
+      let newProps: any[] = [];
+      let affected: any[] | undefined = undefined;
+      try { if (r.old_proportions_json) oldProps = JSON.parse(String(r.old_proportions_json)); } catch {}
+      try { if (r.proportions_json) newProps = JSON.parse(String(r.proportions_json)); } catch {}
+      try { if (r.affected_items_json) affected = JSON.parse(String(r.affected_items_json)); } catch {}
+
+      return {
+        id: String(r.id),
+        fiscalYear: String(r.fiscal_year),
+        primaryGroupCode: r.primary_group_code ? String(r.primary_group_code) : 'faqir_miskin',
+        actionType: (r.action_type ? String(r.action_type) : 'proportion_change') as any,
+        oldProportions: oldProps,
+        newProportions: newProps,
+        // Keep legacy alias `proportions` at runtime so existing UI never breaks
+        ...( { proportions: newProps } as any ),
+        effectiveDate: r.effective_date ? String(r.effective_date) : undefined,
+        policyRef: String(r.policy_ref),
+        reason: String(r.reason),
+        changedById: String(r.changed_by_id),
+        changedByName: String(r.changed_by_name),
+        approvedById: r.approved_by_id ? String(r.approved_by_id) : undefined,
+        approvedByName: r.approved_by_name ? String(r.approved_by_name) : undefined,
+        affectedItems: affected,
+        timestamp: String(r.timestamp),
+        createdAt: r.created_at ? String(r.created_at) : undefined,
+      };
+    });
+  }
+
+  static async recordFundBudgetAdjustment(
+    input: {
+      fiscalYear?: string;
+      targetLevel: 'primary' | 'specific';
+      primaryGroupCode: string;
+      specificFundId?: string;
+      fundAccountId?: string;
+      adjustmentType: 'increase' | 'decrease';
+      amount: number;
+      effectiveDate: string;
+      reason: string;
+      policyRef?: string;
+      approvedById?: string;
+      approvedByName?: string;
+    },
+    actor: ActorContext
+  ): Promise<FundBudgetAdjustment> {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'admin', 'executive', 'approver', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: สิทธิ์ไม่เพียงพอในการบันทึกปรับปรุงงบประมาณ');
+    }
+
+    const amount = round2(Number(input.amount) || 0);
+    if (amount <= 0) throw new Error('จำนวนเงินปรับปรุงงบประมาณต้องมากกว่า 0 บาท');
+    if (!['increase', 'decrease'].includes(input.adjustmentType)) {
+      throw new Error('ประเภทการปรับงบประมาณต้องเป็น increase หรือ decrease เท่านั้น');
+    }
+    if (!input.reason?.trim()) throw new Error('กรุณาระบุเหตุผลในการปรับปรุงงบประมาณ');
+    if (!input.effectiveDate?.trim()) throw new Error('กรุณาระบุวันที่เริ่มมีผลบังคับใช้');
+
+    const fiscalYear = String(input.fiscalYear || '2569').trim();
+    const normPrimary = normalizePrimaryGroupCode(input.primaryGroupCode);
+
+    const primaryGroups = await this.getAsnafAllocations(fiscalYear, { includeInactive: true });
+    const targetPrimary = primaryGroups.find((g) => g.asnafCode === normPrimary);
+    if (!targetPrimary) {
+      throw new Error(`ไม่พบกลุ่มกองทุนหลัก "${input.primaryGroupCode}" ในปีงบประมาณ ${fiscalYear}`);
+    }
+
+    let beforeBudget = targetPrimary.adjustedBudgetAmount ?? targetPrimary.targetAmount;
+    let targetLabel = targetPrimary.asnafName;
+    let resolvedSfId: string | undefined = undefined;
+
+    if (input.targetLevel === 'specific') {
+      if (!input.specificFundId) {
+        throw new Error('กรุณาระบุกองทุนเฉพาะที่ต้องการปรับปรุงงบประมาณ');
+      }
+      const sfDetail = await this.getSpecificFundById(input.specificFundId, fiscalYear);
+      if (normalizePrimaryGroupCode(sfDetail.fund.primaryGroupCode) !== normPrimary) {
+        throw new Error('กองทุนเฉพาะที่ระบุไม่ได้สังกัดอยู่ในกลุ่มกองทุนหลักนี้');
+      }
+      beforeBudget = sfDetail.fund.adjustedBudgetAmount ?? sfDetail.fund.targetAmount;
+      targetLabel = sfDetail.fund.name;
+      resolvedSfId = sfDetail.fund.id;
+    }
+
+    const signed = input.adjustmentType === 'decrease' ? -amount : amount;
+    const afterBudget = round2(beforeBudget + signed);
+    if (afterBudget < 0) {
+      throw new Error(
+        `ไม่สามารถปรับลดงบประมาณของ "${targetLabel}" ลง ${amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาทได้ เนื่องจากจะทำให้งบประมาณติดลบ (งบปัจจุบัน ${beforeBudget.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`
+      );
+    }
+
+    const id = `fba-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const approverId = input.approvedById || actor.id;
+    const approverName = input.approvedByName || actor.name;
+
+    await db.execute({
+      sql: `INSERT INTO fund_budget_adjustments (
+              id, fiscal_year, target_level, primary_group_code, specific_fund_id, fund_account_id,
+              adjustment_type, amount, effective_date, reason, policy_ref, status,
+              requested_by_id, requested_by_name, approved_by_id, approved_by_name, approved_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        fiscalYear,
+        input.targetLevel,
+        normPrimary,
+        resolvedSfId || null,
+        input.fundAccountId || targetPrimary.fundAccountId || null,
+        input.adjustmentType,
+        amount,
+        input.effectiveDate.trim(),
+        input.reason.trim(),
+        input.policyRef?.trim() || null,
+        actor.id,
+        actor.name,
+        approverId,
+        approverName,
+        timestampNow,
+      ],
+    });
+
+    if (input.targetLevel === 'primary') {
+      await db.execute({
+        sql: `INSERT INTO asnaf_allocation_history (
+                id, fiscal_year, action_type, old_proportions_json, proportions_json,
+                effective_date, changed_by_id, changed_by_name, approved_by_id, approved_by_name,
+                affected_items_json, policy_ref, reason, timestamp
+              ) VALUES (?, ?, 'budget_adjusted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          `aah-${Date.now()}`,
+          fiscalYear,
+          JSON.stringify([{ code: normPrimary, name: targetLabel, adjustedBudgetAmount: beforeBudget }]),
+          JSON.stringify([{ code: normPrimary, name: targetLabel, adjustmentType: input.adjustmentType, amount, adjustedBudgetAmount: afterBudget }]),
+          input.effectiveDate.trim(),
+          actor.id,
+          actor.name,
+          approverId,
+          approverName,
+          JSON.stringify([
+            {
+              id: targetPrimary.id,
+              label: `${targetLabel}: ${beforeBudget.toLocaleString('th-TH', { minimumFractionDigits: 2 })} -> ${afterBudget.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
+            },
+          ]),
+          input.policyRef?.trim() || 'อนุมัติปรับปรุงงบประมาณกลุ่มหลัก',
+          input.reason.trim(),
+          timestampNow,
+        ],
+      });
+    } else {
+      await db.execute({
+        sql: `INSERT INTO faqir_miskin_history (
+                id, fiscal_year, primary_group_code, action_type, old_proportions_json, proportions_json,
+                effective_date, changed_by_id, changed_by_name, approved_by_id, approved_by_name,
+                affected_items_json, policy_ref, reason, timestamp
+              ) VALUES (?, ?, ?, 'budget_adjusted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          `fmh-${Date.now()}`,
+          fiscalYear,
+          normPrimary,
+          JSON.stringify([{ code: resolvedSfId, name: targetLabel, adjustedBudgetAmount: beforeBudget }]),
+          JSON.stringify([{ code: resolvedSfId, name: targetLabel, adjustmentType: input.adjustmentType, amount, adjustedBudgetAmount: afterBudget }]),
+          input.effectiveDate.trim(),
+          actor.id,
+          actor.name,
+          approverId,
+          approverName,
+          JSON.stringify([
+            {
+              id: resolvedSfId || normPrimary,
+              label: `${targetLabel}: ${beforeBudget.toLocaleString('th-TH', { minimumFractionDigits: 2 })} -> ${afterBudget.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
+            },
+          ]),
+          input.policyRef?.trim() || 'อนุมัติปรับปรุงงบประมาณกองทุนเฉพาะ',
+          input.reason.trim(),
+          timestampNow,
+        ],
+      });
+    }
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+            ) VALUES (?, ?, ?, ?, ?, 'FUND_BUDGET_ADJUSTED', 'specific_fund', ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        resolvedSfId || normPrimary,
+        `${input.adjustmentType === 'increase' ? 'เพิ่มงบประมาณ' : 'ลดงบประมาณ'} "${targetLabel}" จำนวน ${amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท (${input.reason.trim()})`,
+        JSON.stringify({ adjustedBudgetAmount: beforeBudget }),
+        JSON.stringify({ id, adjustmentType: input.adjustmentType, amount, adjustedBudgetAmount: afterBudget }),
+      ],
+    });
+
+    return {
+      id,
+      fiscalYear,
+      targetLevel: input.targetLevel,
+      primaryGroupCode: normPrimary,
+      specificFundId: resolvedSfId,
+      fundAccountId: input.fundAccountId || targetPrimary.fundAccountId,
+      adjustmentType: input.adjustmentType,
+      amount,
+      effectiveDate: input.effectiveDate.trim(),
+      reason: input.reason.trim(),
+      policyRef: input.policyRef?.trim() || undefined,
+      status: 'approved',
+      requestedById: actor.id,
+      requestedByName: actor.name,
+      approvedById: approverId,
+      approvedByName: approverName,
+      approvedAt: timestampNow,
+    };
+  }
+
+  private static async _legacyRecordFundBudgetAdjustmentUnused(
+    input: {
+      fiscalYear?: string;
+      targetLevel: 'primary' | 'specific';
+      primaryGroupCode: string;
+      specificFundId?: string;
+      fundAccountId?: string;
+      adjustmentType: 'increase' | 'decrease';
+      amount: number;
+      effectiveDate: string;
+      reason: string;
+      policyRef?: string;
+      approvedById?: string;
+      approvedByName?: string;
+    },
+    actor: ActorContext
+  ): Promise<FundBudgetAdjustment> {
+    await initDb();
+    const db = getDb();
+
+    if (!['super_admin', 'executive', 'approver', 'finance'].includes(actor.role)) {
+      throw new Error('ไม่อนุญาต: สิทธิ์ไม่เพียงพอในการบันทึกปรับปรุงงบประมาณ');
+    }
+
+    const amount = round2(Number(input.amount) || 0);
+    if (amount <= 0) throw new Error('จำนวนเงินปรับปรุงงบประมาณต้องมากกว่า 0 บาท');
+    if (!input.reason?.trim()) throw new Error('กรุณาระบุเหตุผลในการปรับปรุงงบประมาณ');
+    if (!input.effectiveDate?.trim()) throw new Error('กรุณาระบุวันที่เริ่มมีผลบังคับใช้');
+
+    const fiscalYear = input.fiscalYear || '2569';
+    if (input.targetLevel === 'specific' && !input.specificFundId) {
+      throw new Error('กรุณาระบุกองทุนเฉพาะที่ต้องการปรับปรุงงบประมาณ');
+    }
+
+    const id = `fba-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const approverId = input.approvedById || actor.id;
+    const approverName = input.approvedByName || actor.name;
+
+    await db.execute({
+      sql: `INSERT INTO fund_budget_adjustments (
+              id, fiscal_year, target_level, primary_group_code, specific_fund_id, fund_account_id,
+              adjustment_type, amount, effective_date, reason, policy_ref, status,
+              requested_by_id, requested_by_name, approved_by_id, approved_by_name, approved_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        fiscalYear,
+        input.targetLevel,
+        input.primaryGroupCode,
+        input.specificFundId || null,
+        input.fundAccountId || null,
+        input.adjustmentType,
+        amount,
+        input.effectiveDate.trim(),
+        input.reason.trim(),
+        input.policyRef?.trim() || null,
+        actor.id,
+        actor.name,
+        approverId,
+        approverName,
+        timestampNow,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO faqir_miskin_history (
+              id, fiscal_year, primary_group_code, action_type, old_proportions_json, proportions_json,
+              effective_date, changed_by_id, changed_by_name, approved_by_id, approved_by_name,
+              policy_ref, reason, timestamp
+            ) VALUES (?, ?, ?, 'budget_adjusted', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `fmh-${Date.now()}`,
+        fiscalYear,
+        input.primaryGroupCode,
+        JSON.stringify([]),
+        JSON.stringify([{ specificFundId: input.specificFundId, adjustmentType: input.adjustmentType, amount }]),
+        input.effectiveDate.trim(),
+        actor.id,
+        actor.name,
+        approverId,
+        approverName,
+        input.policyRef?.trim() || 'อนุมัติปรับปรุงงบประมาณ',
+        input.reason.trim(),
+        timestampNow,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, old_values, new_values
+            ) VALUES (?, ?, ?, ?, ?, 'FUND_BUDGET_ADJUSTED', 'specific_fund', ?, ?, NULL, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        input.specificFundId || input.primaryGroupCode,
+        `${input.adjustmentType === 'increase' ? 'เพิ่มงบประมาณ' : 'ลดงบประมาณ'} จำนวน ${amount.toLocaleString()} บาท (${input.reason.trim()})`,
+        JSON.stringify({ id, ...input, amount }),
+      ],
+    });
+
+    return {
+      id,
+      fiscalYear,
+      targetLevel: input.targetLevel,
+      primaryGroupCode: input.primaryGroupCode,
+      specificFundId: input.specificFundId,
+      fundAccountId: input.fundAccountId,
+      adjustmentType: input.adjustmentType,
+      amount,
+      effectiveDate: input.effectiveDate.trim(),
+      reason: input.reason.trim(),
+      policyRef: input.policyRef?.trim(),
+      status: 'approved',
+      requestedById: actor.id,
+      requestedByName: actor.name,
+      approvedById: approverId,
+      approvedByName: approverName,
+      approvedAt: timestampNow,
+    };
+  }
+
+  static async getFundBudgetAdjustments(filters?: {
+    fiscalYear?: string;
+    primaryGroupCode?: string;
+    specificFundId?: string;
+  }): Promise<FundBudgetAdjustment[]> {
+    await initDb();
+    const db = getDb();
+
+    let sql = 'SELECT * FROM fund_budget_adjustments WHERE 1=1';
+    const args: any[] = [];
+    if (filters?.fiscalYear) {
+      sql += ' AND fiscal_year = ?';
+      args.push(filters.fiscalYear);
+    }
+    if (filters?.primaryGroupCode && filters.primaryGroupCode !== 'all') {
+      sql += ' AND primary_group_code = ?';
+      args.push(filters.primaryGroupCode);
+    }
+    if (filters?.specificFundId) {
+      sql += ' AND specific_fund_id = ?';
+      args.push(filters.specificFundId);
+    }
+    sql += ' ORDER BY created_at DESC';
+
+    const res = await db.execute({ sql, args });
+    return res.rows.map((r) => ({
+      id: String(r.id),
+      fiscalYear: String(r.fiscal_year),
+      targetLevel: String(r.target_level) as 'primary' | 'specific',
+      primaryGroupCode: String(r.primary_group_code),
+      specificFundId: r.specific_fund_id ? String(r.specific_fund_id) : undefined,
+      fundAccountId: r.fund_account_id ? String(r.fund_account_id) : undefined,
+      adjustmentType: String(r.adjustment_type) as 'increase' | 'decrease',
+      amount: Number(r.amount) || 0,
+      effectiveDate: String(r.effective_date),
+      reason: String(r.reason),
+      policyRef: r.policy_ref ? String(r.policy_ref) : undefined,
+      status: String(r.status) as any,
+      requestedById: String(r.requested_by_id),
+      requestedByName: String(r.requested_by_name),
+      approvedById: r.approved_by_id ? String(r.approved_by_id) : undefined,
+      approvedByName: r.approved_by_name ? String(r.approved_by_name) : undefined,
+      approvedAt: r.approved_at ? String(r.approved_at) : undefined,
+      createdAt: r.created_at ? String(r.created_at) : undefined,
+    }));
+  }
+
   // 12. Administrative Expense Categories & Clearance Items (TASK 6)
   // =========================================================================
 
@@ -6083,7 +8903,15 @@ export class FinancialService {
     const cashFlowWorkflows = await this.getCashFlowWorkflows();
     const asnafAllocations = await this.getAsnafAllocations(filters?.zakatYear || '2569');
     const faqirMiskinSubFunds = await this.getFaqirMiskinSubFunds(filters?.zakatYear || '2569');
+    const allSpecificFunds = await this.getSpecificFunds({ fiscalYear: filters?.zakatYear || '2569', status: 'all' });
     const reconciliations = await this.getBankReconciliations();
+
+    // Specific funds at risk (>= 90% budget utilized or exhausted)
+    const specificFundsAtRisk = allSpecificFunds.filter((sf) => {
+      const tgt = Number(sf.targetAmount) || 0;
+      const rem = Number(sf.remainingAmount) || 0;
+      return tgt > 0 && (rem <= tgt * 0.1 || rem <= 0);
+    });
 
     // KPI Aggregations
     const totalIncome = transactions
@@ -6281,6 +9109,26 @@ export class FinancialService {
         incomeVsExpense: incomeVsExpenseChart,
         asnafAllocations: asnafChartData,
         faqirMiskinSubFunds: faqirMiskinChartData,
+        allSpecificFunds: allSpecificFunds.map((sf) => ({
+          id: sf.id,
+          fundCode: sf.fundCode || sf.code,
+          name: sf.name,
+          primaryGroupCode: sf.primaryGroupCode,
+          primaryGroupName: sf.primaryGroupName,
+          targetAmount: sf.targetAmount,
+          committedAmount: sf.committedAmount || 0,
+          disbursedAmount: sf.disbursedAmount,
+          remainingAmount: sf.remainingAmount,
+          percentage: sf.percentage,
+        })),
+        specificFundsAtRisk: specificFundsAtRisk.map((sf) => ({
+          id: sf.id,
+          fundCode: sf.fundCode || sf.code,
+          name: sf.name,
+          targetAmount: sf.targetAmount,
+          remainingAmount: sf.remainingAmount,
+          percentage: sf.percentage,
+        })),
         adminExpenses: adminExpensesChartData,
         assistanceTypes: verifiedExpenses.breakdownByAssistanceType,
       },
@@ -6340,18 +9188,109 @@ export class FinancialService {
           ]),
         };
 
-      case 'faqir_miskin_subfunds':
+      case 'faqir_miskin_subfunds': {
+        const allSf = await this.getSpecificFunds({
+          fiscalYear: filters?.year || '2569',
+          status: 'all',
+          primaryGroupCode: filters?.primaryGroupCode || 'all',
+        });
         return {
-          title: 'รายงานรายจ่ายตามกองทุนย่อยฟากีร–มิสกิน (5 รูปแบบความช่วยเหลือ)',
-          headers: ['รูปแบบความช่วยเหลือ', 'สัดส่วนนโยบาย', 'งบประมาณเป้าหมาย (บาท)', 'ยอดใช้จ่ายจริง (บาท)', 'ยอดคงเหลือ (บาท)'],
-          rows: subFunds.map((sf) => [
-            sf.name,
-            `${sf.percentage.toFixed(1)}%`,
-            sf.targetAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-            sf.disbursedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-            sf.remainingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-          ]),
+          title: 'รายงานสถานะงบประมาณกองทุนเฉพาะเจาะจง (Specific Fund Budget Utilization)',
+          headers: ['รหัสกองทุน', 'ชื่อกองทุนเฉพาะเจาะจง', 'กลุ่มหลัก (Primary Asnaf)', 'สัดส่วนนโยบาย', 'งบประมาณเป้าหมาย (บาท)', 'ยอดผูกพัน (บาท)', 'ยอดเบิกจ่ายจริง (บาท)', 'ยอดคงเหลือจัดสรรได้ (บาท)', '% ใช้จ่าย'],
+          rows: allSf.map((sf) => {
+            const tgt = Number(sf.targetAmount) || 0;
+            const disb = Number(sf.disbursedAmount) || 0;
+            const comm = Number(sf.committedAmount) || 0;
+            const rem = Number(sf.remainingAmount) || 0;
+            const pctUsed = tgt > 0 ? ((disb / tgt) * 100).toFixed(1) + '%' : '0.0%';
+            return [
+              sf.fundCode || sf.code || '-',
+              sf.name,
+              sf.primaryGroupName || sf.primaryGroupCode || 'ฟากีร–มิสกีน',
+              `${(Number(sf.percentage) || 0).toFixed(1)}%`,
+              tgt.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              comm.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              disb.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              rem.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              pctUsed,
+            ];
+          }),
         };
+      }
+
+      case 'three_tier_fund_summary': {
+        const hierarchy = await this.getThreeTierFundHierarchy(filters?.year || '2569', { activeOnly: false });
+        const rows: string[][] = [];
+
+        for (const primary of hierarchy.primaryGroups) {
+          const pTgt = primary.targetAmount || 0;
+          const pComm = primary.committedAmount || 0;
+          const pDisb = primary.disbursedAmount || 0;
+          const pRem = primary.remainingAmount || 0;
+          const pPct = pTgt > 0 ? ((pDisb / pTgt) * 100).toFixed(1) + '%' : '0.0%';
+
+          rows.push([
+            'ระดับ 1: กลุ่มหลัก',
+            primary.asnafCode,
+            primary.asnafName,
+            '-',
+            `${primary.percentage.toFixed(1)}%`,
+            pTgt.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+            pComm.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+            pDisb.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+            pRem.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+            pPct,
+          ]);
+
+          for (const sf of (primary.specificFunds || [])) {
+            const sTgt = sf.targetAmount || 0;
+            const sComm = sf.committedAmount || 0;
+            const sDisb = sf.disbursedAmount || 0;
+            const sRem = sf.remainingAmount || 0;
+            const sPct = sTgt > 0 ? ((sDisb / sTgt) * 100).toFixed(1) + '%' : '0.0%';
+
+            rows.push([
+              '  ระดับ 2: กองทุนเฉพาะ',
+              sf.fundCode || sf.code,
+              `  └─ ${sf.name}`,
+              primary.asnafName,
+              `${sf.percentage.toFixed(1)}%`,
+              sTgt.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              sComm.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              sDisb.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              sRem.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+              sPct,
+            ]);
+
+            for (const ast of (sf.assistanceTypes || [])) {
+              const formatLabel = ast.assistanceFormat === 'monthly' ? 'รายเดือน'
+                : ast.assistanceFormat === 'emergency' ? 'ฉุกเฉิน'
+                : ast.assistanceFormat === 'project' ? 'โครงการ'
+                : ast.assistanceFormat === 'career_capital' ? 'ทุนอาชีพ'
+                : 'ครั้งเดียว';
+
+              rows.push([
+                '    ระดับ 3: ประเภทความช่วยเหลือ',
+                ast.code,
+                `      └── ${ast.name} (${formatLabel})`,
+                `${primary.asnafName} / ${sf.name}`,
+                `วงเงิน ฿${ast.defaultMinAmount?.toLocaleString() || '0'} - ฿${ast.defaultMaxAmount?.toLocaleString() || 'ไม่จำกัด'}`,
+                '-',
+                '-',
+                `สถานะ: ${ast.isActive ? 'เปิดรับคำร้อง' : 'ปิดรับ'}`,
+                ast.isActive ? 'ปกติ' : 'ปิดใช้งาน',
+                '-',
+              ]);
+            }
+          }
+        }
+
+        return {
+          title: 'รายงานโครงสร้างกองทุน 3 ระดับและสถานะงบประมาณรวม (3-Tier Fund Budget Summary)',
+          headers: ['ระดับโครงสร้าง', 'รหัส', 'ชื่อรายการ', 'กลุ่มสังกัด', 'สัดส่วน / กรอบวงเงิน', 'งบเป้าหมาย (บาท)', 'ยอดผูกพัน (บาท)', 'ยอดจ่ายจริง / สถิติ', 'ยอดคงเหลือจัดสรรได้ / สถานะ', '% ใช้จ่าย'],
+          rows,
+        };
+      }
 
       case 'admin_expenses':
         return {

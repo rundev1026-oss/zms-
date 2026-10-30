@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { 
   FileText, 
@@ -62,12 +62,60 @@ export function PublicAssistanceView({ onNavigate }: PublicAssistanceViewProps) 
   const [housingCondition, setHousingCondition] = useState<string>('poor');
   const [housingNotes, setHousingNotes] = useState<string>('บ้านไม้ชั้นเดียว หลังคารั่ว ฝาผนังผุพัง');
 
-  // Step 5: Asnaf Category & Request
+  // Step 5: 3-Tier Fund Hierarchy State
+  const [hierarchyData, setHierarchyData] = useState<any[]>([]);
+  const [primaryGroupCode, setPrimaryGroupCode] = useState<string>('faqir_miskin');
+  const [specificFundId, setSpecificFundId] = useState<string>('');
+  const [assistanceTypeId, setAssistanceTypeId] = useState<string>('');
   const [asnafCategory, setAsnafCategory] = useState<string>('faqir');
-  const [requestedAmount, setRequestedAmount] = useState<number>(10000);
+  const [requestedAmount, setRequestedAmount] = useState<number>(3000);
   const [urgencyLevel, setUrgencyLevel] = useState<'urgent' | 'high' | 'normal'>('high');
   const [assistanceReason, setAssistanceReason] = useState<string>(
     'ขาดแคลนรายได้ยังชีพ มีภาระดูแลบุตรวัยเรียนและต้องชำระหนี้สินค่ารักษาพยาบาล'
+  );
+
+  useEffect(() => {
+    fetch('/api/finance/allocations/asnaf?view=hierarchy&year=2569&activeOnly=true')
+      .then((res) => res.json())
+      .then((json) => {
+        const groups = Array.isArray(json.data?.primaryGroups) ? json.data.primaryGroups : (Array.isArray(json.data) ? json.data : []);
+        if (json.success && groups.length > 0) {
+          setHierarchyData(groups);
+          const firstPg = groups[0];
+          setPrimaryGroupCode(firstPg.asnafCode);
+          const firstSf = firstPg.specificFunds?.[0];
+          if (firstSf) {
+            setSpecificFundId(firstSf.id);
+            const firstAst = firstSf.assistanceTypes?.[0];
+            if (firstAst) {
+              setAssistanceTypeId(firstAst.id);
+              if (firstAst.defaultMinAmount) setRequestedAmount(firstAst.defaultMinAmount);
+            }
+          }
+        }
+      })
+      .catch((err) => console.error('Failed to load fund hierarchy in public portal', err));
+  }, []);
+
+  const selectedPrimaryObj = useMemo(
+    () => hierarchyData.find((pg) => pg.asnafCode === primaryGroupCode) || hierarchyData[0] || null,
+    [hierarchyData, primaryGroupCode]
+  );
+  const availableSpecificFunds = useMemo(
+    () => selectedPrimaryObj?.specificFunds || [],
+    [selectedPrimaryObj]
+  );
+  const selectedSpecificFundObj = useMemo(
+    () => availableSpecificFunds.find((sf: any) => sf.id === specificFundId) || availableSpecificFunds[0] || null,
+    [availableSpecificFunds, specificFundId]
+  );
+  const availableAssistanceTypes = useMemo(
+    () => selectedSpecificFundObj?.assistanceTypes || [],
+    [selectedSpecificFundObj]
+  );
+  const selectedAssistanceTypeObj = useMemo(
+    () => availableAssistanceTypes.find((ast: any) => ast.id === assistanceTypeId) || availableAssistanceTypes[0] || null,
+    [availableAssistanceTypes, assistanceTypeId]
   );
 
   // Step 6: Documents
@@ -119,9 +167,14 @@ export function PublicAssistanceView({ onNavigate }: PublicAssistanceViewProps) 
           district,
           subdistrict,
           community,
-          asnafCategory,
+          primaryGroupCode,
+          specificFundId: selectedSpecificFundObj?.id || specificFundId,
+          assistanceTypeId: selectedAssistanceTypeObj?.id || assistanceTypeId,
+          assistanceType: selectedAssistanceTypeObj?.name || 'ขอรับความช่วยเหลือทั่วไป',
+          asnafCategory: primaryGroupCode === 'faqir_miskin' ? asnafCategory : primaryGroupCode,
           requestedAmount,
           urgencyLevel,
+          necessityDetails: assistanceReason,
           monthlyIncome,
           monthlyExpense,
           debtAmount,
@@ -564,24 +617,106 @@ export function PublicAssistanceView({ onNavigate }: PublicAssistanceViewProps) 
             </div>
           )}
 
-          {/* STEP 5: Asnaf Category & Amount */}
+          {/* STEP 5: 3-Tier Fund Structure & Amount */}
           {currentStep === 5 && (
             <div className="space-y-5 max-w-2xl text-xs">
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-teal-900 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-xs block">เลือกหมวดหมู่และประเภทความช่วยเหลือ (3 ระดับ)</span>
+                  <span className="text-[11px] text-teal-700">ระบบจะนำไปจัดสรรงบประมาณและตรวจสอบสิทธิ์ตามระเบียบ</span>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-white font-mono text-[10px] font-bold text-teal-800 border border-teal-200">
+                  ปีงบประมาณ 2569
+                </span>
+              </div>
+
+              {/* Level 1: Primary Group */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  ประเภทอัศนาฟตามหลักศาสนบัญญัติที่เข้าข่าย *
+                  ระดับ 1: กลุ่มหลักตามศาสนบัญญัติ (Primary Fund Group) *
                 </label>
                 <select
-                  value={asnafCategory}
-                  onChange={(e) => setAsnafCategory(e.target.value)}
+                  value={primaryGroupCode}
+                  onChange={(e) => {
+                    const newCode = e.target.value;
+                    setPrimaryGroupCode(newCode);
+                    const pg = hierarchyData.find((p) => p.asnafCode === newCode);
+                    const firstSf = pg?.specificFunds?.[0];
+                    const firstAst = firstSf?.assistanceTypes?.[0];
+                    setSpecificFundId(firstSf ? firstSf.id : '');
+                    setAssistanceTypeId(firstAst ? firstAst.id : '');
+                    if (firstAst?.defaultMinAmount) setRequestedAmount(firstAst.defaultMinAmount);
+                  }}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none"
                 >
-                  <option value="faqir">ผู้ยากไร้ (Faqir) - ไม่มีรายได้เพียงพอยังชีพ</option>
-                  <option value="miskin">ผู้ขัดสน (Miskin) - รายได้ไม่พอกินอยู่</option>
-                  <option value="gharimin">ผู้มีหนี้สินล้นพ้นตัว (Gharimin)</option>
-                  <option value="fisabilillah">ทุนการศึกษาเพื่อเยาวชน (Fi Sabilillah)</option>
-                  <option value="ibnsabil">ผู้เดินทางตกยาก (Ibn Sabil)</option>
+                  {hierarchyData.map((pg) => (
+                    <option key={pg.asnafCode} value={pg.asnafCode}>
+                      {pg.asnafName} ({pg.specificFunds?.length || 0} กองทุน)
+                    </option>
+                  ))}
                 </select>
+              </div>
+
+              {/* Level 2: Specific Fund */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  ระดับ 2: กลุ่มเฉพาะ / กองทุนย่อย (Specific Fund) *
+                </label>
+                <select
+                  value={specificFundId}
+                  onChange={(e) => {
+                    const newSfId = e.target.value;
+                    setSpecificFundId(newSfId);
+                    const sf = availableSpecificFunds.find((s: any) => s.id === newSfId);
+                    const firstAst = sf?.assistanceTypes?.[0];
+                    setAssistanceTypeId(firstAst ? firstAst.id : '');
+                    if (firstAst?.defaultMinAmount) setRequestedAmount(firstAst.defaultMinAmount);
+                  }}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none"
+                >
+                  {availableSpecificFunds.length === 0 ? (
+                    <option value="">ไม่มีกองทุนเฉพาะในกลุ่มนี้</option>
+                  ) : (
+                    availableSpecificFunds.map((sf: any) => (
+                      <option key={sf.id} value={sf.id}>
+                        [{sf.code}] {sf.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {/* Level 3: Assistance Type */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  ระดับ 3: ประเภทความช่วยเหลือที่ขอรับ *
+                </label>
+                <select
+                  value={assistanceTypeId}
+                  onChange={(e) => {
+                    const newAstId = e.target.value;
+                    setAssistanceTypeId(newAstId);
+                    const ast = availableAssistanceTypes.find((a: any) => a.id === newAstId);
+                    if (ast?.defaultMinAmount) setRequestedAmount(ast.defaultMinAmount);
+                  }}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none"
+                >
+                  {availableAssistanceTypes.length === 0 ? (
+                    <option value="">ไม่มีประเภทความช่วยเหลือในกองทุนนี้</option>
+                  ) : (
+                    availableAssistanceTypes.map((ast: any) => (
+                      <option key={ast.id} value={ast.id}>
+                        [{ast.code}] {ast.name} (วงเงินแนะนำ: ฿{ast.defaultMinAmount?.toLocaleString() || 0})
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                {selectedAssistanceTypeObj?.conditionsText && (
+                  <p className="mt-1 text-[11px] text-teal-800 bg-teal-50/60 p-2 rounded-lg border border-teal-100">
+                    <strong>เงื่อนไขเกณฑ์พิจารณา:</strong> {selectedAssistanceTypeObj.conditionsText}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -595,6 +730,11 @@ export function PublicAssistanceView({ onNavigate }: PublicAssistanceViewProps) 
                     onChange={(e) => setRequestedAmount(Number(e.target.value))}
                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-black text-slate-900 outline-none"
                   />
+                  {selectedAssistanceTypeObj?.defaultMaxAmount && (
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      เพดานเกณฑ์มาตรฐานไม่เกิน ฿{selectedAssistanceTypeObj.defaultMaxAmount.toLocaleString()} บาท
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">ระดับความเร่งด่วน</label>

@@ -43,7 +43,7 @@ import { DocumentUploader, UploadedDocumentItem } from '@/components/common/Docu
 import { GoogleMapsLocationPicker } from '@/components/common/GoogleMapsLocationPicker';
 import { calculateAge, getTodayISODate, normalizeBirthDateToCE } from '@/utils/ageCalculator';
 import { ThaiAddressFields } from '@/components/common/ThaiAddressFields';
-import { validateAddress } from '@/lib/thaiAddress';
+import { validateAddress, isValidThaiNationalId } from '@/lib/thaiAddress';
 
 interface MultiStepRegistrationViewProps {
   onNavigate: (view: string) => void;

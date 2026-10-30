@@ -20,7 +20,7 @@ import {
   RegistryEditHistoryItem,
   RegistryChangeItem,
 } from '@/types';
-import { maskNationalId, ActorContext, HouseholdMemberInput } from './beneficiaryService';
+import { BeneficiaryService, maskNationalId, ActorContext, HouseholdMemberInput } from './beneficiaryService';
 import { StorageService } from './storageService';
 import { calculateAge } from '@/utils/ageCalculator';
 import { validateAddress } from '@/lib/thaiAddress';
@@ -119,6 +119,9 @@ export interface AssistanceRequestInput {
   nationalId?: string;    // เลขประจำตัวประชาชน (13 หลัก) สำหรับตรวจสอบ
   memberId?: string;      // ID บัญชีสมาชิก
   asnafCategory?: AsnafCategory;
+  primaryGroupCode?: string;
+  specificFundId?: string;
+  fiscalYear?: string;
   assistanceType: string;
   assistanceTypeId?: string;
   assistanceGroup?: 'core' | 'specific';
@@ -755,7 +758,7 @@ export class RegistryService {
     beneficiaryId: string,
     newStatus: RegistrationStatus,
     reason: string,
-    actor: ActorContext
+    actor: ActorContext = { id: 'system', name: 'ระบบ', role: 'officer' }
   ) {
     await initDb();
     const db = getDb();
@@ -846,7 +849,7 @@ export class RegistryService {
   static async updateBeneficiaryChecklist(
     beneficiaryId: string,
     checklist: EvaluatorChecklist,
-    actor: ActorContext
+    actor: ActorContext = { id: 'system', name: 'ระบบ', role: 'officer' }
   ) {
     await initDb();
     const db = getDb();
@@ -888,7 +891,7 @@ export class RegistryService {
    */
   static async createAssistanceRequest(
     input: AssistanceRequestInput,
-    actor: ActorContext
+    actor: ActorContext = { id: 'system', name: 'ระบบ', role: 'officer' }
   ) {
     await initDb();
     const db = getDb();
@@ -897,7 +900,7 @@ export class RegistryService {
     const cleanNationalId = input.nationalId ? input.nationalId.replace(/[^0-9]/g, '') : '';
     const lookupId = input.beneficiaryId || '';
 
-    if (actor.role === 'member') {
+    if (actor?.role === 'member') {
       const actorCleanNationalId = actor.nationalId ? actor.nationalId.replace(/[^0-9]/g, '') : '';
       if (cleanNationalId && actorCleanNationalId && cleanNationalId !== actorCleanNationalId) {
         throw new Error('ท่านไม่มีสิทธิ์ยื่นคำร้องแทนบุคคลอื่น หรือไม่มีความเชื่อมโยงกับทะเบียนนี้');
@@ -927,7 +930,7 @@ export class RegistryService {
     const ben = benRes.rows[0];
 
     // 3. Member Ownership & Permission Verification
-    if (actor.role === 'member') {
+    if (actor?.role === 'member') {
       const actorCleanNationalId = actor.nationalId ? actor.nationalId.replace(/[^0-9]/g, '') : '';
       const isOwner = 
         (ben.member_id && String(ben.member_id) === actor.id) ||
@@ -945,30 +948,74 @@ export class RegistryService {
       }
     }
 
+    // 4. Server-side 3-Tier Fund & Assistance Type Validation
+    const resolvedThreeTier = await BeneficiaryService.validateAndResolveThreeTierSelection({
+      fiscalYear: input.fiscalYear || '2569',
+      primaryGroupCode: input.primaryGroupCode,
+      asnafCategory: input.asnafCategory || (input.primaryGroupCode || input.specificFundId ? undefined : (ben.asnaf_category ? String(ben.asnaf_category) : undefined)),
+      specificFundId: input.specificFundId,
+      assistanceTypeId: input.assistanceTypeId,
+      assistanceType: input.assistanceType,
+      requestedAmount: input.requestedAmount,
+      requireExplicitThreeTier: Boolean(
+        input.primaryGroupCode !== undefined ||
+        input.specificFundId !== undefined ||
+        input.assistanceTypeId !== undefined
+      ),
+    });
+
+    // 5. Server-side Rapid Duplicate Submission Guard (60-second window)
+    const rapidDupRes = await db.execute({
+      sql: `SELECT application_no
+            FROM assistance_applications
+            WHERE beneficiary_id = ?
+              AND assistance_type_id = ?
+              AND ABS(COALESCE(requested_amount, 0) - ?) < 0.01
+              AND status NOT IN ('cancelled', 'rejected', 'closed')
+              AND created_at >= datetime('now', '-60 seconds')
+            ORDER BY created_at DESC
+            LIMIT 1`,
+      args: [String(ben.id), resolvedThreeTier.assistanceTypeId, Number(input.requestedAmount)],
+    });
+    if (rapidDupRes.rows.length > 0) {
+      throw new Error(
+        `DUPLICATE_SUBMISSION: ระบบพบคำร้องประเภทเดียวกันที่เพิ่งส่งเมื่อสักครู่ (${String(rapidDupRes.rows[0].application_no)}) กรุณาอย่ากดบันทึกซ้ำ`
+      );
+    }
+
     const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
     const appliedDateStr = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
 
-    // Generate Application Serial Number (APP-2569-XXXX)
-    const countRes = await db.execute('SELECT COUNT(*) as total FROM assistance_applications');
-    const seq = Number(countRes.rows[0].total) + 1;
-    const applicationNo = `APP-2569-${seq.toString().padStart(4, '0')}`;
-    const applicationId = `app-${Date.now()}`;
+    // Generate Collision-Safe Application Serial Number (APP-2569-XXXX)
+    const countRes = await db.execute(`
+      SELECT COALESCE(MAX(CASE WHEN application_no LIKE 'APP-2569-%' THEN CAST(SUBSTR(application_no, 10) AS INTEGER) ELSE 0 END), COUNT(*)) as max_seq
+      FROM assistance_applications
+    `);
+    let seq = Number(countRes.rows[0]?.max_seq || 0) + 1;
+    let applicationNo = `APP-2569-${seq.toString().padStart(4, '0')}`;
+    const existingNoRes = await db.execute({ sql: 'SELECT id FROM assistance_applications WHERE application_no = ?', args: [applicationNo] });
+    if (existingNoRes.rows.length > 0) {
+      applicationNo = `APP-2569-${seq.toString().padStart(4, '0')}-${Math.floor(10 + Math.random() * 89)}`;
+    }
+    const applicationId = `app-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const initialStatus: ApplicationStatus = 'submitted';
 
     await db.execute({
       sql: `INSERT INTO assistance_applications (
         id, application_no, beneficiary_id, member_id, registration_no, asnaf_category, requested_amount,
         status, urgency_level, assigned_officer_id, assigned_officer_name, applied_date,
-        branch_id, branch_name, assistance_type, assistance_type_id, assistance_group, assistance_type_details, necessity_details
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        branch_id, branch_name, assistance_type, assistance_type_id, assistance_group,
+        primary_group_code, specific_fund_id, specific_fund_code, specific_fund_name, fiscal_year,
+        classification_snapshot, assistance_type_details, necessity_details
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         applicationId,
         applicationNo,
         ben.id,
         ben.member_id || (actor.role === 'member' ? actor.id : (input.memberId || null)),
         ben.registration_no,
-        input.asnafCategory || String(ben.asnaf_category) || 'miskin',
-        input.requestedAmount || 0,
+        resolvedThreeTier.asnafCategory,
+        Number(input.requestedAmount),
         initialStatus,
         input.urgencyLevel || 'normal',
         actor.id,
@@ -976,12 +1023,18 @@ export class RegistryService {
         appliedDateStr,
         input.branchId || String(ben.branch_id) || 'br-hq',
         input.branchName || String(ben.branch_name) || 'สำนักงานใหญ่ กรุงเทพมหานคร',
-        input.assistanceType || input.assistanceTypeId || 'ปัจจัยยังชีพ',
-        input.assistanceTypeId || null,
-        input.assistanceGroup || 'core',
+        resolvedThreeTier.assistanceTypeName,
+        resolvedThreeTier.assistanceTypeId,
+        resolvedThreeTier.assistanceGroup,
+        resolvedThreeTier.primaryGroupCode,
+        resolvedThreeTier.specificFundId,
+        resolvedThreeTier.specificFundCode,
+        resolvedThreeTier.specificFundName,
+        resolvedThreeTier.fiscalYear,
+        resolvedThreeTier.classificationSnapshot,
         input.assistanceTypeDetails || input.requestedItemsDetail || '',
         input.necessityDetails || '',
-      ],
+      ].map((v) => (v === undefined ? null : v)),
     });
 
     // Insert Application Documents with Cloud Storage metadata
@@ -1022,14 +1075,14 @@ export class RegistryService {
         timestampNow,
         actor.id,
         actor.name,
-        `ยื่นคำร้องขอความช่วยเหลือประเภท "${input.assistanceType}" วงเงิน ฿${(input.requestedAmount || 0).toLocaleString()} บาท`,
+        `ยื่นคำร้องขอความช่วยเหลือ [${resolvedThreeTier.primaryGroupName} → ${resolvedThreeTier.specificFundName} → ${resolvedThreeTier.assistanceTypeName}] วงเงิน ฿${Number(input.requestedAmount).toLocaleString()} บาท`,
       ],
     });
 
     // Record Audit Log
     await db.execute({
-      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, new_values)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         `log-${Date.now()}`,
         timestampNow,
@@ -1039,7 +1092,17 @@ export class RegistryService {
         'APPLICATION_SUBMITTED',
         'application',
         applicationNo,
-        `ยื่นคำร้องขอความช่วยเหลือใหม่: ${applicationNo} สำหรับผู้รับ ${ben.full_name} (${ben.registration_no || ''})`,
+        `ยื่นคำร้องขอความช่วยเหลือใหม่: ${applicationNo} สำหรับผู้รับ ${ben.full_name} (${ben.registration_no || ''}) กองทุนเฉพาะ "${resolvedThreeTier.specificFundName}" ประเภท "${resolvedThreeTier.assistanceTypeName}"`,
+        JSON.stringify({
+          applicationId,
+          applicationNo,
+          primaryGroupCode: resolvedThreeTier.primaryGroupCode,
+          specificFundId: resolvedThreeTier.specificFundId,
+          specificFundName: resolvedThreeTier.specificFundName,
+          assistanceTypeId: resolvedThreeTier.assistanceTypeId,
+          assistanceTypeName: resolvedThreeTier.assistanceTypeName,
+          requestedAmount: Number(input.requestedAmount),
+        }),
       ],
     });
 
@@ -1047,9 +1110,15 @@ export class RegistryService {
       id: applicationId,
       applicationId,
       applicationNo,
-      beneficiaryId: input.beneficiaryId,
+      beneficiaryId: String(ben.id),
       beneficiaryName: ben.full_name,
       registrationNo: ben.registration_no,
+      primaryGroupCode: resolvedThreeTier.primaryGroupCode,
+      primaryGroupName: resolvedThreeTier.primaryGroupName,
+      specificFundId: resolvedThreeTier.specificFundId,
+      specificFundName: resolvedThreeTier.specificFundName,
+      assistanceTypeId: resolvedThreeTier.assistanceTypeId,
+      assistanceType: resolvedThreeTier.assistanceTypeName,
       status: initialStatus,
     };
   }
@@ -1172,7 +1241,7 @@ export class RegistryService {
     const hhId = String(cur.household_id);
 
     // 2. ตรวจสอบสิทธิ์ (RBAC)
-    if (actor.role === 'member') {
+    if (actor?.role === 'member') {
       const isOwner =
         (cur.member_id && cur.member_id === actor.id) ||
         (cur.id === actor.beneficiaryId) ||

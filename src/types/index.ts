@@ -177,6 +177,18 @@ export interface AssistanceTypeItem {
   category: 'cash' | 'in_kind' | 'service' | 'housing' | 'education' | 'medical' | 'other';
   description?: string;
   requiredDocuments?: string[];
+  conditionsText?: string;
+  assistanceFormat?: 'one_time' | 'monthly' | 'project' | 'emergency' | 'career_capital' | 'service';
+  defaultMinAmount?: number;
+  defaultMaxAmount?: number;
+  canHardDelete?: boolean;
+  specificFundId?: string;
+  specificFundCode?: string;
+  specificFundName?: string;
+  primaryGroupCode?: string;
+  primaryGroupName?: string;
+  linkedApplicationCount?: number;
+  deactivatedReason?: string | null;
   orderIndex?: number;
   isActive: boolean;
 }
@@ -314,6 +326,7 @@ export interface BeneficiaryAssessment {
   officerRecommendation: 'recommend_full' | 'recommend_partial' | 'recommend_decline';
   recommendedAmount: number;
   recommendedFundId: string;
+  recommendedSpecificFundId?: string;
   generalNotes: string;
 }
 
@@ -348,7 +361,29 @@ export interface AssistanceApplication {
   branchId?: string;
   branchName?: string;
   assistanceTypeId?: string;
+  assistanceTypeCode?: string;
   assistanceTypeGroup?: 'core' | 'specific';
+  primaryGroupCode?: string;
+  primaryGroupName?: string;
+  specificFundId?: string;
+  specificFundCode?: string;
+  specificFundName?: string;
+  approvedFundId?: string;
+  approvedSpecificFundId?: string;
+  approvedSpecificFundName?: string;
+  classificationSnapshot?: {
+    primaryGroupCode: string;
+    primaryGroupName?: string;
+    specificFundId: string;
+    specificFundCode?: string;
+    specificFundName: string;
+    assistanceTypeId: string;
+    assistanceTypeCode?: string;
+    assistanceTypeName: string;
+    approvedFundId?: string;
+    snapshotAt: string;
+  };
+  fiscalYear?: string;
   
   // Sections A-I fields
   maritalStatus?: MaritalStatus;
@@ -1012,12 +1047,108 @@ export interface AsnafAllocation {
   disbursedAmount: number;
   remainingAmount: number;
   policyRef?: string;
+  nameEn?: string;
+  fundAccountId?: string;
+  fundAccountCode?: string;
+  fundAccountName?: string;
+  description?: string;
+  baseBudgetAmount?: number;
+  budgetAdjustment?: number;
+  adjustedBudgetAmount?: number;
+  committedAmount?: number;
+  effectiveDate?: string;
+  isActive?: boolean;
+  sortOrder?: number;
+  specificFundCount?: number;
+  assistanceTypeCount?: number;
+  netDisbursedAmount?: number;
+  availableAfterCommitment?: number;
+  linkedApplicationCount?: number;
+  specificFunds?: FaqirMiskinSubFund[];
+  specificFundsTotalPercentage?: number;
+  isSpecificFundSumValid?: boolean;
+  unallocatedReserveAmount?: number;
   updatedById?: string;
   updatedByName?: string;
   updatedAt: string;
 }
 
+export type ManagedFundType = 'specific' | 'project' | 'emergency' | 'operational';
+
+export type SpecificFundItem = FaqirMiskinSubFund;
+
+export interface FundAllocationHistoryEntry {
+  id: string;
+  fiscalYear: string;
+  primaryGroupCode?: string;
+  actionType?: 'proportion_change' | 'fund_created' | 'fund_updated' | 'fund_deactivated' | 'budget_adjusted';
+  oldProportions?: { code: string; name?: string; percentage: number }[];
+  newProportions: { code: string; name?: string; percentage: number }[];
+  effectiveDate?: string;
+  policyRef: string;
+  reason: string;
+  changedById: string;
+  changedByName: string;
+  approvedById?: string;
+  approvedByName?: string;
+  affectedItems?: { id: string; label: string; count?: number }[];
+  timestamp: string;
+  createdAt?: string;
+}
+
+export interface FundBudgetAdjustment {
+  id: string;
+  fiscalYear: string;
+  targetLevel: 'primary' | 'specific';
+  primaryGroupCode: string;
+  specificFundId?: string;
+  fundAccountId?: string;
+  adjustmentType: 'increase' | 'decrease';
+  amount: number;
+  effectiveDate: string;
+  reason: string;
+  policyRef?: string;
+  status: 'pending' | 'approved' | 'cancelled';
+  requestedById: string;
+  requestedByName: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  createdAt?: string;
+}
+
 export interface FaqirMiskinSubFund {
+  fundCode?: string;
+  nameEn?: string;
+  primaryGroupCode?: string;
+  primaryGroupName?: string;
+  fundAccountId?: string;
+  fundAccountCode?: string;
+  fundAccountName?: string;
+  parentFundId?: string | null;
+  parentFundName?: string | null;
+  fundType?: ManagedFundType;
+  description?: string;
+  baseBudgetAmount?: number;
+  budgetAdjustment?: number;
+  adjustedBudgetAmount?: number;
+  committedAmount?: number;
+  netDisbursedAmount?: number;
+  availableAfterCommitment?: number;
+  effectiveDate?: string;
+  sortOrder?: number;
+  assistanceTypeCount?: number;
+  assistanceTypes?: AssistanceTypeItem[];
+  linkedApplicationCount?: number;
+  linkedTransactionCount?: number;
+  canHardDelete?: boolean;
+  createdById?: string;
+  createdByName?: string;
+  createdAt?: string;
+  deactivatedAt?: string | null;
+  deactivatedById?: string | null;
+  deactivatedByName?: string | null;
+  deactivatedReason?: string | null;
   id: string;
   fiscalYear: string;
   code: string;
@@ -1074,6 +1205,8 @@ export interface FinancialTransaction {
   zakatYear?: string;
   asnafCategory?: string;
   subFundCategory?: string;
+  specificFundId?: string;
+  assistanceTypeId?: string;
   beneficiaryId?: string;
   applicationId?: string;
   donorName?: string;

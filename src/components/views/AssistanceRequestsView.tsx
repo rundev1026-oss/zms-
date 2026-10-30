@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { 
   AssistanceApplication, 
   ApplicationStatus, 
-  AsnafCategory 
+  AsnafCategory,
+  AssistanceTypeItem,
+  FaqirMiskinSubFund,
+  AsnafAllocation
 } from '@/types';
-import { ASSISTANCE_TYPES } from '@/lib/constants/assistanceTypes';
+import { normalizePrimaryGroupCode } from '@/lib/financeUtils';
 import { DocumentUploader, UploadedDocumentItem } from '@/components/common/DocumentUploader';
 import { DocumentListTable } from '@/components/common/DocumentListTable';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll } from '@/components/common/Modal';
@@ -106,6 +109,14 @@ const APPLICATION_STATUS_MAP: Record<string, { label: string; color: string; bg:
   cancelled: { label: '9. ยกเลิกคำร้อง', color: 'text-stone-700', bg: 'bg-stone-100', border: 'border-stone-300' },
 };
 
+const ASSISTANCE_FORMAT_LABELS: Record<string, string> = {
+  cash: 'เงินสด / โอนเงิน',
+  in_kind: 'สิ่งของ / อุปกรณ์',
+  mixed: 'ผสมผสาน (เงินและสิ่งของ)',
+  monthly: 'เงินอุดหนุนรายเดือน',
+  one_time: 'ช่วยเหลือรายครั้ง',
+};
+
 export function AssistanceRequestsView({ 
   onNavigate, 
   initialStatusFilter = 'all',
@@ -117,6 +128,7 @@ export function AssistanceRequestsView({
     currentUser, 
     funds,
     createAssistanceRequest,
+    updateApplication,
     updateApplicationStatus, 
     approveApplication, 
     rejectApplication, 
@@ -157,9 +169,118 @@ export function AssistanceRequestsView({
   const [idCheckError, setIdCheckError] = useState<string | null>(null);
   const [verifiedBeneficiary, setVerifiedBeneficiary] = useState<any>(null);
 
-  // Step 2: Choose assistance type (10 Standard Types)
-  const [selectedTypeGroup, setSelectedTypeGroup] = useState<'all' | 'core' | 'specific'>('all');
-  const [selectedTypeCode, setSelectedTypeCode] = useState<string>('LIVING_SUPPORT');
+  // Live 3-Tier Fund & Assistance Type Hierarchy (fetched from DB, activeOnly=true)
+  const [hierarchyGroups, setHierarchyGroups] = useState<AsnafAllocation[]>([]);
+  const [isLoadingHierarchy, setIsLoadingHierarchy] = useState<boolean>(false);
+
+  const loadActiveHierarchy = useCallback(async () => {
+    setIsLoadingHierarchy(true);
+    try {
+      const r = await fetch('/api/finance/allocations/asnaf?view=hierarchy&year=2569&activeOnly=true');
+      const json = await r.json();
+      if (json.success && Array.isArray(json.data?.primaryGroups)) {
+        setHierarchyGroups(json.data.primaryGroups);
+      }
+    } catch (err) {
+      console.error('Failed to load active 3-tier fund hierarchy:', err);
+    } finally {
+      setIsLoadingHierarchy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadActiveHierarchy();
+  }, [loadActiveHierarchy]);
+
+  // Filter Primary Groups to those that are active and contain >=1 active Specific Fund with >=1 active Assistance Type
+  const eligiblePrimaryGroups = useMemo(() => {
+    return hierarchyGroups
+      .filter((pg) => pg.isActive !== false)
+      .map((pg) => ({
+        ...pg,
+        specificFunds: (pg.specificFunds || [])
+          .filter((sf) => sf.isActive)
+          .map((sf) => ({
+            ...sf,
+            assistanceTypes: (sf.assistanceTypes || []).filter((ast) => ast.isActive),
+          }))
+          .filter((sf) => (sf.assistanceTypes || []).length > 0),
+      }))
+      .filter((pg) => (pg.specificFunds || []).length > 0);
+  }, [hierarchyGroups]);
+
+  // Flat list of all active Assistance Types from DB for top table filter
+  const allActiveAssistanceTypes = useMemo(() => {
+    const list: (AssistanceTypeItem & { specificFundName: string; primaryGroupName: string })[] = [];
+    for (const pg of eligiblePrimaryGroups) {
+      for (const sf of pg.specificFunds || []) {
+        for (const ast of sf.assistanceTypes || []) {
+          list.push({
+            ...ast,
+            specificFundName: sf.name,
+            primaryGroupName: pg.asnafName,
+          });
+        }
+      }
+    }
+    return list;
+  }, [eligiblePrimaryGroups]);
+
+  // Step 2: 3-Tier Dynamic Selection (Primary Group -> Specific Fund -> Assistance Type)
+  const [selectedPrimaryGroupCode, setSelectedPrimaryGroupCode] = useState<string>('');
+  const [selectedSpecificFundId, setSelectedSpecificFundId] = useState<string>('');
+  const [selectedAssistanceTypeId, setSelectedAssistanceTypeId] = useState<string>('');
+  const isSubmittingWizardRef = useRef<boolean>(false);
+
+  const selectedPrimaryGroupObj = useMemo(
+    () => eligiblePrimaryGroups.find((pg) => pg.asnafCode === selectedPrimaryGroupCode) || null,
+    [eligiblePrimaryGroups, selectedPrimaryGroupCode]
+  );
+
+  const availableSpecificFundsForWizard = useMemo<FaqirMiskinSubFund[]>(
+    () => selectedPrimaryGroupObj?.specificFunds || [],
+    [selectedPrimaryGroupObj]
+  );
+
+  const selectedSpecificFundObj = useMemo(
+    () => availableSpecificFundsForWizard.find((sf) => sf.id === selectedSpecificFundId) || null,
+    [availableSpecificFundsForWizard, selectedSpecificFundId]
+  );
+
+  const availableAssistanceTypesForWizard = useMemo<AssistanceTypeItem[]>(
+    () => selectedSpecificFundObj?.assistanceTypes || [],
+    [selectedSpecificFundObj]
+  );
+
+  const selectedAssistanceTypeObj = useMemo(
+    () => availableAssistanceTypesForWizard.find((ast) => ast.id === selectedAssistanceTypeId) || null,
+    [availableAssistanceTypesForWizard, selectedAssistanceTypeId]
+  );
+
+  // Pre-approval classification edit state (for authorized staff only)
+  const [isEditingClassification, setIsEditingClassification] = useState<boolean>(false);
+  const [editPrimaryCode, setEditPrimaryCode] = useState<string>('');
+  const [editSpecificFundId, setEditSpecificFundId] = useState<string>('');
+  const [editAssistanceTypeId, setEditAssistanceTypeId] = useState<string>('');
+  const [editRequestedAmount, setEditRequestedAmount] = useState<number>(0);
+  const [isSavingClassification, setIsSavingClassification] = useState<boolean>(false);
+
+  const editPrimaryGroupObj = useMemo(
+    () => eligiblePrimaryGroups.find((pg) => pg.asnafCode === editPrimaryCode) || null,
+    [eligiblePrimaryGroups, editPrimaryCode]
+  );
+  const editAvailableSpecificFunds = useMemo(
+    () => editPrimaryGroupObj?.specificFunds || [],
+    [editPrimaryGroupObj]
+  );
+  const editSpecificFundObj = useMemo(
+    () => editAvailableSpecificFunds.find((sf) => sf.id === editSpecificFundId) || null,
+    [editAvailableSpecificFunds, editSpecificFundId]
+  );
+  const editAvailableAssistanceTypes = useMemo(
+    () => editSpecificFundObj?.assistanceTypes || [],
+    [editSpecificFundObj]
+  );
 
   // Step 3: Details, items & Cloud Storage Documents
   const [requestedAmountInput, setRequestedAmountInput] = useState<number>(3000);
@@ -226,15 +347,42 @@ export function AssistanceRequestsView({
     }
   }, [isAnyModalOpen]);
 
+  // Helper to pre-populate 3-tier defaults for a given primary group code
+  const applyDefaultThreeTierForPrimary = useCallback(
+    (rawAsnafOrPrimary?: string) => {
+      const targetPrimary = normalizePrimaryGroupCode(rawAsnafOrPrimary || 'faqir_miskin');
+      const matchedPg =
+        eligiblePrimaryGroups.find((pg) => pg.asnafCode === targetPrimary) ||
+        eligiblePrimaryGroups[0];
+      if (!matchedPg) {
+        setSelectedPrimaryGroupCode('');
+        setSelectedSpecificFundId('');
+        setSelectedAssistanceTypeId('');
+        return;
+      }
+      const firstSf = matchedPg.specificFunds?.[0];
+      const firstAst = firstSf?.assistanceTypes?.[0];
+      setSelectedPrimaryGroupCode(matchedPg.asnafCode);
+      setSelectedSpecificFundId(firstSf ? firstSf.id : '');
+      setSelectedAssistanceTypeId(firstAst ? firstAst.id : '');
+      if (firstAst?.defaultMinAmount && firstAst.defaultMinAmount > 0) {
+        setRequestedAmountInput(firstAst.defaultMinAmount);
+      } else {
+        setRequestedAmountInput(3000);
+      }
+    },
+    [eligiblePrimaryGroups]
+  );
+
   // Handlers for Wizard
   const handleOpenWizard = () => {
+    loadActiveHierarchy();
     setWizardStep(1);
     setIdCheckStatus('idle');
     setIdCheckError(null);
     setVerifiedBeneficiary(null);
     setNationalIdInput(currentUser.nationalId || '');
-    setSelectedTypeCode('LIVING_SUPPORT');
-    setRequestedAmountInput(3000);
+    applyDefaultThreeTierForPrimary('faqir_miskin');
     setRequestedItemsDetail('');
     setNecessityDetailsInput('');
     setUrgencyLevelInput('normal');
@@ -286,6 +434,7 @@ export function AssistanceRequestsView({
       }
 
       setVerifiedBeneficiary(json.beneficiary);
+      applyDefaultThreeTierForPrimary(json.beneficiary?.asnafCategory);
       setIdCheckStatus('found');
       setIdCheckError(null);
     } catch (err: any) {
@@ -298,20 +447,39 @@ export function AssistanceRequestsView({
 
   const handleSubmitWizard = async () => {
     if (!verifiedBeneficiary) return;
+    if (isSubmittingWizardRef.current || isSubmittingWizard) return;
+
+    if (!selectedPrimaryGroupCode || !selectedSpecificFundId || !selectedAssistanceTypeId || !selectedAssistanceTypeObj) {
+      showToast('กรุณาเลือกกลุ่มกองทุนหลัก กองทุนเฉพาะ และประเภทความช่วยเหลือให้ครบทั้ง 3 ระดับ', 'error');
+      setWizardStep(2);
+      return;
+    }
+    if (!Number.isFinite(Number(requestedAmountInput)) || Number(requestedAmountInput) <= 0) {
+      showToast('จำนวนเงินที่ขอรับความช่วยเหลือต้องมากกว่า 0 บาท', 'error');
+      setWizardStep(3);
+      return;
+    }
+
+    isSubmittingWizardRef.current = true;
     setIsSubmittingWizard(true);
     try {
-      const selectedType = ASSISTANCE_TYPES.find((t) => t.code === selectedTypeCode) || ASSISTANCE_TYPES[0];
-
       const res = await createAssistanceRequest({
         beneficiaryId: verifiedBeneficiary.id,
         nationalId: verifiedBeneficiary.nationalId,
         memberId: currentUser.role === 'member' ? currentUser.id : undefined,
-        assistanceType: selectedType.name,
-        assistanceTypeId: selectedType.id,
-        assistanceGroup: selectedType.group,
+        primaryGroupCode: selectedPrimaryGroupCode,
+        specificFundId: selectedSpecificFundId,
+        asnafCategory: selectedPrimaryGroupCode === 'faqir_miskin'
+          ? (verifiedBeneficiary.asnafCategory === 'faqir' ? 'faqir' : 'miskin')
+          : undefined,
+        branchId: verifiedBeneficiary.branchId,
+        branchName: verifiedBeneficiary.branchName,
+        assistanceType: selectedAssistanceTypeObj.name,
+        assistanceTypeId: selectedAssistanceTypeObj.id,
+        assistanceGroup: selectedAssistanceTypeObj.group,
         assistanceTypeDetails: requestedItemsDetail,
-        requestedAmount: requestedAmountInput,
-        necessityDetails: necessityDetailsInput || `ขอรับความช่วยเหลือประเภท ${selectedType.name}`,
+        requestedAmount: Number(requestedAmountInput),
+        necessityDetails: necessityDetailsInput || `ขอรับความช่วยเหลือประเภท ${selectedAssistanceTypeObj.name} (${selectedSpecificFundObj?.name || ''})`,
         urgencyLevel: urgencyLevelInput,
         documents: attachedDocuments.map((doc) => ({
           name: doc.name,
@@ -331,7 +499,71 @@ export function AssistanceRequestsView({
     } catch (err: any) {
       showToast(err.message || 'เกิดข้อผิดพลาดในการยื่นคำร้อง', 'error');
     } finally {
+      isSubmittingWizardRef.current = false;
       setIsSubmittingWizard(false);
+    }
+  };
+
+  // Start editing 3-tier classification on an editable pre-approval application (staff only)
+  const handleStartEditClassification = (app: AssistanceApplication) => {
+    loadActiveHierarchy();
+    const initPrimary = normalizePrimaryGroupCode(app.primaryGroupCode || app.asnafCategory || 'faqir_miskin');
+    setEditPrimaryCode(initPrimary);
+    setEditSpecificFundId(app.specificFundId || '');
+    setEditAssistanceTypeId(app.assistanceTypeId || '');
+    setEditRequestedAmount(Number(app.requestedAmount || 0));
+    setIsEditingClassification(true);
+  };
+
+  const handleSaveClassificationEdit = async () => {
+    if (!selectedApp || isSavingClassification) return;
+    if (!editPrimaryCode || !editSpecificFundId || !editAssistanceTypeId) {
+      showToast('กรุณาเลือกกลุ่มกองทุนหลัก กองทุนเฉพาะ และประเภทความช่วยเหลือให้ครบทั้ง 3 ระดับ', 'error');
+      return;
+    }
+    if (!Number.isFinite(Number(editRequestedAmount)) || Number(editRequestedAmount) <= 0) {
+      showToast('จำนวนเงินที่ขอรับต้องมากกว่า 0 บาท', 'error');
+      return;
+    }
+
+    const editPg = eligiblePrimaryGroups.find((pg) => pg.asnafCode === editPrimaryCode);
+    const editSf = editPg?.specificFunds?.find((sf) => sf.id === editSpecificFundId);
+    const editAst = editSf?.assistanceTypes?.find((ast) => ast.id === editAssistanceTypeId);
+    if (!editPg || !editSf || !editAst) {
+      showToast('ข้อมูลกองทุนหรือประเภทความช่วยเหลือที่เลือกไม่สัมพันธ์กันหรือถูกปิดใช้งานแล้ว', 'error');
+      return;
+    }
+
+    setIsSavingClassification(true);
+    try {
+      const ok = await updateApplication(selectedApp.id, {
+        primaryGroupCode: editPrimaryCode,
+        specificFundId: editSpecificFundId,
+        assistanceTypeId: editAssistanceTypeId,
+        assistanceType: editAst.name,
+        requestedAmount: Number(editRequestedAmount),
+      });
+      if (ok) {
+        setIsEditingClassification(false);
+        setSelectedApp((prev) =>
+          prev
+            ? {
+                ...prev,
+                primaryGroupCode: editPrimaryCode,
+                primaryGroupName: editPg.asnafName,
+                specificFundId: editSf.id,
+                specificFundCode: editSf.code,
+                specificFundName: editSf.name,
+                assistanceTypeId: editAst.id,
+                assistanceTypeCode: editAst.code,
+                assistanceType: editAst.name,
+                requestedAmount: Number(editRequestedAmount),
+              }
+            : null
+        );
+      }
+    } finally {
+      setIsSavingClassification(false);
     }
   };
 
@@ -372,7 +604,11 @@ export function AssistanceRequestsView({
         (statusFilter === 'approved_group' && ['approved', 'wait_disbursement'].includes(app.status));
 
       const matchUrgency = urgencyFilter === 'all' || app.urgencyLevel === urgencyFilter;
-      const matchType = typeFilter === 'all' || app.assistanceType === typeFilter;
+      const matchType =
+        typeFilter === 'all' ||
+        app.assistanceTypeId === typeFilter ||
+        app.assistanceType === typeFilter ||
+        app.specificFundId === typeFilter;
       const matchBranch = branchFilter === 'all' || app.branchId === branchFilter || app.branchName === branchFilter;
 
       return matchSearch && matchStatus && matchUrgency && matchType && matchBranch;
@@ -408,10 +644,22 @@ export function AssistanceRequestsView({
   // Handle Confirm Approval
   const handleConfirmApproval = async () => {
     if (!selectedApp) return;
-    const ok = await approveApplication(selectedApp.id, approvalAmount, selectedFundId, approvalNotes || 'ผ่านการอนุมัติตามระเบียบ');
+    const ok = await approveApplication(
+      selectedApp.id,
+      approvalAmount,
+      selectedFundId,
+      approvalNotes || 'ผ่านการอนุมัติตามระเบียบ',
+      selectedApp.specificFundId || 'subf-1'
+    );
     if (ok) {
       setShowApprovalDialog(false);
-      setSelectedApp((prev) => prev ? { ...prev, status: 'approved', approvedAmount: approvalAmount, approvedFundId: selectedFundId } : null);
+      setSelectedApp((prev) => prev ? {
+        ...prev,
+        status: 'approved',
+        approvedAmount: approvalAmount,
+        approvedFundId: selectedFundId,
+        approvedSpecificFundId: selectedApp.specificFundId || 'subf-1'
+      } : null);
     }
   };
 
@@ -582,20 +830,25 @@ export function AssistanceRequestsView({
             </select>
           </div>
 
-          {/* Type Filter */}
+          {/* Dynamic 3-Tier Assistance Type Filter */}
           <div>
             <select
               value={typeFilter}
               onChange={(e) => { setTypeFilter(e.target.value); setCurrentPage(1); }}
               className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0b2545] text-xs font-medium"
             >
-              <option value="all">ทุกประเภทความช่วยเหลือ</option>
-              <option value="cash">เงินสงเคราะห์ยังชีพ</option>
-              <option value="medical">ค่ารักษาพยาบาล</option>
-              <option value="education">ทุนการศึกษา</option>
-              <option value="housing">ซ่อมแซมที่อยู่อาศัย</option>
-              <option value="debt_relief">ปลดเปลื้องหนี้สินจำเป็น</option>
-              <option value="emergency">สาธารณภัยฉุกเฉิน</option>
+              <option value="all">ทุกประเภทความช่วยเหลือ ({allActiveAssistanceTypes.length})</option>
+              {eligiblePrimaryGroups.map((pg) => (
+                <optgroup key={pg.asnafCode} label={`กลุ่มหลัก: ${pg.asnafName}`}>
+                  {(pg.specificFunds || []).map((sf) =>
+                    (sf.assistanceTypes || []).map((ast) => (
+                      <option key={ast.id} value={ast.id}>
+                        [{sf.name}] {ast.name}
+                      </option>
+                    ))
+                  )}
+                </optgroup>
+              ))}
             </select>
           </div>
 
@@ -691,9 +944,14 @@ export function AssistanceRequestsView({
                         )}
                       </td>
 
-                      {/* Assistance Type */}
+                      {/* Assistance Type & Linked Specific Fund */}
                       <td className="py-3.5 px-4 text-slate-700">
-                        <span className="font-semibold">{app.assistanceType || 'เงินสงเคราะห์'}</span>
+                        <span className="font-semibold block">{app.assistanceType || 'เงินสงเคราะห์'}</span>
+                        {app.specificFundName && (
+                          <span className="inline-block text-[10px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 px-1.5 py-0.2 rounded mt-0.5">
+                            กองทุน: {app.specificFundName}
+                          </span>
+                        )}
                         {app.necessityDetails && (
                           <div className="text-[10px] text-slate-400 truncate max-w-[160px] mt-0.5">
                             {app.necessityDetails}
@@ -954,30 +1212,194 @@ export function AssistanceRequestsView({
                   </p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                  <h4 className="font-bold text-slate-900 border-b border-slate-200 pb-1">ข้อมูลความช่วยเหลือที่ขอรับ</h4>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">ประเภท:</span>
-                      <strong className="text-slate-900">{selectedApp.assistanceType}</strong>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">วงเงินที่ขอรับ:</span>
-                      <strong className="text-slate-900 font-mono text-sm">฿{(selectedApp.requestedAmount || 0).toLocaleString()}</strong>
-                    </div>
-                    {selectedApp.approvedAmount && (
-                      <div className="flex justify-between text-emerald-800 font-bold border-t border-slate-200 pt-1">
-                        <span>วงเงินที่อนุมัติ:</span>
-                        <span className="font-mono text-sm">฿{selectedApp.approvedAmount.toLocaleString()}</span>
-                      </div>
-                    )}
-                    {selectedApp.disbursementRef && (
-                      <div className="flex justify-between text-teal-800">
-                        <span>เลขอ้างอิงการโอนเงิน:</span>
-                        <span className="font-mono font-bold">{selectedApp.disbursementRef}</span>
-                      </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm">โครงสร้างกองทุนและประเภทความช่วยเหลือ</h4>
+                    {['submitted', 'doc_review', 'assessing', 'pending_approval'].includes(selectedApp.status) &&
+                    ['super_admin', 'executive', 'approver', 'officer'].includes(currentUser.role) ? (
+                      !isEditingClassification ? (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditClassification(selectedApp)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-teal-800 bg-white border border-teal-300 rounded-lg hover:bg-teal-50 transition-colors shadow-2xs"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>แก้ไขกองทุน/ประเภทคำร้อง</span>
+                        </button>
+                      ) : null
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        <Lock className="w-2.5 h-2.5 text-slate-400" />
+                        <span>ล็อกโครงสร้างคำร้อง</span>
+                      </span>
                     )}
                   </div>
+
+                  {isEditingClassification ? (
+                    <div className="space-y-2.5 p-3 bg-white rounded-xl border border-teal-200 text-xs">
+                      <div className="font-bold text-teal-900 text-[11px] flex items-center justify-between">
+                        <span>แก้ไขโครงสร้างกองทุน 3 ระดับ (ก่อนอนุมัติ)</span>
+                        <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-normal">
+                          มีผลต่อรายงานและการจัดสรร
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">ระดับที่ 1: กลุ่มหลัก (Primary Group)</label>
+                        <select
+                          value={editPrimaryCode}
+                          onChange={(e) => {
+                            const newPgCode = e.target.value;
+                            setEditPrimaryCode(newPgCode);
+                            const pg = eligiblePrimaryGroups.find((p) => p.asnafCode === newPgCode);
+                            const firstSf = pg?.specificFunds?.[0];
+                            const firstAst = firstSf?.assistanceTypes?.[0];
+                            setEditSpecificFundId(firstSf ? firstSf.id : '');
+                            setEditAssistanceTypeId(firstAst ? firstAst.id : '');
+                            if (firstAst?.defaultMinAmount) setEditRequestedAmount(firstAst.defaultMinAmount);
+                          }}
+                          className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 text-xs"
+                        >
+                          {eligiblePrimaryGroups.map((pg) => (
+                            <option key={pg.asnafCode} value={pg.asnafCode}>
+                              {pg.asnafName} ({pg.asnafCode})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">ระดับที่ 2: กลุ่มเฉพาะ / กองทุน (Specific Fund)</label>
+                        <select
+                          value={editSpecificFundId}
+                          onChange={(e) => {
+                            const newSfId = e.target.value;
+                            setEditSpecificFundId(newSfId);
+                            const sf = editAvailableSpecificFunds.find((s) => s.id === newSfId);
+                            const firstAst = sf?.assistanceTypes?.[0];
+                            setEditAssistanceTypeId(firstAst ? firstAst.id : '');
+                            if (firstAst?.defaultMinAmount) setEditRequestedAmount(firstAst.defaultMinAmount);
+                          }}
+                          className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 text-xs"
+                        >
+                          {editAvailableSpecificFunds.length === 0 ? (
+                            <option value="">ไม่มีกองทุนเฉพาะในกลุ่มนี้</option>
+                          ) : (
+                            editAvailableSpecificFunds.map((sf) => (
+                              <option key={sf.id} value={sf.id}>
+                                [{sf.code}] {sf.name}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">ระดับที่ 3: ประเภทความช่วยเหลือ (Assistance Type)</label>
+                        <select
+                          value={editAssistanceTypeId}
+                          onChange={(e) => {
+                            const newAstId = e.target.value;
+                            setEditAssistanceTypeId(newAstId);
+                            const ast = editAvailableAssistanceTypes.find((a) => a.id === newAstId);
+                            if (ast?.defaultMinAmount) setEditRequestedAmount(ast.defaultMinAmount);
+                          }}
+                          className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 text-xs"
+                        >
+                          {editAvailableAssistanceTypes.length === 0 ? (
+                            <option value="">ไม่มีประเภทความช่วยเหลือในกองทุนนี้</option>
+                          ) : (
+                            editAvailableAssistanceTypes.map((ast) => (
+                              <option key={ast.id} value={ast.id}>
+                                [{ast.code}] {ast.name} (แนะนำ: ฿{ast.defaultMinAmount?.toLocaleString() || 0})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">วงเงินที่ขอรับ (บาท)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          step={500}
+                          value={editRequestedAmount}
+                          onChange={(e) => setEditRequestedAmount(Number(e.target.value))}
+                          className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-teal-900 text-xs"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingClassification(false)}
+                          disabled={isSavingClassification}
+                          className="px-3 py-1.5 border border-slate-300 rounded-lg font-semibold text-slate-600 hover:bg-slate-50 text-xs"
+                        >
+                          ยกเลิก
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveClassificationEdit}
+                          disabled={isSavingClassification}
+                          className="px-3.5 py-1.5 bg-teal-800 hover:bg-teal-900 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                        >
+                          {isSavingClassification ? (
+                            <span>กำลังบันทึก...</span>
+                          ) : (
+                            <>
+                              <Save className="w-3.5 h-3.5" />
+                              <span>บันทึกการแก้ไข</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-slate-400 shrink-0">ระดับ 1 (กลุ่มหลัก):</span>
+                        <strong className="text-slate-900 text-right">
+                          {selectedApp.primaryGroupName || (selectedApp.primaryGroupCode === 'faqir_miskin' ? 'ฟากีร–มิสกีน' : selectedApp.primaryGroupCode) || 'ฟากีร–มิสกีน'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-slate-400 shrink-0">ระดับ 2 (กลุ่มเฉพาะ/กองทุน):</span>
+                        <strong className="text-teal-900 text-right">
+                          {selectedApp.specificFundName || selectedApp.specificFundCode || '-'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-slate-400 shrink-0">ระดับ 3 (ประเภทความช่วยเหลือ):</span>
+                        <strong className="text-slate-900 text-right">
+                          {selectedApp.assistanceType} {selectedApp.assistanceTypeCode ? `(${selectedApp.assistanceTypeCode})` : ''}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+                        <span className="text-slate-400">วงเงินที่ขอรับ:</span>
+                        <strong className="text-slate-900 font-mono text-sm">฿{(selectedApp.requestedAmount || 0).toLocaleString()}</strong>
+                      </div>
+                      {selectedApp.approvedSpecificFundName && (
+                        <div className="flex justify-between text-emerald-900 text-xs">
+                          <span className="text-slate-400">กองทุนที่อนุมัติ:</span>
+                          <span className="font-bold">{selectedApp.approvedSpecificFundName}</span>
+                        </div>
+                      )}
+                      {selectedApp.approvedAmount && (
+                        <div className="flex justify-between text-emerald-800 font-bold border-t border-slate-200 pt-1">
+                          <span>วงเงินที่อนุมัติ:</span>
+                          <span className="font-mono text-sm">฿{selectedApp.approvedAmount.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {selectedApp.disbursementRef && (
+                        <div className="flex justify-between text-teal-800">
+                          <span>เลขอ้างอิงการโอนเงิน:</span>
+                          <span className="font-mono font-bold">{selectedApp.disbursementRef}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1729,139 +2151,199 @@ export function AssistanceRequestsView({
               )}
 
               {/* ======================================================== */}
-              {/* STEP 2: Choose from 10 Standard Assistance Types          */}
+              {/* STEP 2: Choose 3-Tier Dynamic Fund Structure             */}
               {/* ======================================================== */}
               {wizardStep === 2 && (
                 <div className="space-y-5 animate-fadeIn">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
                     <div>
                       <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                        เลือกประเภทความช่วยเหลือ (10 ประเภทมาตรฐาน)
+                        เลือกโครงสร้างกองทุนและประเภทความช่วยเหลือ (3 ระดับ)
                       </h3>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        ระบบจัดเก็บเป็นข้อมูลโครงสร้างมาตรฐาน โดยแยกกลุ่มหลัก 6 รายการ และกลุ่มเฉพาะ 4 รายการ
+                        โครงสร้างมาตรฐาน: ระดับ 1 กลุ่มหลัก › ระดับ 2 กองทุนเฉพาะ › ระดับ 3 ประเภทความช่วยเหลือ
                       </p>
                     </div>
 
-                    {/* Filter Tabs */}
-                    <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-semibold shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTypeGroup('all')}
-                        className={`px-3 py-1.5 rounded-lg transition-colors ${
-                          selectedTypeGroup === 'all' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        ทั้งหมด (10)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTypeGroup('core')}
-                        className={`px-3 py-1.5 rounded-lg transition-colors ${
-                          selectedTypeGroup === 'core' ? 'bg-white text-emerald-800 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        กลุ่มหลัก (6)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTypeGroup('specific')}
-                        className={`px-3 py-1.5 rounded-lg transition-colors ${
-                          selectedTypeGroup === 'specific' ? 'bg-white text-purple-800 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        กลุ่มเฉพาะ (4)
-                      </button>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 text-xs font-bold shrink-0">
+                      <span>ปีงบประมาณ 2569</span>
                     </div>
                   </div>
 
-                  {/* Mobile Quick Select Dropdown (Mandatory touch optimization) */}
-                  <div className="md:hidden">
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      เลือกประเภทความช่วยเหลือ (ด่วน):
+                  {/* Level 1: Primary Fund Group */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-teal-800 text-white inline-flex items-center justify-center text-[10px]">1</span>
+                      <span>ระดับที่ 1: กลุ่มหลัก (Primary Fund Group)</span>
                     </label>
-                    <select
-                      value={selectedTypeCode}
-                      onChange={(e) => {
-                        setSelectedTypeCode(e.target.value);
-                        const t = ASSISTANCE_TYPES.find((x) => x.code === e.target.value);
-                        if (t?.defaultAmount) setRequestedAmountInput(t.defaultAmount);
-                      }}
-                      className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold"
-                    >
-                      {ASSISTANCE_TYPES.map((t) => (
-                        <option key={t.id} value={t.code}>
-                          [{t.groupLabelTh}] {t.name} (วงเงินแนะนำ: ฿{t.defaultAmount?.toLocaleString()})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex flex-wrap gap-2">
+                      {eligiblePrimaryGroups.map((pg) => {
+                        const isSelected = selectedPrimaryGroupCode === pg.asnafCode;
+                        return (
+                          <button
+                            key={pg.asnafCode}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPrimaryGroupCode(pg.asnafCode);
+                              const firstSf = pg.specificFunds?.[0];
+                              const firstAst = firstSf?.assistanceTypes?.[0];
+                              setSelectedSpecificFundId(firstSf ? firstSf.id : '');
+                              setSelectedAssistanceTypeId(firstAst ? firstAst.id : '');
+                              if (firstAst?.defaultMinAmount) setRequestedAmountInput(firstAst.defaultMinAmount);
+                            }}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                              isSelected
+                                ? 'bg-teal-800 text-white border-teal-800 shadow-xs'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <span>{pg.asnafName}</span>
+                            <span className={`ml-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                              isSelected ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {pg.specificFunds?.length || 0} กองทุน
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
-                  {/* 10 Assistance Types Responsive Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    {ASSISTANCE_TYPES.filter((t) => selectedTypeGroup === 'all' || t.group === selectedTypeGroup).map((t) => {
-                      const isSelected = selectedTypeCode === t.code;
-                      return (
-                        <div
-                          key={t.id}
-                          onClick={() => {
-                            setSelectedTypeCode(t.code);
-                            if (t.defaultAmount) setRequestedAmountInput(t.defaultAmount);
-                          }}
-                          className={`p-4 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between gap-3 ${
-                            isSelected
-                              ? 'border-teal-700 bg-teal-50/60 shadow-sm ring-1 ring-teal-700'
-                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2">
-                              <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                  t.group === 'core'
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                    : 'bg-purple-50 text-purple-800 border-purple-200'
-                                }`}
-                              >
-                                {t.orderIndex}. {t.groupLabelTh}
-                              </span>
+                  {/* Level 2: Specific Fund */}
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-teal-800 text-white inline-flex items-center justify-center text-[10px]">2</span>
+                      <span>ระดับที่ 2: กลุ่มเฉพาะ / กองทุน (Specific Fund Group)</span>
+                      <span className="text-[11px] font-normal text-slate-500">ภายใต้ {selectedPrimaryGroupObj?.asnafName || '-'}</span>
+                    </label>
 
-                              <span className="text-[11px] font-bold text-slate-500 font-mono">
-                                ฿{t.defaultAmount?.toLocaleString()}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2 mt-2">
-                              <div
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                                  isSelected ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700'
-                                }`}
-                              >
-                                {t.orderIndex}
+                    {availableSpecificFundsForWizard.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                        ยังไม่มีกองทุนเฉพาะที่เปิดใช้งานภายใต้กลุ่มหลักนี้
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                        {availableSpecificFundsForWizard.map((sf) => {
+                          const isSelected = selectedSpecificFundId === sf.id;
+                          return (
+                            <div
+                              key={sf.id}
+                              onClick={() => {
+                                setSelectedSpecificFundId(sf.id);
+                                const firstAst = sf.assistanceTypes?.[0];
+                                setSelectedAssistanceTypeId(firstAst ? firstAst.id : '');
+                                if (firstAst?.defaultMinAmount) setRequestedAmountInput(firstAst.defaultMinAmount);
+                              }}
+                              className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'border-teal-700 bg-teal-50/70 shadow-xs ring-1 ring-teal-700'
+                                  : 'border-slate-200 bg-white hover:border-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1 mb-1">
+                                <span className="font-mono text-[10px] font-bold text-teal-800 bg-teal-100/70 px-1.5 py-0.5 rounded">
+                                  {sf.code}
+                                </span>
+                                <span className="text-[10px] font-semibold text-slate-500 font-mono">
+                                  {sf.percentage}%
+                                </span>
                               </div>
-                              <h4 className="font-extrabold text-sm text-slate-900">
-                                {t.name}
-                              </h4>
-                            </div>
-
-                            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-                              {t.description}
-                            </p>
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1">
-                            {t.requiredDocuments.slice(0, 2).map((doc, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-block text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-[160px]"
-                              >
-                                • {doc}
+                              <strong className="text-xs text-slate-900 block leading-snug">
+                                {sf.name}
+                              </strong>
+                              <span className="text-[10px] text-slate-500 block mt-1">
+                                {sf.assistanceTypes?.length || 0} ประเภทความช่วยเหลือ
                               </span>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Level 3: Assistance Types */}
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-teal-800 text-white inline-flex items-center justify-center text-[10px]">3</span>
+                      <span>ระดับที่ 3: ประเภทความช่วยเหลือ (Assistance Type) *</span>
+                      <span className="text-[11px] font-normal text-slate-500">ภายใต้ {selectedSpecificFundObj?.name || '-'}</span>
+                    </label>
+
+                    {availableAssistanceTypesForWizard.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                        ยังไม่มีประเภทความช่วยเหลือที่เปิดใช้งานภายใต้กองทุนเฉพาะนี้
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        {availableAssistanceTypesForWizard.map((ast) => {
+                          const isSelected = selectedAssistanceTypeId === ast.id;
+                          return (
+                            <div
+                              key={ast.id}
+                              onClick={() => {
+                                setSelectedAssistanceTypeId(ast.id);
+                                if (ast.defaultMinAmount) setRequestedAmountInput(ast.defaultMinAmount);
+                              }}
+                              className={`p-4 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between gap-3 ${
+                                isSelected
+                                  ? 'border-teal-700 bg-teal-50/60 shadow-sm ring-1 ring-teal-700'
+                                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-teal-50 text-teal-800 border-teal-200 font-mono">
+                                    {ast.code}
+                                  </span>
+
+                                  <span className="text-[11px] font-bold text-slate-600 font-mono">
+                                    ฿{ast.defaultMinAmount?.toLocaleString() || 0} - ฿{ast.defaultMaxAmount?.toLocaleString() || 0}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-start gap-2.5 mt-2">
+                                  <div
+                                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 ${
+                                      isSelected ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700'
+                                    }`}
+                                  >
+                                    ✓
+                                  </div>
+                                  <div>
+                                    <h4 className="font-extrabold text-sm text-slate-900">
+                                      {ast.name}
+                                    </h4>
+                                    {ast.description && (
+                                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                                        {ast.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {ast.conditionsText && (
+                                  <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
+                                    <span className="font-bold text-slate-800">เกณฑ์เงื่อนไข:</span> {ast.conditionsText}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1">
+                                <span className="text-[10px] text-slate-400 block w-full mb-0.5">เอกสารที่ต้องใช้:</span>
+                                {(ast.requiredDocuments || ['สำเนาบัตรประจำตัวประชาชน', 'สำเนาทะเบียนบ้าน']).slice(0, 3).map((doc, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-block text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-[170px]"
+                                  >
+                                    • {doc}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Navigation footer */}
@@ -1875,8 +2357,9 @@ export function AssistanceRequestsView({
                     </button>
                     <button
                       type="button"
+                      disabled={!selectedAssistanceTypeId}
                       onClick={() => setWizardStep(3)}
-                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs sm:text-sm shadow-xs transition-colors min-h-[44px]"
+                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shadow-xs transition-colors min-h-[44px]"
                     >
                       <span>ขั้นตอนถัดไป: ระบุวงเงินและความจำเป็น</span>
                       <ArrowRight className="w-4 h-4" />
@@ -1890,29 +2373,31 @@ export function AssistanceRequestsView({
               {/* ======================================================== */}
               {wizardStep === 3 && (
                 <div className="space-y-5 animate-fadeIn">
-                  {/* Selected Type Summary */}
-                  {(() => {
-                    const sel = ASSISTANCE_TYPES.find((t) => t.code === selectedTypeCode) || ASSISTANCE_TYPES[0];
-                    return (
-                      <div className="p-4 rounded-xl bg-teal-50/80 border border-teal-200 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] font-bold text-teal-800 uppercase tracking-wider block">
-                            ประเภทความช่วยเหลือที่เลือก:
-                          </span>
-                          <strong className="text-sm sm:text-base text-slate-900 block mt-0.5">
-                            {sel.orderIndex}. {sel.name} ({sel.groupLabelTh})
-                          </strong>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setWizardStep(2)}
-                          className="text-xs text-teal-800 underline font-semibold hover:text-teal-950"
-                        >
-                          เปลี่ยนประเภท
-                        </button>
+                  {/* Selected 3-Tier Summary */}
+                  <div className="p-4 rounded-xl bg-teal-50/80 border border-teal-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-teal-800 uppercase tracking-wider">
+                        <span>{selectedPrimaryGroupObj?.asnafName || 'กลุ่มหลัก'}</span>
+                        <span>›</span>
+                        <span>{selectedSpecificFundObj?.name || 'กองทุนเฉพาะ'}</span>
                       </div>
-                    );
-                  })()}
+                      <strong className="text-sm sm:text-base text-slate-900 block mt-0.5">
+                        {selectedAssistanceTypeObj?.name || 'ประเภทความช่วยเหลือ'} {selectedAssistanceTypeObj?.code ? `(${selectedAssistanceTypeObj.code})` : ''}
+                      </strong>
+                      {selectedAssistanceTypeObj?.conditionsText && (
+                        <p className="text-[11px] text-teal-900/80 mt-0.5">
+                          เกณฑ์เงื่อนไข: {selectedAssistanceTypeObj.conditionsText}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWizardStep(2)}
+                      className="text-xs text-teal-800 underline font-semibold hover:text-teal-950 shrink-0"
+                    >
+                      เปลี่ยนประเภทความช่วยเหลือ
+                    </button>
+                  </div>
 
                   <div className="space-y-4 bg-white p-5 rounded-2xl border border-slate-200 text-xs">
                     <div>
@@ -2002,14 +2487,13 @@ export function AssistanceRequestsView({
                     {/* Required Documents Checklist */}
                     <div className="pt-3 border-t border-slate-100">
                       <span className="font-bold text-slate-700 block mb-1">
-                        เอกสารประกอบที่ต้องเตรียมแนบตามเกณฑ์:
+                        เอกสารประกอบที่ต้องเตรียมแนบตามเกณฑ์ ({selectedAssistanceTypeObj?.name || 'ทั่วไป'}):
                       </span>
                       <ul className="space-y-1 text-slate-600">
                         {(
-                          ASSISTANCE_TYPES.find((t) => t.code === selectedTypeCode)?.requiredDocuments || [
-                            'สำเนาบัตรประจำตัวประชาชน',
-                            'สำเนาทะเบียนบ้าน',
-                          ]
+                          selectedAssistanceTypeObj?.requiredDocuments && selectedAssistanceTypeObj.requiredDocuments.length > 0
+                            ? selectedAssistanceTypeObj.requiredDocuments
+                            : ['สำเนาบัตรประจำตัวประชาชน', 'สำเนาทะเบียนบ้าน']
                         ).map((d, i) => (
                           <li key={i} className="flex items-center gap-2">
                             <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" />
@@ -2082,12 +2566,12 @@ export function AssistanceRequestsView({
                           </div>
 
                           <div>
-                            <span className="text-slate-400 block text-[11px]">ประเภทความช่วยเหลือ:</span>
+                            <span className="text-slate-400 block text-[11px]">โครงสร้างกองทุนและประเภท:</span>
                             <strong className="text-slate-900 block mt-0.5">
-                              {ASSISTANCE_TYPES.find((t) => t.code === selectedTypeCode)?.name}
+                              {selectedAssistanceTypeObj?.name || '-'}
                             </strong>
-                            <span className="text-[10px] text-slate-500">
-                              ({ASSISTANCE_TYPES.find((t) => t.code === selectedTypeCode)?.groupLabelTh})
+                            <span className="text-[10px] text-teal-800 block">
+                              {selectedPrimaryGroupObj?.asnafName || '-'} › {selectedSpecificFundObj?.name || '-'}
                             </span>
                           </div>
 

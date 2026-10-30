@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BeneficiaryService } from '@/services/beneficiaryService';
+import { proxyToNest } from '@/lib/apiProxy';
 
 export async function POST(
   request: NextRequest,
@@ -8,20 +8,29 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { assessment, actor } = body;
+    const assessmentData = body.assessment || body;
 
-    if (!assessment || !actor) {
+    const res = await proxyToNest(`/assessments/${id}`, request, {
+      method: 'POST',
+      body: assessmentData,
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
       return NextResponse.json(
-        { success: false, error: 'ข้อมูลไม่สมบูรณ์' },
-        { status: 400 }
+        { success: false, error: json.message || 'ไม่สามารถบันทึกผลการประเมินได้' },
+        { status: res.status }
       );
     }
 
-    const result = await BeneficiaryService.submitAssessment(id, assessment, actor);
-    return NextResponse.json({ success: true, data: result });
+    return NextResponse.json({
+      success: true,
+      data: json,
+      message: 'บันทึกผลการประเมินเรียบร้อยแล้ว',
+    });
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: error.message || 'เกิดข้อผิดพลาดในการบันทึกผลการประเมิน' },
       { status: 400 }
     );
   }

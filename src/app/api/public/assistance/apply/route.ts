@@ -7,10 +7,11 @@ export async function POST(req: Request) {
     const result = await PublicPortalService.submitPublicAssistance(body);
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
-    console.error('Error submitting public assistance:', error);
+    const msg = String(error?.message || 'Failed to submit assistance application');
+    const status = msg.startsWith('DUPLICATE_SUBMISSION') ? 409 : 400;
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to submit assistance application' },
-      { status: 400 }
+      { success: false, error: msg },
+      { status }
     );
   }
 }

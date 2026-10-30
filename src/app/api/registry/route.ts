@@ -40,6 +40,13 @@ export async function GET(request: NextRequest) {
     });
 
     if (!nestRes.ok) {
+      if (nestRes.status === 401) {
+        return NextResponse.json({
+          success: true,
+          data: [],
+          pagination: { total: 0, page: 1, limit: 20, totalPages: 1 },
+        });
+      }
       const err = await nestRes.json().catch(() => ({}));
       return NextResponse.json(
         { success: false, error: err.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลทะเบียน' },
@@ -48,9 +55,60 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await nestRes.json();
+    const mappedItems = (data.items || []).map((item: any) => {
+      const cleanId = item.identityNumber || item.nationalId || '';
+      const maskedId = item.nationalIdMasked || (cleanId ? (cleanId.length === 13 ? `${cleanId[0]}-${cleanId.slice(1, 5)}-${cleanId.slice(5, 10)}-${cleanId.slice(10, 12)}-${cleanId[12]}` : cleanId) : '-');
+      const titlePrefix = item.titlePrefix || item.title || 'นาย';
+      const fullName = item.fullName || `${titlePrefix} ${item.firstName || ''} ${item.lastName || ''}`.trim() || 'ไม่ระบุชื่อ';
+
+      // Determine asnaf category key
+      let asnafCategory = 'miskin';
+      if (item.asnafCategory) {
+        asnafCategory = String(item.asnafCategory).toLowerCase();
+      } else if (item.asnaf?.code) {
+        asnafCategory = String(item.asnaf.code).toLowerCase();
+      } else if (typeof item.asnaf === 'string') {
+        asnafCategory = item.asnaf.toLowerCase();
+      }
+
+      // Map NestJS status enum to Frontend RegistrationStatus
+      let regStatus = item.registrationStatus || item.status || 'draft';
+      const statusUpper = String(regStatus).toUpperCase();
+      if (statusUpper === 'DRAFT') regStatus = 'draft';
+      else if (statusUpper === 'SUBMITTED') regStatus = 'pending_verification';
+      else if (statusUpper === 'PENDING_REVIEW') regStatus = 'pending_qualification';
+      else if (statusUpper === 'APPROVED') regStatus = 'qualified';
+      else if (statusUpper === 'REJECTED') regStatus = 'disqualified';
+      else if (statusUpper === 'SUSPENDED') regStatus = 'suspended';
+      else if (statusUpper === 'NEED_INFO') regStatus = 'need_more_info';
+      else regStatus = String(regStatus).toLowerCase();
+
+      return {
+        ...item,
+        id: item.id,
+        registrationNo: item.registrationNo || item.registryNumber || `REG-${item.id?.slice(0, 8)}`,
+        fullName,
+        titlePrefix,
+        nationalId: cleanId,
+        nationalIdMasked: maskedId,
+        phone: item.phone || '-',
+        age: item.age || item.ageYears,
+        birthDate: item.birthDate || item.dateOfBirth,
+        asnafCategory,
+        registrationStatus: regStatus,
+        community: item.community || '',
+        district: item.district || '',
+        province: item.province || '',
+        address: item.address || `${item.community || ''} ${item.district || ''} ${item.province || ''}`.trim() || '-',
+        assistanceApplicationsCount: item.assistanceApplicationsCount ?? item.requestCount ?? 0,
+        totalAssistanceReceived: item.totalAssistanceReceived !== undefined ? Number(item.totalAssistanceReceived) : (Number(item.aidTotal) || 0),
+        registeredDate: item.registeredDate || item.createdAt || new Date().toISOString(),
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: data.items,
+      data: mappedItems,
       pagination: {
         total: data.total,
         page: data.page,

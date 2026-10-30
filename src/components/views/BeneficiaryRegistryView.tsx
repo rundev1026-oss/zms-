@@ -619,7 +619,8 @@ export function BeneficiaryRegistryView({
   // Open quick create assistance request
   const handleOpenAssistanceDialog = (reg: BeneficiaryRegistryItem) => {
     setSelectedRegistry(reg);
-    const pCode = ['faqir', 'miskin'].includes(reg.asnafCategory) ? 'faqir_miskin' : reg.asnafCategory;
+    const regAsnaf = (reg.asnafCategory || (reg as any).asnaf?.code || 'miskin').toLowerCase();
+    const pCode = ['faqir', 'miskin'].includes(regAsnaf) ? 'faqir_miskin' : regAsnaf;
     const pg = regHierarchyData.find((p) => p.asnafCode === pCode) || regHierarchyData[0];
     const sf = pg?.specificFunds?.[0];
     const ast = sf?.assistanceTypes?.[0];
@@ -843,8 +844,10 @@ export function BeneficiaryRegistryView({
                 </tr>
               ) : (
                 paginatedRegistries.map((reg) => {
-                  const statusMeta = REGISTRATION_STATUS_LABELS[reg.registrationStatus] || REGISTRATION_STATUS_LABELS.draft;
-                  const asnafText = ASNAF_LABELS[reg.asnafCategory] || reg.asnafCategory;
+                  const statusKey = String(reg.registrationStatus || (reg as any).status || '').toLowerCase() as RegistrationStatus;
+                  const statusMeta = REGISTRATION_STATUS_LABELS[statusKey] || REGISTRATION_STATUS_LABELS[reg.registrationStatus] || REGISTRATION_STATUS_LABELS.draft;
+                  const asnafKey = String(reg.asnafCategory || (reg as any).asnaf?.code || '').toLowerCase();
+                  const asnafText = ASNAF_LABELS[asnafKey] || (reg as any).asnaf?.nameTh || reg.asnafCategory || 'ไม่ระบุ';
 
                   return (
                     <tr 
@@ -855,7 +858,7 @@ export function BeneficiaryRegistryView({
                       {/* Registration No */}
                       <td className="py-3.5 px-4 font-mono font-bold text-[#0b2545] whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span>{reg.registrationNo}</span>
+                          <span>{reg.registrationNo || (reg as any).registryNumber || '-'}</span>
                         </div>
                         <div className="text-[10px] text-slate-400 font-normal">
                           {reg.registeredDate ? new Date(reg.registeredDate).toLocaleDateString('th-TH') : '-'}
@@ -865,11 +868,11 @@ export function BeneficiaryRegistryView({
                       {/* Name & Masked ID */}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>{reg.titlePrefix} {reg.fullName}</span>
+                          <span>{reg.titlePrefix || (reg as any).title || ''} {reg.fullName || `${(reg as any).firstName || ''} ${(reg as any).lastName || ''}`.trim() || 'ไม่ระบุชื่อ'}</span>
                           {reg.age && <span className="text-[10px] font-normal text-slate-400">({reg.age} ปี)</span>}
                         </div>
                         <div className="text-[11px] font-mono text-slate-500 flex items-center gap-2 mt-0.5">
-                          <span title="หมายเลขประจำตัวประชาชน (PDPA Masked)">{reg.nationalIdMasked}</span>
+                          <span title="หมายเลขประจำตัวประชาชน (PDPA Masked)">{reg.nationalIdMasked || (reg as any).identityNumber || '-'}</span>
                           <span>•</span>
                           <span>{reg.phone}</span>
                         </div>
@@ -888,10 +891,10 @@ export function BeneficiaryRegistryView({
                       {/* Asnaf */}
                       <td className="py-3.5 px-4">
                         <span className="inline-block px-2 py-0.5 rounded-lg bg-teal-50 text-teal-800 font-semibold border border-teal-200/80 text-[11px]">
-                          {asnafText.split(' ')[0]}
+                          {typeof asnafText === 'string' && asnafText.includes(' ') ? asnafText.split(' ')[0] : (asnafText || '-')}
                         </span>
                         <div className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[120px]">
-                          {asnafText.split(' ')[1] || ''}
+                          {typeof asnafText === 'string' && asnafText.includes(' ') ? asnafText.split(' ').slice(1).join(' ') : ''}
                         </div>
                       </td>
 

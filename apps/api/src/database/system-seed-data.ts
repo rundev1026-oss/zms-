@@ -1,6 +1,6 @@
 import { PERMISSION_CODES, type PermissionCode } from '@zms/shared';
 
-const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
+const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'beneficiaries.read': 'ดูรายการและรายละเอียดแบบปกปิด',
   'beneficiaries.read.sensitive': 'เห็นเลขประจำตัวเต็ม',
   'beneficiaries.write': 'สร้างและแก้ร่างทะเบียน',

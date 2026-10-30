@@ -4,6 +4,19 @@ import { OrganizationService } from '@/services/organizationService';
 import { getDb, initDb } from '@/lib/db';
 import { User } from '@/types';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
+function resolveToken(req: Request): string | null {
+  const authHeader = req.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    return authHeader.replace('Bearer ', '').trim();
+  }
+  const cookieHeader = req.headers.get('cookie') || '';
+  const match = cookieHeader.match(/zms_session=([^;]+)/);
+  if (match) return decodeURIComponent(match[1]);
+  return null;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> | { id: string } }
@@ -11,7 +24,22 @@ export async function GET(
   try {
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
+    const token = resolveToken(req);
 
+    // 1. Try enterprise NestJS backend
+    if (token) {
+      try {
+        const nestRes = await fetch(`${API_BASE_URL}/users/${userId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (nestRes.ok) {
+          const data = await nestRes.json();
+          return NextResponse.json({ success: true, data });
+        }
+      } catch {}
+    }
+
+    // 2. Fallback to local db
     const actor = await OrganizationService.resolveActor(req);
     if (!actor) {
       return NextResponse.json({ success: false, error: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
@@ -59,7 +87,7 @@ export async function GET(
       departmentId: r.department_id ? String(r.department_id) : undefined,
       departmentName: r.department_name ? String(r.department_name) : undefined,
       status: r.status as any,
-      passwordSetupStatus: (r.password_setup_status as any) || (r.has_password ? 'completed' : 'pending_setup'),
+      passwordSetupStatus: r.password_setup_status as any,
       hasPassword: Boolean(r.has_password),
       lastLogin: r.last_login ? String(r.last_login) : undefined,
       createdAt: r.created_at ? String(r.created_at) : undefined,
@@ -79,7 +107,56 @@ export async function PUT(
   try {
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
+    const body = await req.json();
+    const token = resolveToken(req);
 
+    // 1. Try enterprise NestJS backend
+    if (token) {
+      try {
+        const roleMapping: Record<string, string> = {
+          super_admin: 'SUPER_ADMIN',
+          executive: 'ADMIN',
+          officer: 'ASSISTANCE_OFFICER',
+          finance: 'FINANCE_OFFICER',
+          approver: 'APPROVER',
+          member: 'PUBLIC_USER',
+        };
+        const mappedRole = roleMapping[body.role] || body.role;
+
+        const nestRes = await fetch(`${API_BASE_URL}/users/${userId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'x-zms-csrf': '1',
+          },
+          body: JSON.stringify({
+            displayName: body.name || `${body.firstName || ''} ${body.lastName || ''}`.trim() || undefined,
+            phone: body.phone,
+            position: body.position,
+            branchId: body.branchId,
+            departmentId: body.departmentId,
+            roleCode: mappedRole,
+          }),
+        });
+
+        const data = await nestRes.json();
+        if (nestRes.ok) {
+          return NextResponse.json({
+            success: true,
+            message: data.message || 'แก้ไขข้อมูลผู้ใช้สำเร็จ',
+            data,
+          });
+        } else {
+          return NextResponse.json(
+            { success: false, error: data.message || 'ไม่สามารถแก้ไขข้อมูลผู้ใช้งานได้' },
+            { status: nestRes.status }
+          );
+        }
+      } catch {}
+    }
+
+    // 2. Fallback to local AuthService
     const actor = await OrganizationService.resolveActor(req);
     if (!actor) {
       return NextResponse.json({ success: false, error: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
@@ -92,9 +169,7 @@ export async function PUT(
       );
     }
 
-    const body = await req.json();
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
-
     const result = await AuthService.updateUserByAdmin(userId, body, actor as any, ip);
 
     return NextResponse.json({

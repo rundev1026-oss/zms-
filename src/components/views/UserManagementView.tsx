@@ -31,9 +31,13 @@ import {
   History,
   LogOut,
   ChevronDown,
-  Info
+  Info,
+  Sliders,
+  UserX
 } from 'lucide-react';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll } from '@/components/common/Modal';
+import { RoleManagementModal } from './users/RoleManagementModal';
+import { ManualPermissionModal } from './users/ManualPermissionModal';
 
 interface UserManagementViewProps {
   onNavigate: (view: string) => void;
@@ -63,6 +67,10 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showManualPermissionModal, setShowManualPermissionModal] = useState(false);
+  const [selectedUserForPerm, setSelectedUserForPerm] = useState<User | null>(null);
+  const [rolesCount, setRolesCount] = useState<number>(7);
 
   // Lock body scroll cleanly whenever any modal in this view is active
   const isAnyModalOpen = Boolean(
@@ -70,7 +78,9 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     showEditModal || 
     showResetConfirmModal || 
     showInviteModal || 
-    showAuditModal
+    showAuditModal ||
+    showRoleModal ||
+    showManualPermissionModal
   );
 
   useEffect(() => {
@@ -188,6 +198,16 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     }
   }, [selectedBranch, selectedDept, selectedRole, selectedStatus, selectedPasswordStatus, searchQuery, getAuthHeaders, showToast]);
 
+  const fetchRolesCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/roles', { headers: getAuthHeaders() });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setRolesCount(json.data.length);
+      }
+    } catch {}
+  }, [getAuthHeaders]);
+
   useEffect(() => {
     fetchOrgStructure();
   }, [fetchOrgStructure]);
@@ -195,6 +215,10 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  useEffect(() => {
+    fetchRolesCount();
+  }, [fetchRolesCount]);
 
   // Open Edit Modal
   const openEditModal = (user: User) => {
@@ -493,23 +517,23 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Users className="w-5 h-5 text-purple-700" />
-              จัดการบัญชีผู้ใช้งาน & สิทธิ์การเข้าถึง (Super Admin User Management)
+              <Users className="w-5 h-5 text-indigo-700" />
+              จัดการผู้ใช้งานและสิทธิ์ (User & Permission Management)
             </h1>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
               Super Admin Control
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            บริหารบัญชีบุคลากรทุกสาขาและทุกแผนก จัดการสิทธิ์การเข้าถึง รีเซ็ตรหัสผ่าน และควบคุมความปลอดภัยองค์กร
+            บริหารบัญชีบุคลากร กำหนดสิทธิ์แบบ Granular Override ควบคุม Data Scope และตรวจสอบประวัติการเปลี่ยนแปลงสิทธิ์ (Audit Trail)
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => fetchUsers()}
             disabled={isLoading}
@@ -520,64 +544,106 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             รีเฟรช
           </button>
           <button
+            onClick={() => setShowRoleModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors shadow-xs"
+            title="จัดการบทบาทและสิทธิ์ตั้งต้น"
+          >
+            <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            จัดการ Role ({rolesCount})
+          </button>
+          <button
+            onClick={() => {
+              const target = selectedUser || usersList[0];
+              if (target) {
+                setSelectedUserForPerm(target);
+                setShowManualPermissionModal(true);
+              } else {
+                showToast('กรุณาเลือกผู้ใช้งานที่ต้องการกำหนดสิทธิ์', 'info');
+              }
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold hover:bg-purple-100 transition-colors shadow-xs"
+            title="กำหนดสิทธิ์เฉพาะบุคคล (Manual Permission Control)"
+          >
+            <Sliders className="w-4 h-4 text-purple-600" />
+            กำหนด Permission
+          </button>
+          <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 text-white rounded-xl text-xs font-semibold hover:bg-purple-800 transition-colors shadow-xs"
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-700 text-white rounded-xl text-xs font-semibold hover:bg-indigo-800 transition-colors shadow-xs"
           >
             <UserPlus className="w-4 h-4" /> เพิ่มผู้ใช้งานใหม่
           </button>
         </div>
       </div>
 
-      {/* KPI & Status Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ผู้ใช้ทั้งหมด</div>
-            <div className="text-2xl font-bold text-slate-900 mt-1">{usersList.length}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">ในฐานข้อมูลระบบ</div>
+      {/* 6 Dashboard Cards: Master Prompt Part 2 */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Card 1: ผู้ใช้งานทั้งหมด */}
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-[11px] font-semibold uppercase tracking-wider">ผู้ใช้ทั้งหมด</span>
+            <Users className="w-4 h-4 text-indigo-600" />
           </div>
-          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
-            <Users className="w-5 h-5" />
-          </div>
+          <div className="text-2xl font-bold text-slate-900 mt-2">{usersList.length}</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">ในฐานข้อมูลระบบ</div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">บัญชีพร้อมใช้งาน</div>
-            <div className="text-2xl font-bold text-emerald-600 mt-1">
-              {usersList.filter(u => u.status === 'active' && u.passwordSetupStatus === 'completed').length}
-            </div>
-            <div className="text-[10px] text-emerald-600/80 mt-0.5">ตั้งรหัสผ่านและ Login ได้แล้ว</div>
+        {/* Card 2: บัญชีที่ Active */}
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-emerald-600">
+            <span className="text-[11px] font-semibold uppercase tracking-wider">บัญชีที่ Active</span>
+            <UserCheck className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-            <UserCheck className="w-5 h-5" />
+          <div className="text-2xl font-bold text-emerald-600 mt-2">
+            {usersList.filter(u => u.status === 'active').length}
           </div>
+          <div className="text-[10px] text-emerald-700/80 mt-0.5">เปิดใช้งานปกติ</div>
         </div>
 
-        <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1">
-              <Key className="w-3.5 h-3.5 text-amber-600" /> รอตั้งรหัสผ่าน
-            </div>
-            <div className="text-2xl font-bold text-amber-900 mt-1">{pendingCount}</div>
-            <div className="text-[10px] text-amber-700 mt-0.5">ต้องส่งลิงก์คำเชิญให้ผู้ใช้ตั้งเอง</div>
+        {/* Card 3: บัญชีที่ Inactive */}
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-[11px] font-semibold uppercase tracking-wider">บัญชี Inactive</span>
+            <UserX className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
-            <Clock className="w-5 h-5" />
+          <div className="text-2xl font-bold text-slate-600 mt-2">
+            {usersList.filter(u => u.status === 'disabled' || (u as any).status === 'inactive').length}
           </div>
+          <div className="text-[10px] text-slate-400 mt-0.5">ปิดใช้งานบัญชี</div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ระงับ / ปิดใช้งาน</div>
-            <div className="text-2xl font-bold text-rose-600 mt-1">
-              {usersList.filter(u => u.status === 'suspended' || u.status === 'disabled').length}
-            </div>
-            <div className="text-[10px] text-rose-500 mt-0.5">ถูกบล็อกไม่ให้เข้าสู่ระบบ</div>
+        {/* Card 4: ผู้ใช้งานที่ถูกระงับ */}
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-rose-600">
+            <span className="text-[11px] font-semibold uppercase tracking-wider">ถูกระงับสิทธิ์</span>
+            <ShieldAlert className="w-4 h-4 text-rose-600" />
           </div>
-          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center">
-            <ShieldAlert className="w-5 h-5" />
+          <div className="text-2xl font-bold text-rose-600 mt-2">
+            {usersList.filter(u => u.status === 'suspended').length}
           </div>
+          <div className="text-[10px] text-rose-600/80 mt-0.5">ระงับชั่วคราว</div>
+        </div>
+
+        {/* Card 5: จำนวน Role */}
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-indigo-600">
+            <span className="text-[11px] font-semibold uppercase tracking-wider">จำนวน Role</span>
+            <ShieldCheck className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="text-2xl font-bold text-indigo-700 mt-2">{rolesCount}</div>
+          <div className="text-[10px] text-indigo-600/80 mt-0.5">ระบบ & สร้างเอง</div>
+        </div>
+
+        {/* Card 6: รอกำหนดสิทธิ์ */}
+        <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-amber-800">
+            <span className="text-[11px] font-bold uppercase tracking-wider">รอกำหนดสิทธิ์</span>
+            <Clock className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="text-2xl font-bold text-amber-900 mt-2">
+            {pendingCount || usersList.filter(u => u.passwordSetupStatus === 'pending_setup').length}
+          </div>
+          <div className="text-[10px] text-amber-700 mt-0.5">รอตั้งรหัส/สิทธิ์</div>
         </div>
       </div>
 
@@ -732,7 +798,8 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider border-b border-slate-200 font-bold">
               <tr>
-                <th className="py-3 px-4">ชื่อ - นามสกุล</th>
+                <th className="py-3 px-3 text-center w-12">#</th>
+                <th className="py-3 px-4">ชื่อ - นามสกุล / Username</th>
                 <th className="py-3 px-4">อีเมล / เบอร์ติดต่อ</th>
                 <th className="py-3 px-4">บทบาท (Role)</th>
                 <th className="py-3 px-4">สาขา / แผนก</th>
@@ -745,18 +812,24 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             <tbody className="divide-y divide-slate-100">
               {usersList.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400">
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
                     ไม่พบข้อมูลผู้ใช้งานตามเงื่อนไขที่เลือก
                   </td>
                 </tr>
               ) : (
-                usersList.map((user) => {
+                usersList.map((user, index) => {
                   const isPendingPassword = user.passwordSetupStatus === 'pending_setup';
                   const isSelf = currentUser?.id === user.id;
+                  const usernameText = (user as any).username || user.email.split('@')[0];
 
                   return (
                     <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Name & ID */}
+                      {/* Index */}
+                      <td className="py-3.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                        {index + 1}
+                      </td>
+
+                      {/* Name & Username */}
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-900 flex items-center gap-1.5">
                           {user.name}
@@ -766,7 +839,8 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">UID: {user.id}</div>
+                        <div className="text-[10px] text-indigo-600 font-mono font-medium">@{usernameText}</div>
+                        <div className="text-[9px] text-slate-400 font-mono truncate max-w-[130px]">UID: {user.id}</div>
                       </td>
 
                       {/* Email & Phone */}
@@ -859,6 +933,19 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                       {/* Actions Toolbar */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          {/* Manage Manual Permissions Button */}
+                          <button
+                            onClick={() => {
+                              setSelectedUserForPerm(user);
+                              setShowManualPermissionModal(true);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-all shadow-xs"
+                            title="กำหนดสิทธิ์เฉพาะบุคคล (Manual Permission Override & Data Scope)"
+                          >
+                            <Key className="w-3 h-3 text-indigo-600" />
+                            สิทธิ์
+                          </button>
+
                           {/* Edit User Button */}
                           <button
                             onClick={() => openEditModal(user)}
@@ -1517,6 +1604,38 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
           </div>
         </div>
       </ModalPortal>
+      )}
+
+      {/* Role Management Modal */}
+      {showRoleModal && (
+        <RoleManagementModal
+          isOpen={showRoleModal}
+          onClose={() => setShowRoleModal(false)}
+          authToken={authToken}
+          showToast={showToast}
+          onRolesUpdated={() => {
+            fetchRolesCount();
+            fetchUsers();
+          }}
+        />
+      )}
+
+      {/* Manual Permission Matrix & Scope Modal */}
+      {showManualPermissionModal && selectedUserForPerm && (
+        <ManualPermissionModal
+          isOpen={showManualPermissionModal}
+          onClose={() => {
+            setShowManualPermissionModal(false);
+            setSelectedUserForPerm(null);
+          }}
+          user={selectedUserForPerm}
+          authToken={authToken}
+          actor={currentUser}
+          showToast={showToast}
+          onPermissionsSaved={() => {
+            fetchUsers();
+          }}
+        />
       )}
     </div>
   );

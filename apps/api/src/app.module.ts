@@ -26,6 +26,7 @@ import { RegistryWorkflowModule } from './registry-workflow/registry-workflow.mo
 import { ReportsModule } from './reports/reports.module';
 import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
+import { PermissionsModule } from './permissions/permissions.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { UsersModule } from './users/users.module';
     AuditModule,
     UsersModule,
     RolesModule,
+    PermissionsModule,
     AuthModule,
     BeneficiariesModule,
     RegistryWorkflowModule,

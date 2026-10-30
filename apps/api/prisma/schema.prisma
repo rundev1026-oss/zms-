@@ -51,10 +51,12 @@ enum AsnafDecision {
 model User {
   id              String    @id @default(uuid()) @db.Uuid
   legacyId        String?   @unique @map("legacy_id")
+  username        String?   @unique
   email           String    @unique
   passwordHash    String    @map("password_hash")
   displayName     String    @map("display_name")
   phone           String?
+  position        String?
   branch          String?
   branchId        String?   @map("branch_id")
   departmentId    String?   @map("department_id")
@@ -66,27 +68,31 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  userRoles               UserRole[]
-  refreshTokens           RefreshToken[]
-  passwordResetTokens     PasswordResetToken[]
-  loginHistories          LoginHistory[]
-  beneficiariesCreated    Beneficiary[]                @relation("BeneficiaryCreatedBy")
-  beneficiariesUpdated    Beneficiary[]                @relation("BeneficiaryUpdatedBy")
-  addressesCreated        BeneficiaryAddress[]         @relation("AddressCreatedBy")
-  addressesUpdated        BeneficiaryAddress[]         @relation("AddressUpdatedBy")
-  householdsCreated       Household[]                  @relation("HouseholdCreatedBy")
-  householdsUpdated       Household[]                  @relation("HouseholdUpdatedBy")
-  householdMembersCreated HouseholdMember[]            @relation("HouseholdMemberCreatedBy")
-  householdMembersUpdated HouseholdMember[]            @relation("HouseholdMemberUpdatedBy")
-  incomeProfilesCreated   IncomeExpenseProfile[]       @relation("IncomeCreatedBy")
-  incomeProfilesUpdated   IncomeExpenseProfile[]       @relation("IncomeUpdatedBy")
-  assessmentsRecorded     BeneficiaryAsnafAssessment[] @relation("AssessmentRecordedBy")
-  assessmentsReviewed     BeneficiaryAsnafAssessment[] @relation("AssessmentReviewedBy")
-  documentsUploaded       BeneficiaryDocument[]        @relation("DocumentUploadedBy")
-  documentsReviewed       BeneficiaryDocument[]        @relation("DocumentReviewedBy")
-  statusChanges           RegistryStatusHistory[]      @relation("StatusActedBy")
-  consentsRecorded        ConsentRecord[]              @relation("ConsentRecordedBy")
-  auditLogs               AuditLog[]                   @relation("AuditActor")
+  userRoles                  UserRole[]
+  permissionOverrides        UserPermissionOverride[]
+  dataScope                  UserDataScope?
+  permissionAuditLogsActor   PermissionAuditLog[]         @relation("ActorUser")
+  permissionAuditLogsTarget  PermissionAuditLog[]         @relation("TargetUser")
+  refreshTokens              RefreshToken[]
+  passwordResetTokens        PasswordResetToken[]
+  loginHistories             LoginHistory[]
+  beneficiariesCreated       Beneficiary[]                @relation("BeneficiaryCreatedBy")
+  beneficiariesUpdated       Beneficiary[]                @relation("BeneficiaryUpdatedBy")
+  addressesCreated           BeneficiaryAddress[]         @relation("AddressCreatedBy")
+  addressesUpdated           BeneficiaryAddress[]         @relation("AddressUpdatedBy")
+  householdsCreated          Household[]                  @relation("HouseholdCreatedBy")
+  householdsUpdated          Household[]                  @relation("HouseholdUpdatedBy")
+  householdMembersCreated    HouseholdMember[]            @relation("HouseholdMemberCreatedBy")
+  householdMembersUpdated    HouseholdMember[]            @relation("HouseholdMemberUpdatedBy")
+  incomeProfilesCreated      IncomeExpenseProfile[]       @relation("IncomeCreatedBy")
+  incomeProfilesUpdated      IncomeExpenseProfile[]       @relation("IncomeUpdatedBy")
+  assessmentsRecorded        BeneficiaryAsnafAssessment[] @relation("AssessmentRecordedBy")
+  assessmentsReviewed        BeneficiaryAsnafAssessment[] @relation("AssessmentReviewedBy")
+  documentsUploaded          BeneficiaryDocument[]        @relation("DocumentUploadedBy")
+  documentsReviewed          BeneficiaryDocument[]        @relation("DocumentReviewedBy")
+  statusChanges              RegistryStatusHistory[]      @relation("StatusActedBy")
+  consentsRecorded           ConsentRecord[]              @relation("ConsentRecordedBy")
+  auditLogs                  AuditLog[]                   @relation("AuditActor")
 
   @@map("users")
 }
@@ -96,11 +102,15 @@ model Role {
   code        String   @unique
   name        String
   description String?
+  isCustom    Boolean  @default(false) @map("is_custom")
+  isSystem    Boolean  @default(false) @map("is_system")
+  status      String   @default("ACTIVE")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  userRoles       UserRole[]
-  rolePermissions RolePermission[]
+  userRoles                  UserRole[]
+  rolePermissions            RolePermission[]
+  permissionAuditLogsTarget  PermissionAuditLog[] @relation("TargetRole")
 
   @@map("roles")
 }
@@ -141,6 +151,59 @@ model RolePermission {
   @@id([roleId, permissionId])
   @@index([permissionId])
   @@map("role_permissions")
+}
+
+model UserPermissionOverride {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  permissionCode String   @map("permission_code")
+  effect         String   // "ALLOW" | "DENY"
+  reason         String?
+  grantedBy      String?  @map("granted_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionCode])
+  @@index([userId])
+  @@map("user_permission_overrides")
+}
+
+model UserDataScope {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @map("user_id") @db.Uuid
+  scope         String   @default("BRANCH") // "OWN" | "DEPARTMENT" | "BRANCH" | "ORGANIZATION"
+  branchId      String?  @map("branch_id")
+  departmentId  String?  @map("department_id")
+  approvalLimit Decimal? @map("approval_limit") @db.Decimal(18, 2)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_data_scopes")
+}
+
+model PermissionAuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String   @map("actor_id") @db.Uuid
+  targetUserId String?  @map("target_user_id") @db.Uuid
+  targetRoleId String?  @map("target_role_id") @db.Uuid
+  action       String   // "ROLE_CREATE" | "ROLE_UPDATE" | "ROLE_ASSIGN_PERM" | "USER_OVERRIDE_PERM" | "USER_SCOPE_UPDATE" | "USER_ROLE_CHANGE" | "USER_STATUS_CHANGE"
+  details      Json?
+  reason       String?
+  ipAddress    String?  @map("ip_address")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor      User  @relation("ActorUser", fields: [actorId], references: [id], onDelete: Restrict)
+  targetUser User? @relation("TargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetRole Role? @relation("TargetRole", fields: [targetRoleId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([targetUserId])
+  @@index([targetRoleId])
+  @@map("permission_audit_logs")
 }
 
 /// Stores a hash of the refresh token. Never store the raw token.

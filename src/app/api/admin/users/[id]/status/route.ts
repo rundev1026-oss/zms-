@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { AuthService } from '@/services/authService';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
 function extractToken(req: Request): string {
   const authHeader = req.headers.get('authorization') || '';
   if (authHeader.startsWith('Bearer ')) {
@@ -18,8 +20,41 @@ export async function PATCH(
   try {
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
+    const body = await req.json();
 
     const token = extractToken(req);
+
+    // 1. First attempt NestJS enterprise backend
+    if (token) {
+      try {
+        const nestRes = await fetch(`${API_BASE_URL}/users/${userId}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'x-zms-csrf': '1',
+          },
+          body: JSON.stringify({
+            status: body.status?.toUpperCase() || (body.isActive ? 'ACTIVE' : 'INACTIVE'),
+            isActive: body.status === 'active' || body.status === 'ACTIVE' || Boolean(body.isActive),
+            reason: body.reason,
+          }),
+        });
+
+        const data = await nestRes.json();
+        if (nestRes.ok) {
+          return NextResponse.json({
+            success: true,
+            message: data.message || 'ปรับปรุงสถานะผู้ใช้สำเร็จ',
+            data,
+          });
+        } else {
+          return NextResponse.json({ success: false, error: data.message || 'ไม่สามารถแก้ไขสถานะผู้ใช้ได้' }, { status: nestRes.status });
+        }
+      } catch {}
+    }
+
+    // 2. Fallback to local AuthService
     if (!token) {
       return NextResponse.json({ success: false, error: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
     }
@@ -32,7 +67,6 @@ export async function PATCH(
       );
     }
 
-    const body = await req.json();
     const { status } = body;
     if (!status) {
       return NextResponse.json({ success: false, error: 'กรุณาระบุสถานะใหม่' }, { status: 400 });
@@ -47,9 +81,6 @@ export async function PATCH(
       data: result.user,
     });
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message || 'ไม่สามารถแก้ไขสถานะผู้ใช้ได้' },
-      { status: 400 }
-    );
+    return NextResponse.json({ success: false, error: error.message || 'เกิดข้อผิดพลาดในการแก้ไขสถานะ' }, { status: 500 });
   }
 }

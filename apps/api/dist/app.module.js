@@ -35,6 +35,7 @@ const registry_workflow_module_1 = require("./registry-workflow/registry-workflo
 const reports_module_1 = require("./reports/reports.module");
 const roles_module_1 = require("./roles/roles.module");
 const users_module_1 = require("./users/users.module");
+const permissions_module_1 = require("./permissions/permissions.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -67,6 +68,7 @@ exports.AppModule = AppModule = __decorate([
             audit_module_1.AuditModule,
             users_module_1.UsersModule,
             roles_module_1.RolesModule,
+            permissions_module_1.PermissionsModule,
             auth_module_1.AuthModule,
             beneficiaries_module_1.BeneficiariesModule,
             registry_workflow_module_1.RegistryWorkflowModule,

@@ -25,8 +25,13 @@ export declare class AuthController {
             id: string;
             email: string;
             displayName: string;
+            username: string | undefined;
             roles: import("../common/auth-user").AuthRole[];
             permissions: string[];
+            branchId: string | null | undefined;
+            departmentId: string | null | undefined;
+            dataScope: string | undefined;
+            approvalLimit: number | null | undefined;
             mfaEnabled: boolean;
         };
         tempToken?: undefined;
@@ -42,8 +47,13 @@ export declare class AuthController {
             id: string;
             email: string;
             displayName: string;
+            username: string | undefined;
             roles: import("../common/auth-user").AuthRole[];
             permissions: string[];
+            branchId: string | null | undefined;
+            departmentId: string | null | undefined;
+            dataScope: string | undefined;
+            approvalLimit: number | null | undefined;
             mfaEnabled: boolean;
         };
     }>;
@@ -73,8 +83,13 @@ export declare class AuthController {
             id: string;
             email: string;
             displayName: string;
+            username: string | undefined;
             roles: import("../common/auth-user").AuthRole[];
             permissions: string[];
+            branchId: string | null | undefined;
+            departmentId: string | null | undefined;
+            dataScope: string | undefined;
+            approvalLimit: number | null | undefined;
             mfaEnabled: boolean;
         };
     }>;
@@ -85,8 +100,13 @@ export declare class AuthController {
         id: string;
         email: string;
         displayName: string;
+        username: string | undefined;
         roles: import("../common/auth-user").AuthRole[];
         permissions: string[];
+        branchId: string | null | undefined;
+        departmentId: string | null | undefined;
+        dataScope: string | undefined;
+        approvalLimit: number | null | undefined;
         mfaEnabled: boolean;
     }>;
 }

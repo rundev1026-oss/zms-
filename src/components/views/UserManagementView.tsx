@@ -10,11 +10,13 @@ import {
   UserCheck, 
   Lock, 
   Building, 
+  Building2,
   Phone, 
   Mail, 
   CheckCircle, 
   X,
   AlertTriangle,
+  AlertCircle,
   LogIn,
   Key,
   RefreshCw,
@@ -40,7 +42,10 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  Shield
+  Shield,
+  Plus,
+  Power,
+  Ban
 } from 'lucide-react';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll } from '@/components/common/Modal';
 import { RoleManagementModal } from './users/RoleManagementModal';
@@ -48,11 +53,15 @@ import { ManualPermissionModal } from './users/ManualPermissionModal';
 import { UserDetailModal } from './users/UserDetailModal';
 
 interface UserManagementViewProps {
-  onNavigate: (view: string) => void;
+  onNavigate?: (view: string) => void;
 }
 
-export function UserManagementView({ onNavigate }: UserManagementViewProps) {
+export function UserManagementView({ onNavigate }: UserManagementViewProps = {}) {
   const { currentUser, switchUserRole, showToast, authToken } = useApp();
+  const isSuperAdmin = currentUser?.role === 'super_admin';
+
+  // Main Tabs (like Branches & Departments)
+  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
 
   // Data state
   const [usersList, setUsersList] = useState<User[]>([]);
@@ -69,11 +78,10 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   const [selectedDept, setSelectedDept] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedPasswordStatus, setSelectedPasswordStatus] = useState('all');
-  const [selectedLastLoginFilter, setSelectedLastLoginFilter] = useState('all');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(9);
+  const [pageSize, setPageSize] = useState(6);
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -240,7 +248,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   // Reset pagination to page 1 whenever filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedRole, selectedBranch, selectedDept, selectedStatus, selectedPasswordStatus, selectedLastLoginFilter]);
+  }, [activeTab, searchQuery, selectedRole, selectedBranch, selectedDept, selectedStatus, selectedPasswordStatus]);
 
   // Close card action dropdown when clicking outside
   useEffect(() => {
@@ -249,10 +257,18 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Filter users by client-side criteria (e.g. Last Login and search fallback)
+  // Filter users by client-side criteria and active tab
   const filteredUsers = useMemo(() => {
     return usersList.filter((user) => {
-      // 1. Search filter: Name, Username, Email
+      const uStatus = user.status?.toLowerCase() || ((user as any).isActive ? 'active' : 'disabled');
+      const isPending = user.passwordSetupStatus === 'pending_setup';
+
+      // Tab switcher filter
+      if (activeTab === 'active' && uStatus !== 'active') return false;
+      if (activeTab === 'inactive' && uStatus !== 'disabled' && uStatus !== 'suspended' && uStatus !== 'inactive') return false;
+      if (activeTab === 'pending' && !isPending) return false;
+
+      // Search filter: Name, Username, Email, Phone
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         const nameMatch = (user.name || '').toLowerCase().includes(q) ||
@@ -263,76 +279,67 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
         if (!nameMatch && !usernameMatch && !emailMatch && !phoneMatch) return false;
       }
 
-      // 2. Role filter
+      // Role filter
       if (selectedRole !== 'all') {
         const uRole = (user.role || (user as any).primaryRoleCode || '').toLowerCase();
         if (uRole !== selectedRole.toLowerCase()) return false;
       }
 
-      // 3. Branch filter
+      // Branch filter
       if (selectedBranch !== 'all' && user.branchId !== selectedBranch) {
         return false;
       }
 
-      // 4. Department filter
+      // Department filter
       if (selectedDept !== 'all' && user.departmentId !== selectedDept) {
         return false;
       }
 
-      // 5. Status filter
+      // Status dropdown filter
       if (selectedStatus !== 'all') {
-        const uStatus = user.status?.toLowerCase() || ((user as any).isActive ? 'active' : 'disabled');
         if (selectedStatus === 'active' && uStatus !== 'active') return false;
         if (selectedStatus === 'suspended' && uStatus !== 'suspended') return false;
         if (selectedStatus === 'disabled' && uStatus !== 'disabled' && uStatus !== 'inactive') return false;
       }
 
-      // 6. Password Status filter
+      // Password Status filter
       if (selectedPasswordStatus !== 'all') {
-        if (selectedPasswordStatus === 'pending_setup' && user.passwordSetupStatus !== 'pending_setup') return false;
-        if (selectedPasswordStatus === 'completed' && user.passwordSetupStatus === 'pending_setup') return false;
-      }
-
-      // 7. Last Login filter
-      if (selectedLastLoginFilter !== 'all') {
-        const lastLoginDate = (user as any).lastLoginAt || user.lastLogin;
-        if (selectedLastLoginFilter === 'never') {
-          if (lastLoginDate) return false;
-        } else if (selectedLastLoginFilter === '7days') {
-          if (!lastLoginDate) return false;
-          const diffDays = (Date.now() - new Date(lastLoginDate).getTime()) / (1000 * 3600 * 24);
-          if (diffDays > 7) return false;
-        } else if (selectedLastLoginFilter === '30days') {
-          if (!lastLoginDate) return false;
-          const diffDays = (Date.now() - new Date(lastLoginDate).getTime()) / (1000 * 3600 * 24);
-          if (diffDays > 30) return false;
-        }
+        if (selectedPasswordStatus === 'pending_setup' && !isPending) return false;
+        if (selectedPasswordStatus === 'completed' && isPending) return false;
       }
 
       return true;
     });
-  }, [usersList, searchQuery, selectedRole, selectedBranch, selectedDept, selectedStatus, selectedPasswordStatus, selectedLastLoginFilter]);
+  }, [usersList, activeTab, searchQuery, selectedRole, selectedBranch, selectedDept, selectedStatus, selectedPasswordStatus]);
 
-  // Pagination calculation
-  const totalItems = filteredUsers.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const paginatedUsers = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredUsers.slice(startIndex, startIndex + pageSize);
-  }, [filteredUsers, currentPage, pageSize]);
+  const hasActiveFilters =
+    searchQuery.trim() !== '' ||
+    selectedRole !== 'all' ||
+    selectedBranch !== 'all' ||
+    selectedDept !== 'all' ||
+    selectedStatus !== 'all' ||
+    selectedPasswordStatus !== 'all' ||
+    activeTab !== 'all';
 
-  // Clear all filters handler
   const handleClearFilters = () => {
+    setActiveTab('all');
     setSearchQuery('');
     setSelectedRole('all');
     setSelectedBranch('all');
     setSelectedDept('all');
     setSelectedStatus('all');
     setSelectedPasswordStatus('all');
-    setSelectedLastLoginFilter('all');
     setCurrentPage(1);
     showToast('ล้างตัวกรองทั้งหมดแล้ว', 'info');
   };
+
+  // Pagination calculation
+  const totalItems = filteredUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredUsers.slice(startIndex, startIndex + pageSize);
+  }, [filteredUsers, currentPage, pageSize]);
 
   // Open Details Modal
   const openDetailModal = (user: User) => {
@@ -394,7 +401,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
     }
   };
 
-  // Send First-Time Setup Invite (for pending_setup)
+  // Send First-Time Setup Invite
   const handleSendInvite = async (user: User) => {
     try {
       setIsSubmitting(true);
@@ -641,118 +648,167 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
   const quickPersonaUsers = usersList.slice(0, 6);
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-16">
-      {/* 1. Page Header (Modern Enterprise Design) */}
-      <div className="bg-[#0B2545] text-white p-6 rounded-3xl border border-[#DFE7F0] shadow-md relative overflow-hidden flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-        {/* Subtle decorative glow */}
-        <div className="absolute -right-20 -top-20 w-80 h-80 bg-[#0D9488]/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-60 -bottom-24 w-60 h-60 bg-[#00845A]/15 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="relative z-10 space-y-1.5 max-w-2xl">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2 tracking-tight">
-              <Users className="w-6 h-6 text-[#0D9488]" />
-              จัดการผู้ใช้งาน
-            </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-teal-300 border border-teal-400/20 backdrop-blur-xs">
-              Users Management
-            </span>
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#0D9488] text-white">
-              Super Admin Control
-            </span>
+    <div className="space-y-6 animate-fadeIn pb-12">
+      {/* ========================================================================= */}
+      {/* 1. TOP HEADER & PRIMARY ACTIONS (Matching Branches & Departments) */}
+      {/* ========================================================================= */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="space-y-1.5">
+          <div className="text-xs font-bold text-teal-700 uppercase tracking-wider flex items-center gap-1.5">
+            <Users className="w-4 h-4" /> การบริหารจัดการและการกระจายอำนาจ
           </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            ระบบบริหารจัดการบุคลากร กำหนดบทบาท และควบคุมสิทธิ์การเข้าถึงข้อมูลรายบุคคล (Granular Overrides & Data Scope Control)
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            จัดการผู้ใช้งานและสิทธิ์ (Users & Permissions)
+          </h1>
+          <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">
+            บริหารบัญชีผู้ใช้งาน บทบาท สิทธิ์การเข้าถึง และขอบเขตข้อมูลขององค์กร กำหนดสิทธิ์แบบ Granular Overrides และควบคุม Data Scope เชื่อมโยงกับฐานข้อมูลจริง
           </p>
         </div>
 
-        {/* Top Header Actions */}
-        <div className="relative z-10 flex items-center gap-2.5 flex-wrap">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <button
-            onClick={() => fetchUsers()}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold backdrop-blur-xs transition-colors border border-white/15"
-            title="รีเฟรชข้อมูลล่าสุด"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            รีเฟรช
-          </button>
-
-          <button
-            onClick={() => setShowRoleModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-xl text-xs font-bold transition-all shadow-xs backdrop-blur-xs"
-            title="จัดการบทบาทและสิทธิ์ตั้งต้น"
-          >
-            <ShieldCheck className="w-4 h-4 text-teal-300" />
-            จัดการ Role ({rolesCount})
-          </button>
-
-          <button
+            type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-[#0D9488] hover:bg-[#0b8075] text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-teal-950/40 border border-teal-400/30"
+            className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0b2545] hover:bg-[#133e6f] text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
           >
-            <UserPlus className="w-4 h-4" />
-            + เพิ่มผู้ใช้งาน
+            <Plus className="w-4 h-4 text-amber-300" />
+            <span>เพิ่มผู้ใช้งาน</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowRoleModal(true)}
+            className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-600 text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 text-teal-200" />
+            <span>เพิ่มบทบาท (Role)</span>
           </button>
         </div>
       </div>
 
-      {/* 2. Top Summary Metrics Cards (Prompt Requirement 2) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        {/* Total Users */}
-        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ผู้ใช้งานทั้งหมด</div>
-            <div className="text-2xl font-bold text-[#0B2545] mt-1">{totalCount}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">ในฐานข้อมูลระบบ ZMS</div>
+      {/* ========================================================================= */}
+      {/* 2. SUMMARY KPI CARDS (Matching Branches & Departments 4-Card System) */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: ผู้ใช้งานทั้งหมด */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('all');
+            setSelectedStatus('all');
+          }}
+          className={`p-5 rounded-2xl border text-left transition-all cursor-pointer ${
+            activeTab === 'all'
+              ? 'bg-white border-teal-500 ring-2 ring-teal-500/15 shadow-xs'
+              : 'bg-white border-slate-200/80 hover:border-teal-300 shadow-2xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">ผู้ใช้งานทั้งหมดในระบบ</span>
+            <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
+              <Users className="w-5 h-5" />
+            </div>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-[#0B2545]/5 text-[#0B2545] flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5" />
+          <div className="text-2xl font-black text-slate-900 mt-2">
+            {totalCount} <span className="text-sm font-bold text-slate-500">บัญชี</span>
           </div>
-        </div>
+          <div className="text-xs text-emerald-700 font-semibold mt-1">
+            เปิดใช้งาน {activeCount} คน
+            {inactiveCount > 0 && (
+              <span className="text-slate-400 font-normal"> • ปิดใช้งาน {inactiveCount} คน</span>
+            )}
+          </div>
+        </button>
 
-        {/* Active Accounts */}
-        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-[#00845A] uppercase tracking-wider">บัญชี Active</div>
-            <div className="text-2xl font-bold text-[#00845A] mt-1">{activeCount}</div>
-            <div className="text-[10px] text-emerald-600/80 mt-0.5">เปิดใช้งานปกติ</div>
+        {/* Card 2: ผู้ใช้งานที่กำลังใช้งาน */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('active');
+            setSelectedStatus('active');
+          }}
+          className={`p-5 rounded-2xl border text-left transition-all cursor-pointer ${
+            activeTab === 'active'
+              ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/15 shadow-xs'
+              : 'bg-white border-slate-200/80 hover:border-emerald-300 shadow-2xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">ผู้ใช้งานที่กำลังใช้งาน</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+              <UserCheck className="w-5 h-5" />
+            </div>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-[#00845A] flex items-center justify-center shrink-0">
-            <UserCheck className="w-5 h-5" />
+          <div className="text-2xl font-black text-slate-900 mt-2">
+            {activeCount} <span className="text-sm font-bold text-slate-500">บัญชี</span>
           </div>
-        </div>
+          <div className="text-xs text-emerald-700 font-semibold mt-1">
+            พร้อมเข้าสู่ระบบและปฏิบัติงานตามสิทธิ์
+          </div>
+        </button>
 
-        {/* Inactive Accounts */}
-        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">บัญชี Inactive</div>
-            <div className="text-2xl font-bold text-slate-600 mt-1">{inactiveCount}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">ปิดใช้งานบัญชี</div>
+        {/* Card 3: บทบาทผู้ใช้งานทั้งหมด */}
+        <button
+          type="button"
+          onClick={() => setShowRoleModal(true)}
+          className="p-5 rounded-2xl border text-left transition-all cursor-pointer bg-white border-slate-200/80 hover:border-indigo-300 shadow-2xs"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">บทบาทผู้ใช้งานทั้งหมด</span>
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-            <UserX className="w-5 h-5" />
+          <div className="text-2xl font-black text-slate-900 mt-2">
+            {rolesCount} <span className="text-sm font-bold text-slate-500">บทบาท</span>
           </div>
-        </div>
+          <div className="text-xs text-indigo-700 font-semibold mt-1">
+            บทบาทมาตรฐานและบทบาทที่กำหนดเอง
+          </div>
+        </button>
 
-        {/* Suspended Accounts */}
-        <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">บัญชี Suspended</div>
-            <div className="text-2xl font-bold text-amber-700 mt-1">{suspendedCount}</div>
-            <div className="text-[10px] text-amber-600/80 mt-0.5">ระงับสิทธิ์ชั่วคราว</div>
+        {/* Card 4: ผู้ใช้งานที่รอกำหนดสิทธิ์ */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('pending');
+            setSelectedPasswordStatus('pending_setup');
+          }}
+          className={`p-5 rounded-2xl border text-left transition-all cursor-pointer ${
+            activeTab === 'pending'
+              ? 'bg-amber-50/70 border-amber-500 ring-2 ring-amber-500/15 shadow-xs'
+              : 'bg-white border-slate-200/80 hover:border-amber-300 shadow-2xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">รอกำหนดสิทธิ์ / ตั้งรหัสผ่าน</span>
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                pendingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              <Clock className="w-5 h-5" />
+            </div>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-            <ShieldAlert className="w-5 h-5" />
+          <div className="text-2xl font-black text-slate-900 mt-2">
+            {pendingCount}{' '}
+            <span className="text-sm font-bold text-slate-500">รายการที่ต้องดูแล</span>
           </div>
-        </div>
+          <div className="text-xs font-semibold mt-1 text-slate-600">
+            {pendingCount > 0 ? (
+              <span className="text-amber-700">มีบัญชีที่รอส่งคำเชิญหรือตั้งรหัสผ่าน</span>
+            ) : (
+              <span className="text-emerald-700">บุคลากรทุกคนกำหนดรหัสผ่านครบถ้วน</span>
+            )}
+          </div>
+        </button>
       </div>
 
       {/* Quick Role Switcher for Test Personas */}
-      <div className="bg-white p-4.5 rounded-2xl border border-[#DFE7F0] shadow-xs space-y-2.5">
+      <div className="bg-white p-4.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2.5">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-            <LogIn className="w-4 h-4 text-[#0D9488]" />
+            <LogIn className="w-4 h-4 text-teal-700" />
             ทดสอบระบบตามบทบาท (Quick Persona Switcher)
           </h2>
           <span className="text-[11px] text-slate-400">สลับบทบาทเพื่อทดสอบมุมมองและขอบเขตสิทธิ์ของแต่ละฝ่าย</span>
@@ -768,18 +824,18 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                 onClick={() => switchUserRole(user.role)}
                 className={`p-2.5 rounded-xl border text-left transition-all ${
                   isCurrent
-                    ? 'bg-teal-50 border-[#0D9488] ring-2 ring-teal-300/40 shadow-xs'
+                    ? 'bg-teal-50 border-teal-500 ring-2 ring-teal-500/15 shadow-xs'
                     : 'bg-slate-50/70 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-[11px] ${
-                    isCurrent ? 'bg-[#0D9488] text-white' : 'bg-slate-200 text-slate-700'
+                    isCurrent ? 'bg-teal-700 text-white' : 'bg-slate-200 text-slate-700'
                   }`}>
                     {user.name.slice(0, 2)}
                   </div>
                   {isCurrent ? (
-                    <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   ) : isPending ? (
                     <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800">
                       รอรหัส
@@ -787,7 +843,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                   ) : null}
                 </div>
                 <div className="font-bold text-xs text-slate-900 truncate">{user.name}</div>
-                <div className="text-[10px] text-teal-800 font-semibold truncate mt-0.5">
+                <div className="text-[10px] text-teal-700 font-semibold truncate mt-0.5">
                   {user.roleTitleTh}
                 </div>
               </button>
@@ -796,46 +852,124 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
         </div>
       </div>
 
-      {/* 3. Search & Comprehensive Filter Bar (Prompt Requirement 3) */}
-      <div className="bg-white p-5 rounded-3xl border border-[#DFE7F0] shadow-xs space-y-3.5">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#0B2545]">
-            <Filter className="w-4 h-4 text-[#0D9488]" />
-            ค้นหาและกรองข้อมูลบุคลากร (Search & Filters)
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-medium">
-              พบ <strong className="text-[#0B2545]">{filteredUsers.length}</strong> จากทั้งหมด {totalCount} บัญชี
-            </span>
+      {/* ========================================================================= */}
+      {/* 3. NAVIGATION TABS + SEARCH & FILTER PANEL (Matching Branches & Departments) */}
+      {/* ========================================================================= */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          {/* Tab Switcher */}
+          <div className="inline-flex p-1.5 rounded-2xl bg-slate-100 border border-slate-200 self-start flex-wrap gap-1">
             <button
-              onClick={handleClearFilters}
-              className="text-xs text-[#0D9488] hover:text-[#0b8075] font-semibold hover:underline flex items-center gap-1"
+              type="button"
+              onClick={() => {
+                setActiveTab('all');
+                setSelectedStatus('all');
+                setSelectedPasswordStatus('all');
+              }}
+              className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'all'
+                  ? 'bg-[#0b2545] text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
             >
-              <RotateCcw className="w-3 h-3" />
-              ล้างตัวกรอง
+              ผู้ใช้งานทั้งหมด ({usersList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('active');
+                setSelectedStatus('active');
+                setSelectedPasswordStatus('all');
+              }}
+              className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'active'
+                  ? 'bg-[#0b2545] text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              กำลังใช้งาน ({activeCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('inactive');
+                setSelectedStatus('all');
+                setSelectedPasswordStatus('all');
+              }}
+              className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'inactive'
+                  ? 'bg-[#0b2545] text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              ระงับ / ปิดใช้งาน ({inactiveCount + suspendedCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('pending');
+                setSelectedPasswordStatus('pending_setup');
+              }}
+              className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'pending'
+                  ? 'bg-[#0b2545] text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              รอกำหนดสิทธิ์ ({pendingCount})
+            </button>
+          </div>
+
+          {/* Refresh & Clear Filters */}
+          <div className="flex items-center gap-2">
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="min-h-[40px] px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>ล้างตัวกรอง</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={fetchUsers}
+              className="min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="รีเฟรชข้อมูลจากฐานข้อมูล"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-teal-600' : ''}`} />
+              <span>รีเฟรชข้อมูล</span>
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          {/* Search Input: Name, Username, Email */}
-          <div className="lg:col-span-2 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-            <input
-              type="text"
-              placeholder="ค้นหาชื่อ–นามสกุล, Username (@...), หรือ Email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#0D9488] text-slate-800 placeholder-slate-400 font-medium"
-            />
+        {/* Search & Multi-Filter Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Search Input */}
+          <div className="sm:col-span-2 relative">
+            <label className="block text-xs font-bold text-slate-600 mb-1">
+              ค้นหาข้อมูล (ชื่อ, นามสกุล, Username, Email, เบอร์โทร)
+            </label>
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="พิมพ์ชื่อ–นามสกุล, @username, หรืออีเมลผู้ใช้..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full min-h-[42px] pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
           </div>
 
-          {/* Role Filter */}
+          {/* Filter by Role */}
           <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">กรองตามบทบาท (Role)</label>
             <select
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value)}
-              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+              className="w-full min-h-[42px] px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
               <option value="all">ทุกบทบาท (All Roles)</option>
               <option value="super_admin">ผู้ดูแลระบบสูงสุด (Super Admin)</option>
@@ -847,28 +981,15 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             </select>
           </div>
 
-          {/* Status Filter */}
+          {/* Filter by Branch */}
           <div>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
-            >
-              <option value="all">ทุกสถานะบัญชี (All Status)</option>
-              <option value="active">✓ ใช้งานปกติ (Active)</option>
-              <option value="suspended">⚠️ ระงับการใช้งาน (Suspended)</option>
-              <option value="disabled">✕ ปิดใช้งาน (Disabled / Inactive)</option>
-            </select>
-          </div>
-
-          {/* Branch Filter */}
-          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">กรองตามสาขา</label>
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+              className="w-full min-h-[42px] px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
-              <option value="all">ทุกสาขา / สำนักงาน</option>
+              <option value="all">ทุกสาขา ({branches.length})</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name} ({b.code})
@@ -877,14 +998,15 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             </select>
           </div>
 
-          {/* Department Filter */}
+          {/* Filter by Department */}
           <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">กรองตามแผนก</label>
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
-              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
+              className="w-full min-h-[42px] px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
-              <option value="all">ทุกแผนก / ฝ่ายงาน</option>
+              <option value="all">ทุกแผนก ({departments.length})</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name} ({d.code})
@@ -892,61 +1014,46 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               ))}
             </select>
           </div>
-
-          {/* Last Login Filter */}
-          <div>
-            <select
-              value={selectedLastLoginFilter}
-              onChange={(e) => setSelectedLastLoginFilter(e.target.value)}
-              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
-            >
-              <option value="all">การเข้าสู่ระบบทั้งหมด (All Logins)</option>
-              <option value="7days">ภายใน 7 วันล่าสุด</option>
-              <option value="30days">ภายใน 30 วันล่าสุด</option>
-              <option value="never">ยังไม่เคยเข้าสู่ระบบ</option>
-            </select>
-          </div>
-
-          {/* Password Status Filter */}
-          <div>
-            <select
-              value={selectedPasswordStatus}
-              onChange={(e) => setSelectedPasswordStatus(e.target.value)}
-              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden text-slate-700 font-medium"
-            >
-              <option value="all">สถานะรหัสผ่านทั้งหมด</option>
-              <option value="pending_setup">⚠️ ยังไม่ตั้งรหัสผ่าน (Pending)</option>
-              <option value="completed">✓ ตั้งรหัสผ่านแล้ว (Completed)</option>
-            </select>
-          </div>
         </div>
       </div>
 
-      {/* 4. Card-Based User Display Grid (Prompt Requirement 4) */}
-      <div className="space-y-4">
-        {isLoading ? (
-          <div className="py-20 text-center text-slate-400 bg-white rounded-3xl border border-[#DFE7F0] flex flex-col items-center justify-center gap-3">
-            <RefreshCw className="w-8 h-8 animate-spin text-[#0D9488]" />
-            <span className="text-sm font-semibold text-slate-600">กำลังโหลดข้อมูลผู้ใช้งานระบบ...</span>
+      {/* ========================================================================= */}
+      {/* 4. LOADING / ERROR / EMPTY STATES */}
+      {/* ========================================================================= */}
+      {isLoading ? (
+        <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-3">
+          <RefreshCw className="w-8 h-8 text-teal-600 animate-spin mx-auto" />
+          <div className="text-base font-bold text-slate-800">กำลังโหลดข้อมูลผู้ใช้งานและสิทธิ์จากฐานข้อมูล...</div>
+          <p className="text-xs text-slate-500">กรุณารอสักครู่ ระบบกำลังคำนวณสิทธิ์ บทบาท และการเชื่อมโยงข้อมูล</p>
+        </div>
+      ) : totalItems === 0 ? (
+        <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+            <Search className="w-7 h-7" />
           </div>
-        ) : paginatedUsers.length === 0 ? (
-          <div className="py-20 text-center bg-white rounded-3xl border border-[#DFE7F0] p-6 space-y-3">
-            <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-              <UserX className="w-8 h-8" />
-            </div>
-            <h3 className="text-base font-bold text-slate-800">ไม่พบข้อมูลผู้ใช้งานตามเงื่อนไขที่เลือก</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              ลองปรับเปลี่ยนคำค้นหา หรือคลิกปุ่มล้างตัวกรองเพื่อแสดงข้อมูลผู้ใช้ทั้งหมด
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-slate-900">ไม่พบข้อมูลที่ตรงกับเงื่อนไขการค้นหา</h3>
+            <p className="text-sm text-slate-500">
+              ลองเปลี่ยนคำค้นหา หรือกดล้างตัวกรองเพื่อแสดงรายการผู้ใช้งานทั้งหมดในระบบ
             </p>
-            <button
-              onClick={handleClearFilters}
-              className="px-4 py-2 bg-[#0D9488] text-white rounded-xl text-xs font-bold hover:bg-[#0b8075] transition-colors shadow-xs"
-            >
-              ล้างตัวกรองทั้งหมด
-            </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#0b2545] text-white text-sm font-bold hover:bg-[#133e6f] inline-flex items-center gap-2 cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>ล้างตัวกรองทั้งหมด</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        /* ========================================================================= */
+        /* 5. USER CARD GRID (Matching Branches & Departments Card Design) */
+        /* ========================================================================= */
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {paginatedUsers.map((user) => {
               const isSelf = currentUser?.id === user.id;
               const userName =
@@ -965,11 +1072,11 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               const isActive = !isSuspended && !isDisabled;
 
               const statusBadgeColor = isActive
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : isSuspended
-                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                : 'bg-rose-50 text-rose-800 border-rose-300';
-              const statusBadgeText = isActive ? 'ใช้งานปกติ' : isSuspended ? 'ระงับชั่วคราว' : 'ปิดใช้งาน';
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : 'bg-rose-50 text-rose-800 border-rose-200';
+              const statusBadgeText = isActive ? 'กำลังใช้งาน' : isSuspended ? 'ระงับบัญชี' : 'ปิดใช้งาน';
 
               const roleBadgeColor =
                 user.role === 'super_admin'
@@ -988,7 +1095,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                 user.branchName ||
                 user.branch ||
                 branches.find((b) => b.id === user.branchId)?.name ||
-                'สำนักงานใหญ่';
+                'สำนักงานใหญ่ (HQ)';
               const deptName =
                 user.departmentName ||
                 departments.find((d) => d.id === user.departmentId)?.name ||
@@ -1000,294 +1107,255 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               return (
                 <div
                   key={user.id}
-                  className="bg-white rounded-3xl border border-[#DFE7F0] shadow-xs hover:shadow-md hover:border-[#0D9488]/40 transition-all duration-200 flex flex-col justify-between overflow-hidden relative group"
+                  className={`bg-white rounded-2xl border p-6 shadow-xs transition-all flex flex-col justify-between space-y-5 ${
+                    !isActive
+                      ? 'border-slate-300 bg-slate-50/60 opacity-90'
+                      : 'border-slate-200/90 hover:border-teal-400'
+                  }`}
                 >
-                  {/* Top Bar Accent Line based on status */}
-                  <div
-                    className={`h-1 w-full ${
-                      isActive ? 'bg-[#00845A]' : isSuspended ? 'bg-amber-500' : 'bg-slate-300'
-                    }`}
-                  />
-
-                  {/* Card Main Body */}
-                  <div className="p-5 space-y-4">
-                    {/* Header: Avatar, Name, Username, Status */}
+                  <div className="space-y-4">
+                    {/* Card Header Top */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3.5">
                         {/* Avatar */}
-                        <div className="relative shrink-0">
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#0B2545] to-[#133e6f] text-white font-bold text-base flex items-center justify-center shadow-xs">
-                            {userName.slice(0, 2).toUpperCase()}
-                          </div>
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                              isActive ? 'bg-emerald-500' : isSuspended ? 'bg-amber-500' : 'bg-slate-400'
-                            }`}
-                          />
+                        <div className="w-12 h-12 rounded-2xl bg-[#0b2545] text-amber-300 font-black text-base flex items-center justify-center shrink-0 shadow-xs">
+                          {userName.slice(0, 2).toUpperCase()}
                         </div>
-
-                        {/* Name & Username */}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h3 className="font-bold text-slate-900 text-sm truncate max-w-[150px] sm:max-w-[180px]">
-                              {userName}
-                            </h3>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                            <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-[#0b2545] text-amber-300 font-mono">
+                              @{username}
+                            </span>
+                            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${roleBadgeColor}`}>
+                              {user.roleTitleTh || user.role}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-slate-100 text-slate-600 font-mono">
+                              Scope: {dataScope}
+                            </span>
                             {isSelf && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-100 text-teal-800">
-                                (คุณ)
+                              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-teal-100 text-teal-800">
+                                บัญชีคุณ
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] font-mono text-[#0D9488] font-semibold truncate">
-                            @{username}
-                          </div>
+                          <h3 className="text-xl font-black text-slate-900 leading-snug">{userName}</h3>
+                          <p className="text-xs font-medium text-slate-500 mt-0.5">{user.email}</p>
                         </div>
                       </div>
 
                       {/* Status Badge */}
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${statusBadgeColor}`}>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 border ${statusBadgeColor}`}
+                      >
                         {statusBadgeText}
                       </span>
                     </div>
 
-                    {/* Email and Phone Contact Row */}
-                    <div className="space-y-1 text-xs text-slate-600 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
-                      <div className="flex items-center justify-between gap-1 font-mono text-[11px]">
-                        <span className="flex items-center gap-1.5 truncate">
-                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{user.email}</span>
-                        </span>
-                        <button
-                          onClick={() => copyToClipboard(user.email)}
-                          className="text-slate-400 hover:text-slate-700 shrink-0"
-                          title="คัดลอกอีเมล"
-                        >
-                          <Copy className="w-3 h-3" />
-                        </button>
+                    {/* Middle Section: Branch, Department, Position, Phone */}
+                    <div className="space-y-2.5 text-sm text-slate-700 border-t border-slate-100 pt-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="flex items-center gap-2">
+                          <Building className="w-4 h-4 text-teal-700 shrink-0" />
+                          <span>สาขา: <strong className="text-slate-900">{branchName}</strong></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-teal-700 shrink-0" />
+                          <span>แผนก: <strong className="text-slate-900">{deptName}</strong></span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{user.phone || '-'}</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span>ตำแหน่ง: <strong className="text-slate-900">{(user as any).position || 'เจ้าหน้าที่'}</strong></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span>เบอร์โทร: {user.phone || '-'}</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Organization and Position Information */}
-                    <div className="space-y-2 text-xs">
-                      {/* Role and Position */}
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${roleBadgeColor}`}>
-                          {user.roleTitleTh || user.role}
-                        </span>
-                        <span className="text-[11px] text-slate-600 flex items-center gap-1">
-                          <Briefcase className="w-3 h-3 text-slate-400" />
-                          <span className="truncate max-w-[140px]">
-                            {(user as any).position || 'เจ้าหน้าที่ฝ่าย'}
-                          </span>
-                        </span>
-                      </div>
-
-                      {/* Branch & Department */}
-                      <div className="space-y-1 text-slate-600 text-[11px]">
-                        <div className="flex items-center gap-1.5">
-                          <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="font-medium text-slate-700 truncate">{branchName}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Layers className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="text-slate-500 truncate">{deptName}</span>
-                        </div>
-                      </div>
-
-                      {/* Permission Type & Data Scope Pill */}
-                      <div className="pt-1 flex items-center justify-between gap-1 flex-wrap text-[10px]">
-                        <span className="px-2 py-0.5 rounded-md bg-[#0B2545]/5 text-[#0B2545] font-mono font-bold border border-[#0B2545]/10">
-                          Scope: {dataScope}
-                        </span>
-
-                        {overridesCount > 0 ? (
-                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                            สิทธิ์พิเศษ (+{overridesCount})
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
-                            สิทธิ์ตามบทบาท
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Security & Login row */}
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`px-1.5 py-0.2 rounded font-semibold ${
-                              is2FA
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-500'
-                            }`}
-                          >
-                            2FA: {is2FA ? 'เปิด' : 'ปิด'}
-                          </span>
-
-                          {isPendingPassword ? (
-                            <span className="px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800">
-                              รอตั้งรหัส
-                            </span>
+                    {/* Real-time Counts Box (Just like Branch Database Counts Box) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-center">
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500">สิทธิ์เฉพาะบุคคล</div>
+                        <div className="text-base font-black text-slate-900 mt-0.5">
+                          {overridesCount > 0 ? (
+                            <span className="text-purple-700 font-bold">+{overridesCount} พิเศษ</span>
                           ) : (
-                            <span className="px-1.5 py-0.2 rounded font-semibold bg-slate-100 text-slate-500">
-                              รหัสผ่านแล้ว
-                            </span>
+                            <span className="text-slate-600 font-semibold text-xs">ตามบทบาท</span>
                           )}
                         </div>
-
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          <span>
-                            {lastLoginText ? (
-                              new Date(lastLoginText).toLocaleDateString('th-TH')
-                            ) : (
-                              'ยังไม่เคยเข้าใช้'
-                            )}
-                          </span>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500">2FA Security</div>
+                        <div className="text-base font-black mt-0.5">
+                          {is2FA ? (
+                            <span className="text-emerald-700 text-xs font-bold">เปิดใช้งาน</span>
+                          ) : (
+                            <span className="text-slate-400 text-xs font-semibold">ปิดใช้งาน</span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500">สถานะรหัสผ่าน</div>
+                        <div className="text-base font-black mt-0.5">
+                          {isPendingPassword ? (
+                            <span className="text-amber-700 text-xs font-bold">รอตั้งรหัส</span>
+                          ) : (
+                            <span className="text-teal-700 text-xs font-bold">ตั้งรหัสแล้ว</span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500">เข้าใช้งานล่าสุด</div>
+                        <div className="text-xs font-bold text-slate-700 mt-1 truncate">
+                          {lastLoginText ? new Date(lastLoginText).toLocaleDateString('th-TH') : 'ยังไม่เคย'}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* 5. Card Actions Toolbar (Prompt Requirement 4) */}
-                  <div className="p-3 bg-[#F4F7FB] border-t border-[#DFE7F0] flex items-center justify-between gap-1.5">
-                    {/* Primary Action Button: "ดูรายละเอียด" */}
-                    <button
-                      onClick={() => openDetailModal(user)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-[#0D9488] hover:bg-[#0b8075] text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-                      title="ดูรายละเอียดข้อมูลเชิงลึกของผู้ใช้งาน"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      ดูรายละเอียด
-                    </button>
-
-                    {/* Manage Permissions */}
-                    <button
-                      onClick={() => {
-                        setSelectedUserForPerm(user);
-                        setShowManualPermissionModal(true);
-                      }}
-                      className="flex items-center justify-center gap-1 py-2 px-2.5 bg-white hover:bg-slate-100 text-[#0B2545] border border-slate-200 rounded-xl text-xs font-semibold transition-colors"
-                      title="กำหนดสิทธิ์เฉพาะบุคคล (Manual Permission Control)"
-                    >
-                      <Key className="w-3.5 h-3.5 text-[#0D9488]" />
-                      สิทธิ์
-                    </button>
-
-                    {/* Edit User */}
-                    <button
-                      onClick={() => openEditModal(user)}
-                      className="p-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition-colors"
-                      title="แก้ไขข้อมูลผู้ใช้งาน"
-                    >
-                      <Edit className="w-3.5 h-3.5 text-slate-600" />
-                    </button>
-
-                    {/* Suspend / Activate Toggle */}
-                    {!isSelf && (
+                  {/* Card Footer Buttons (Matching Branch Card Footer) */}
+                  <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
-                        onClick={() => handleUpdateStatus(user, isActive ? 'suspended' : 'active')}
-                        disabled={isSubmitting}
-                        className={`p-2 border rounded-xl text-xs font-semibold transition-colors ${
-                          isActive
-                            ? 'bg-white hover:bg-amber-50 text-amber-700 border-amber-200'
-                            : 'bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200'
-                        }`}
-                        title={isActive ? 'ระงับบัญชีชั่วคราว' : 'เปิดใช้งานบัญชี'}
+                        type="button"
+                        onClick={() => openDetailModal(user)}
+                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                       >
-                        {isActive ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                        <Eye className="w-4 h-4" />
+                        <span>ดูรายละเอียด</span>
                       </button>
-                    )}
-
-                    {/* More Menu Dropdown */}
-                    <div className="relative">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveDropdownUserId(isDropdownOpen ? null : user.id);
+                        type="button"
+                        onClick={() => {
+                          setSelectedUserForPerm(user);
+                          setShowManualPermissionModal(true);
                         }}
-                        className="p-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs transition-colors"
-                        title="เมนูเพิ่มเติม"
+                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <MoreVertical className="w-3.5 h-3.5" />
+                        <Key className="w-4 h-4 text-teal-700" />
+                        <span>จัดการสิทธิ์</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(user)}
+                        className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-teal-700" />
+                        <span>แก้ไข</span>
                       </button>
 
-                      {isDropdownOpen && (
-                        <div
-                          className="absolute right-0 bottom-full mb-1.5 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-20 text-xs animate-fadeIn space-y-0.5"
-                          onClick={(e) => e.stopPropagation()}
+                      {!isSelf && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus(user, isActive ? 'suspended' : 'active')}
+                          disabled={isSubmitting}
+                          className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                            isActive
+                              ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                              : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                          }`}
                         >
-                          {isPendingPassword ? (
-                            <button
-                              onClick={() => {
-                                setActiveDropdownUserId(null);
-                                handleSendInvite(user);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-amber-800 font-semibold"
-                            >
-                              <Send className="w-3.5 h-3.5 text-amber-600" />
-                              ส่งคำเชิญตั้งรหัสผ่าน
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setActiveDropdownUserId(null);
-                                openResetPasswordModal(user);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-purple-800 font-semibold"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
-                              รีเซ็ตรหัสผ่าน
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => {
-                              setActiveDropdownUserId(null);
-                              handleRevokeSession(user);
-                            }}
-                            className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
-                          >
-                            <LogOut className="w-3.5 h-3.5 text-slate-500" />
-                            ยกเลิก Session
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setActiveDropdownUserId(null);
-                              handleViewAuditLogs(user);
-                            }}
-                            className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
-                          >
-                            <History className="w-3.5 h-3.5 text-slate-500" />
-                            ดูประวัติ (Audit Log)
-                          </button>
-                        </div>
+                          {isActive ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                          <span>{isActive ? 'ระงับบัญชี' : 'เปิดใช้งาน'}</span>
+                        </button>
                       )}
+
+                      {/* More menu dropdown */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDropdownUserId(isDropdownOpen ? null : user.id);
+                          }}
+                          className="min-h-[40px] px-2.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+
+                        {isDropdownOpen && (
+                          <div
+                            className="absolute right-0 bottom-full mb-1.5 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-20 text-xs space-y-0.5 animate-fadeIn"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {isPendingPassword ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDropdownUserId(null);
+                                  handleSendInvite(user);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-amber-800 font-bold"
+                              >
+                                <Send className="w-3.5 h-3.5 text-amber-600" />
+                                ส่งคำเชิญตั้งรหัสผ่าน
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDropdownUserId(null);
+                                  openResetPasswordModal(user);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-purple-800 font-bold"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
+                                รีเซ็ตรหัสผ่าน
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownUserId(null);
+                                handleRevokeSession(user);
+                              }}
+                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                            >
+                              <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                              ยกเลิก Session
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownUserId(null);
+                                handleViewAuditLogs(user);
+                              }}
+                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                            >
+                              <History className="w-3.5 h-3.5 text-slate-500" />
+                              ดูประวัติ (Audit Log)
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
 
-        {/* 6. Pagination Controls */}
-        {totalItems > 0 && (
-          <div className="bg-white p-4 rounded-2xl border border-[#DFE7F0] shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          {/* ========================================================================= */}
+          {/* 6. PAGINATION CONTROLS (Matching Branches & Departments) */}
+          {/* ========================================================================= */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
             <div className="flex items-center gap-3">
-              <span className="text-slate-500">
+              <span className="text-slate-600">
                 แสดง <strong>{(currentPage - 1) * pageSize + 1}</strong> ถึง{' '}
                 <strong>{Math.min(currentPage * pageSize, totalItems)}</strong> จากทั้งหมด{' '}
                 <strong>{totalItems}</strong> รายการ
               </span>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 text-xs">
                 <span className="text-slate-400">ต่อหน้า:</span>
                 <select
                   value={pageSize}
@@ -1295,13 +1363,12 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                     setPageSize(Number(e.target.value));
                     setCurrentPage(1);
                   }}
-                  className="py-1 px-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-hidden"
+                  className="py-1 px-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-bold focus:outline-none"
                 >
+                  <option value={4}>4</option>
                   <option value={6}>6</option>
-                  <option value={9}>9</option>
-                  <option value={12}>12</option>
-                  <option value={24}>24</option>
-                  <option value={48}>48</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
                 </select>
               </div>
             </div>
@@ -1309,12 +1376,13 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             {/* Page Buttons */}
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-600 transition-colors"
+                className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-600 font-bold text-xs transition-colors"
                 title="หน้าก่อนหน้า"
               >
-                <ChevronLeft className="w-4 h-4" />
+                ก่อนหน้า
               </button>
 
               {Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -1326,10 +1394,11 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                     <React.Fragment key={pageNum}>
                       {hasGap && <span className="px-1 text-slate-400">...</span>}
                       <button
+                        type="button"
                         onClick={() => setCurrentPage(pageNum)}
-                        className={`w-8 h-8 rounded-xl font-bold text-xs transition-all ${
+                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all ${
                           currentPage === pageNum
-                            ? 'bg-[#0D9488] text-white shadow-xs'
+                            ? 'bg-[#0b2545] text-white shadow-xs'
                             : 'hover:bg-slate-100 text-slate-700'
                         }`}
                       >
@@ -1340,17 +1409,22 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                 })}
 
               <button
+                type="button"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-600 transition-colors"
+                className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-600 font-bold text-xs transition-colors"
                 title="หน้าถัดไป"
               >
-                <ChevronRight className="w-4 h-4" />
+                ถัดไป
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. MODALS & SUB-COMPONENTS */}
+      {/* ========================================================================= */}
 
       {/* User Detail Page / Drawer Modal (6 Tabs) */}
       {showDetailModal && selectedUser && (
@@ -1406,7 +1480,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             >
               <div className="flex items-center justify-between border-b pb-3">
                 <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Edit className="w-5 h-5 text-[#0D9488]" />
+                  <Edit className="w-5 h-5 text-teal-700" />
                   แก้ไขข้อมูลผู้ใช้งาน: {selectedUser.name}
                 </h2>
                 <button
@@ -1491,7 +1565,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                      สาขา / สำนักงาน <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={editBranchId}
@@ -1506,7 +1580,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                      แผนก / ฝ่าย <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={editDepartmentId}
@@ -1533,7 +1607,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-5 py-2 rounded-xl bg-[#0D9488] hover:bg-[#0b8075] text-white font-bold disabled:opacity-50 transition-colors"
+                    className="px-5 py-2 rounded-xl bg-teal-700 text-white font-bold hover:bg-teal-600 disabled:opacity-50"
                   >
                     {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
                   </button>
@@ -1598,7 +1672,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                 <button
                   type="button"
                   onClick={() => setShowResetConfirmModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs"
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-bold"
                 >
                   ยกเลิก
                 </button>
@@ -1606,7 +1680,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                   type="button"
                   onClick={handleExecuteResetPassword}
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-purple-700 text-white font-bold hover:bg-purple-800 disabled:opacity-50 text-xs"
+                  className="px-5 py-2 rounded-xl bg-teal-700 text-white font-bold hover:bg-teal-600 disabled:opacity-50 text-xs"
                 >
                   {isSubmitting ? 'กำลังดำเนินการ...' : 'ยืนยันและสร้างลิงก์รีเซ็ต'}
                 </button>
@@ -1632,7 +1706,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             >
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-teal-50 text-[#0D9488] flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
                     <Key className="w-5 h-5" />
                   </div>
                   <div>
@@ -1668,7 +1742,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                     <span className="flex-1 overflow-x-auto">{inviteModalData.setupUrl}</span>
                     <button
                       onClick={() => copyToClipboard(inviteModalData.setupUrl || '')}
-                      className="px-3 py-1.5 bg-[#0D9488] hover:bg-[#0b8075] text-white rounded-lg font-semibold shrink-0 flex items-center gap-1 transition-colors"
+                      className="px-3 py-1.5 bg-teal-700 text-white rounded-lg font-semibold shrink-0 hover:bg-teal-600 flex items-center gap-1 transition-colors"
                     >
                       {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                       {isCopied ? 'คัดลอกแล้ว' : 'คัดลอก'}
@@ -1685,7 +1759,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-slate-600">
                   <div className="font-semibold text-slate-800 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#0D9488]" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-700" />
                     หลักความปลอดภัยตามข้อกำหนด:
                   </div>
                   <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-500">
@@ -1727,7 +1801,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               <div className="flex items-center justify-between border-b pb-3 shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                    <History className="w-5 h-5 text-[#0D9488]" />
+                    <History className="w-5 h-5 text-teal-700" />
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-slate-900">
@@ -1749,7 +1823,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
               <div className="overflow-y-auto flex-1 space-y-2 text-xs pr-1">
                 {isLoadingAudit ? (
                   <div className="py-8 text-center text-slate-400 flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-[#0D9488]" />
+                    <RefreshCw className="w-4 h-4 animate-spin text-teal-600" />
                     กำลังโหลดบันทึกประวัติ...
                   </div>
                 ) : userAuditLogs.length === 0 ? (
@@ -1805,7 +1879,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
             >
               <div className="flex items-center justify-between border-b pb-3">
                 <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-[#0D9488]" />
+                  <UserPlus className="w-5 h-5 text-teal-700" />
                   เพิ่มบุคลากรใหม่และส่งคำเชิญตั้งรหัสผ่าน
                 </h2>
                 <button
@@ -1894,7 +1968,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      สาขา / สำนักงาน (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                      สาขา / สำนักงาน <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={newBranchId}
@@ -1909,7 +1983,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      แผนก / ฝ่าย (เฉพาะที่เปิดใช้งาน) <span className="text-rose-500">*</span>
+                      แผนก / ฝ่าย <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={newDepartmentId}
@@ -1931,7 +2005,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                       type="checkbox"
                       checked={sendInviteOnCreate}
                       onChange={(e) => setSendInviteOnCreate(e.target.checked)}
-                      className="mt-0.5 rounded text-[#0D9488] focus:ring-[#0D9488]"
+                      className="mt-0.5 rounded text-teal-700 focus:ring-teal-500"
                     />
                     <div className="text-[11px] text-slate-700">
                       <span className="font-bold text-teal-900">สร้างและแสดงลิงก์คำเชิญตั้งรหัสผ่านทันที</span>
@@ -1953,7 +2027,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps) {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-5 py-2 rounded-xl bg-[#0D9488] hover:bg-[#0b8075] text-white font-bold disabled:opacity-50 transition-colors"
+                    className="px-5 py-2 rounded-xl bg-teal-700 text-white font-bold hover:bg-teal-600 disabled:opacity-50"
                   >
                     {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกและสร้างบัญชี'}
                   </button>

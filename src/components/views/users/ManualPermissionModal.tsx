@@ -123,8 +123,9 @@ export function ManualPermissionModal({
 
       const res = await fetch(`/api/admin/permissions/audit-logs?targetUserId=${user.id}`, { headers });
       const json = await res.json();
-      if (json.success && Array.isArray(json.items)) {
-        setAuditLogs(json.items);
+      const logs = json.items || json.data;
+      if (json.success && Array.isArray(logs)) {
+        setAuditLogs(logs);
       }
     } catch (err) {
       console.error(err);
@@ -1070,3 +1071,4 @@ export function ManualPermissionModal({
     </ModalPortal>
   );
 }
+

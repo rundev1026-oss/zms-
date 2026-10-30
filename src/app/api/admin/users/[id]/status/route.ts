@@ -1,17 +1,8 @@
 import { NextResponse } from 'next/server';
 import { AuthService } from '@/services/authService';
+import { resolveServerToken } from '@/lib/server-auth';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-
-function extractToken(req: Request): string {
-  const authHeader = req.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.replace('Bearer ', '').trim();
-  }
-  const cookieHeader = req.headers.get('cookie') || '';
-  const match = cookieHeader.match(/zms_session=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
 
 export async function PATCH(
   req: Request,
@@ -22,7 +13,7 @@ export async function PATCH(
     const userId = resolvedParams.id;
     const body = await req.json();
 
-    const token = extractToken(req);
+    const token = resolveServerToken(req);
 
     // 1. First attempt NestJS enterprise backend
     if (token) {

@@ -62,7 +62,7 @@ describe('beneficiary rules', () => {
     });
     const where = buildBeneficiaryWhere(filters);
     expect(where.status).toBeUndefined();
-    expect(where.province).toBeUndefined();
+    expect((where as any).province).toBeUndefined();
     expect(where.addresses).toEqual({ some: { province: 'ยะลา' } });
 
     const summary = toStatusSummary([
@@ -113,6 +113,7 @@ function sample(): BeneficiaryRecord {
   const now = new Date('2026-01-01T00:00:00.000Z');
   return {
     id: '11111111-1111-4111-8111-111111111111',
+    legacyId: null,
     registryNumber: 'ZMS-2026-000001',
     status: 'DRAFT',
     title: null,

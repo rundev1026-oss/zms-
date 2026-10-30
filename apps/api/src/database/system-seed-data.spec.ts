@@ -19,7 +19,7 @@ describe('system seed data', () => {
       'OTHER',
     ]);
     expect(ROLES).toHaveLength(7);
-    expect(PERMISSIONS).toHaveLength(14);
+    expect(PERMISSIONS).toHaveLength(98);
     expect(SEED_USERS.every((user) => user.email.endsWith('@zms.local'))).toBe(true);
     expect(JSON.stringify(SEED_USERS)).not.toMatch(/\d{13}/);
   });

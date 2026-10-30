@@ -1,24 +1,14 @@
 import { NextResponse } from 'next/server';
 import { AuthService } from '@/services/authService';
 import { OrganizationService } from '@/services/organizationService';
+import { resolveServerToken } from '@/lib/server-auth';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-
-function resolveToken(req: Request): string | null {
-  const authHeader = req.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.replace('Bearer ', '').trim();
-  }
-  const cookieHeader = req.headers.get('cookie') || '';
-  const match = cookieHeader.match(/zms_session=([^;]+)/);
-  if (match) return decodeURIComponent(match[1]);
-  return null;
-}
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const token = resolveToken(req);
+    const token = resolveServerToken(req);
 
     // 1. First attempt enterprise NestJS backend
     if (token) {
@@ -93,7 +83,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const token = resolveToken(req);
+    const token = resolveServerToken(req);
 
     // 1. First attempt enterprise NestJS backend
     if (token) {

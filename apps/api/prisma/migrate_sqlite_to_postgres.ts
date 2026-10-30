@@ -10,6 +10,7 @@ const RegistryStatus = {
   ELIGIBLE: 'ELIGIBLE',
   INELIGIBLE: 'INELIGIBLE',
 } as const;
+type RegistryStatusType = (typeof RegistryStatus)[keyof typeof RegistryStatus];
 
 const IdentityType = {
   THAI_NATIONAL_ID: 'THAI_NATIONAL_ID',
@@ -462,7 +463,7 @@ async function main() {
     const lastName = parts.slice(1).join(' ') || '-';
     const rawNatId = row.national_id ? String(row.national_id).trim() : null;
 
-    let status = RegistryStatus.PENDING_REVIEW;
+    let status: RegistryStatusType = RegistryStatus.PENDING_REVIEW;
     const regStatus = String(row.registration_status || '').toLowerCase();
     if (regStatus === 'draft') status = RegistryStatus.DRAFT;
     else if (regStatus === 'qualified') status = RegistryStatus.ELIGIBLE;

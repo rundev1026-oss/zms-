@@ -53,7 +53,7 @@ describe('authorization', () => {
   it('limits repeated login attempts', () => {
     const limiter = new LoginRateLimiter();
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      limiter.assertAllowed('127.0.0.1', 1_000);
+      limiter.recordFailure('127.0.0.1', 1_000);
     }
     expect(() => limiter.assertAllowed('127.0.0.1', 1_000)).toThrow(AppException);
   });
@@ -70,6 +70,7 @@ describe('authorization', () => {
       findLoginAccount: jest.fn().mockResolvedValue(account),
       loadAuthUser: jest.fn().mockResolvedValue(user),
       toProfile: jest.fn().mockReturnValue({ id: 'user-1' }),
+      recordLoginAttempt: jest.fn().mockResolvedValue(undefined),
     };
     const prisma = {
       refreshToken: {

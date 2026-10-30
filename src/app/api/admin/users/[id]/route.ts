@@ -3,19 +3,9 @@ import { AuthService } from '@/services/authService';
 import { OrganizationService } from '@/services/organizationService';
 import { getDb, initDb } from '@/lib/db';
 import { User } from '@/types';
+import { resolveServerToken } from '@/lib/server-auth';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-
-function resolveToken(req: Request): string | null {
-  const authHeader = req.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.replace('Bearer ', '').trim();
-  }
-  const cookieHeader = req.headers.get('cookie') || '';
-  const match = cookieHeader.match(/zms_session=([^;]+)/);
-  if (match) return decodeURIComponent(match[1]);
-  return null;
-}
 
 export async function GET(
   req: Request,
@@ -24,7 +14,7 @@ export async function GET(
   try {
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
-    const token = resolveToken(req);
+    const token = resolveServerToken(req);
 
     // 1. Try enterprise NestJS backend
     if (token) {
@@ -108,7 +98,7 @@ export async function PUT(
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
     const body = await req.json();
-    const token = resolveToken(req);
+    const token = resolveServerToken(req);
 
     // 1. Try enterprise NestJS backend
     if (token) {

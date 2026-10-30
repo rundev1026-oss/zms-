@@ -25,3 +25,4 @@ export function resolveServerToken(req: Request): string {
   const signature = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${payload}`).digest('base64url');
   return `${header}.${payload}.${signature}`;
 }
+

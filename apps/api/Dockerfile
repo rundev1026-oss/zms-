@@ -34,7 +34,8 @@ COPY --from=builder /app/apps/api/node_modules ./node_modules
 COPY --from=builder /app/apps/api/package.json ./package.json
 COPY --from=builder /app/apps/api/prisma ./prisma
 
+USER node
+
 EXPOSE 4000
 
 CMD ["node", "dist/main.js"]
-

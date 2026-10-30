@@ -64,3 +64,4 @@ export class UpdateSettingsDto {
   @Min(0)
   approvalLimitTier3?: number;
 }
+

@@ -100,3 +100,4 @@ export class SettingsService {
     return this.getSettings();
   }
 }
+

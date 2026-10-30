@@ -40,3 +40,4 @@ export class QueryAuditLogsDto {
   @IsString()
   search?: string;
 }
+

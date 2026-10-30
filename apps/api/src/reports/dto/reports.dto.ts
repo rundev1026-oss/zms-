@@ -22,3 +22,4 @@ export class QueryReportDto {
   @IsString()
   format?: 'json' | 'csv' = 'json';
 }
+

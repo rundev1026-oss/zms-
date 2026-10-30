@@ -30,3 +30,4 @@ export class SettingsController {
     return this.settingsService.updateSettings(dto, user);
   }
 }
+

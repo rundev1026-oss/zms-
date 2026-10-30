@@ -3,7 +3,7 @@ import { FollowUpService } from '@/services/followUpService';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || undefined;
     const assistanceType = searchParams.get('assistanceType') || undefined;
     const branchId = searchParams.get('branchId') || undefined;

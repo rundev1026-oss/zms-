@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AddressesModule } from './addresses/addresses.module';
 import { AsnafModule } from './asnaf/asnaf.module';
 import { AssessmentModule } from './assessment/assessment.module';
@@ -32,6 +33,23 @@ import { UsersModule } from './users/users.module';
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000,
+        limit: 100,
+      },
+      {
+        name: 'medium',
+        ttl: 10000,
+        limit: 500,
+      },
+      {
+        name: 'long',
+        ttl: 60000,
+        limit: 2000,
+      },
+    ]),
     PrismaModule,
     HealthModule,
     AuditModule,
@@ -56,6 +74,9 @@ import { UsersModule } from './users/users.module';
     SettingsModule,
     BackupModule,
   ],
-  providers: [{ provide: APP_FILTER, useClass: ApiExceptionFilter }],
+  providers: [
+    { provide: APP_FILTER, useClass: ApiExceptionFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

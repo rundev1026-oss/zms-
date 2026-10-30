@@ -106,16 +106,20 @@ let BackupService = class BackupService {
         }));
     }
     async verifyDatabaseIntegrity() {
-        const applicationsWithoutBeneficiary = await this.prisma.assistanceApplication.count({
-            where: {
-                beneficiary: { is: null },
-            },
-        });
-        const membersWithoutHousehold = await this.prisma.householdMember.count({
-            where: {
-                household: { is: null },
-            },
-        });
+        const orphanedAppsResult = await this.prisma.$queryRaw `
+      SELECT count(*)::int as count 
+      FROM assistance_applications a 
+      LEFT JOIN beneficiaries b ON a.beneficiary_id = b.id 
+      WHERE b.id IS NULL
+    `;
+        const applicationsWithoutBeneficiary = Number(orphanedAppsResult[0]?.count ?? 0);
+        const orphanedMembersResult = await this.prisma.$queryRaw `
+      SELECT count(*)::int as count 
+      FROM household_members m 
+      LEFT JOIN households h ON m.household_id = h.id 
+      WHERE h.id IS NULL
+    `;
+        const membersWithoutHousehold = Number(orphanedMembersResult[0]?.count ?? 0);
         const [txnsAgg, funds] = await Promise.all([
             this.prisma.financialTransaction.aggregate({
                 _sum: { amount: true },

@@ -10,6 +10,7 @@ exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const core_1 = require("@nestjs/core");
+const throttler_1 = require("@nestjs/throttler");
 const addresses_module_1 = require("./addresses/addresses.module");
 const asnaf_module_1 = require("./asnaf/asnaf.module");
 const assessment_module_1 = require("./assessment/assessment.module");
@@ -44,6 +45,23 @@ exports.AppModule = AppModule = __decorate([
                 isGlobal: true,
                 envFilePath: ['.env', '../../.env'],
             }),
+            throttler_1.ThrottlerModule.forRoot([
+                {
+                    name: 'short',
+                    ttl: 1000,
+                    limit: 100,
+                },
+                {
+                    name: 'medium',
+                    ttl: 10000,
+                    limit: 500,
+                },
+                {
+                    name: 'long',
+                    ttl: 60000,
+                    limit: 2000,
+                },
+            ]),
             prisma_module_1.PrismaModule,
             health_module_1.HealthModule,
             audit_module_1.AuditModule,
@@ -68,7 +86,10 @@ exports.AppModule = AppModule = __decorate([
             settings_module_1.SettingsModule,
             backup_module_1.BackupModule,
         ],
-        providers: [{ provide: core_1.APP_FILTER, useClass: api_exception_filter_1.ApiExceptionFilter }],
+        providers: [
+            { provide: core_1.APP_FILTER, useClass: api_exception_filter_1.ApiExceptionFilter },
+            { provide: core_1.APP_GUARD, useClass: throttler_1.ThrottlerGuard },
+        ],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

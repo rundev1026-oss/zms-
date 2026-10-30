@@ -101,8 +101,21 @@ export class ReportsService {
     let grandTotalDisbursed = 0;
     let grandTotalCount = 0;
 
+    const normalizeAsnaf = (cat?: string): string => {
+      const c = (cat || '').toLowerCase().trim();
+      if (c === 'fakir' || c === 'faqir') return 'faqir';
+      if (c === 'miskin') return 'miskin';
+      if (c === 'amil') return 'amil';
+      if (c === 'muallaf') return 'muallaf';
+      if (c === 'riqab') return 'riqab';
+      if (c === 'gharimin') return 'gharimin';
+      if (c === 'fisabilillah') return 'fisabilillah';
+      if (c === 'ibnus_sabil' || c === 'ibnussabil' || c === 'ibnusabil') return 'ibnus_sabil';
+      return 'faqir';
+    };
+
     for (const app of applications) {
-      const cat = app.asnafCategory || 'faqir';
+      const cat = normalizeAsnaf(app.asnafCategory);
       const entry = categoryMap.get(cat) || { count: 0, totalDisbursed: 0, totalApproved: 0 };
       entry.count += 1;
       const disbursed = Number(app.disbursedAmount || 0);

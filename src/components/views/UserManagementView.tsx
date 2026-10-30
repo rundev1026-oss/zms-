@@ -17,7 +17,6 @@ import {
   X,
   AlertTriangle,
   AlertCircle,
-  LogIn,
   Key,
   RefreshCw,
   Send,
@@ -57,7 +56,7 @@ interface UserManagementViewProps {
 }
 
 export function UserManagementView({ onNavigate }: UserManagementViewProps = {}) {
-  const { currentUser, switchUserRole, showToast, authToken } = useApp();
+  const { currentUser, showToast, authToken } = useApp();
   const isSuperAdmin = currentUser?.role === 'super_admin';
 
   // Main Tabs (like Branches & Departments)
@@ -645,8 +644,6 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
   const inactiveCount = usersList.filter(u => u.status === 'disabled' || (u as any).status === 'inactive' || (u as any).isActive === false).length;
   const suspendedCount = usersList.filter(u => u.status === 'suspended').length;
 
-  const quickPersonaUsers = usersList.slice(0, 6);
-
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
       {/* ========================================================================= */}
@@ -802,54 +799,6 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
             )}
           </div>
         </button>
-      </div>
-
-      {/* Quick Role Switcher for Test Personas */}
-      <div className="bg-white p-4.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2.5">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-            <LogIn className="w-4 h-4 text-teal-700" />
-            ทดสอบระบบตามบทบาท (Quick Persona Switcher)
-          </h2>
-          <span className="text-[11px] text-slate-400">สลับบทบาทเพื่อทดสอบมุมมองและขอบเขตสิทธิ์ของแต่ละฝ่าย</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          {quickPersonaUsers.map((user) => {
-            const isCurrent = currentUser?.id === user.id;
-            const isPending = user.passwordSetupStatus === 'pending_setup';
-            return (
-              <button
-                key={user.id}
-                onClick={() => switchUserRole(user.role)}
-                className={`p-2.5 rounded-xl border text-left transition-all ${
-                  isCurrent
-                    ? 'bg-teal-50 border-teal-500 ring-2 ring-teal-500/15 shadow-xs'
-                    : 'bg-slate-50/70 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-[11px] ${
-                    isCurrent ? 'bg-teal-700 text-white' : 'bg-slate-200 text-slate-700'
-                  }`}>
-                    {user.name.slice(0, 2)}
-                  </div>
-                  {isCurrent ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  ) : isPending ? (
-                    <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800">
-                      รอรหัส
-                    </span>
-                  ) : null}
-                </div>
-                <div className="font-bold text-xs text-slate-900 truncate">{user.name}</div>
-                <div className="text-[10px] text-teal-700 font-semibold truncate mt-0.5">
-                  {user.roleTitleTh}
-                </div>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* ========================================================================= */}

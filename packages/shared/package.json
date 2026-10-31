@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/index.test.ts"
+    "test": "node --test test/index.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",

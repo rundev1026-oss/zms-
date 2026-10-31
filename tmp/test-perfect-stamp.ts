@@ -1,0 +1,470 @@
+import { readFileSync, writeFileSync } from 'fs';
+import path from 'path';
+import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
+import * as fontkitModule from '@pdf-lib/fontkit';
+import type { SurveyPrintModel } from '../src/lib/surveyPrint/model';
+
+function fontkitEngine() {
+  const loaded = fontkitModule as unknown as {
+    create?: (data: Uint8Array) => unknown;
+    default?: { create: (data: Uint8Array) => unknown };
+  };
+  return (loaded.default?.create ? loaded.default : loaded) as Parameters<PDFDocument['registerFontkit']>[0];
+}
+
+const INK = rgb(0, 0, 0);
+
+type Slot = {
+  x: number;
+  y: number;
+  w: number;
+  size?: number;
+  align?: 'left' | 'center' | 'right';
+};
+
+function fitText(font: PDFFont, value: string, size: number, maxWidth: number): { text: string; size: number } {
+  let next = size;
+  while (next > 5.5 && font.widthOfTextAtSize(value, next) > maxWidth) next -= 0.3;
+  if (font.widthOfTextAtSize(value, next) <= maxWidth) return { text: value, size: next };
+  let shown = value;
+  while (shown.length > 1 && font.widthOfTextAtSize(`${shown}...`, next) > maxWidth) shown = shown.slice(0, -1);
+  return { text: `${shown}...`, size: next };
+}
+
+function draw(page: PDFPage, font: PDFFont, value: string | null | undefined, slot: Slot) {
+  const text = value?.trim();
+  if (!text) return;
+  const size = slot.size ?? 9;
+  const fitted = fitText(font, text, size, slot.w);
+  const width = font.widthOfTextAtSize(fitted.text, fitted.size);
+  let x = slot.x;
+  if (slot.align === 'right') x = slot.x + slot.w - width;
+  else if (slot.align === 'center') x = slot.x + (slot.w - width) / 2;
+  page.drawText(fitted.text, { x, y: slot.y, size: fitted.size, font, color: INK });
+}
+
+function drawCheck(page: PDFPage, x: number, y: number) {
+  page.drawLine({
+    start: { x: x - 3.2, y: y - 0.4 },
+    end: { x: x - 0.6, y: y - 3.6 },
+    thickness: 1.35,
+    color: INK,
+  });
+  page.drawLine({
+    start: { x: x - 0.6, y: y - 3.6 },
+    end: { x: x + 4.2, y: y + 3.4 },
+    thickness: 1.35,
+    color: INK,
+  });
+}
+
+function wrap(font: PDFFont, value: string, size: number, maxWidth: number): string[] {
+  const lines: string[] = [];
+  const words = value.split(/\s+/);
+  let current = '';
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      if (font.widthOfTextAtSize(word, size) > maxWidth) {
+        let piece = '';
+        for (const ch of word) {
+          if (font.widthOfTextAtSize(piece + ch, size) > maxWidth) {
+            lines.push(piece);
+            piece = ch;
+          } else {
+            piece += ch;
+          }
+        }
+        current = piece;
+      } else {
+        current = word;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+const KNOWN_PREFIXES = ['นางสาว', 'นาง', 'นาย', 'ด.ช.', 'ด.ญ.', 'เด็กชาย', 'เด็กหญิง', 'อิหม่าม', 'ฮัจญี', 'ฮัจญะห์'];
+
+function splitStoredName(full: string | null): { given: string; surname: string } {
+  if (!full) return { given: '', surname: '' };
+  let rest = full.trim();
+  let prefix = '';
+  for (const item of KNOWN_PREFIXES) {
+    if (rest === item || rest.startsWith(`${item} `)) {
+      prefix = item;
+      rest = rest.slice(item.length).trim();
+      break;
+    }
+  }
+  const parts = rest.split(/\s+/).filter(Boolean);
+  const given = [prefix, parts[0] || ''].filter(Boolean).join(' ');
+  return { given, surname: parts.slice(1).join(' ') };
+}
+
+interface ParsedAddress {
+  house: string | null;
+  moo: string | null;
+  soi: string | null;
+  road: string | null;
+  subdistrict: string | null;
+  district: string | null;
+  province: string | null;
+  postcode: string | null;
+}
+
+function parseThaiAddress(address: string | null): ParsedAddress {
+  if (!address) {
+    return { house: null, moo: null, soi: null, road: null, subdistrict: null, district: null, province: null, postcode: null };
+  }
+  let str = address.trim();
+
+  let postcode: string | null = null;
+  const pcMatch = str.match(/\b(\d{5})\b$/);
+  if (pcMatch) {
+    postcode = pcMatch[1];
+    str = str.replace(/\b\d{5}\b$/, '').trim();
+  }
+
+  let house: string | null = null;
+  const houseMatch = str.match(/^(\d[\d/-]*)\s*/);
+  if (houseMatch) {
+    house = houseMatch[1];
+    str = str.slice(houseMatch[0].length).trim();
+  }
+
+  let moo: string | null = null;
+  const mooMatch = str.match(/(?:หมู่ที่|หมู่|ม\.)\s*(\d+)/);
+  if (mooMatch) {
+    moo = mooMatch[1];
+    str = str.replace(mooMatch[0], '').trim();
+  }
+
+  let soi: string | null = null;
+  const soiMatch = str.match(/(?:ซอย|ซ\.|ชุมชน)\s*([^\s]+)/);
+  if (soiMatch) {
+    soi = soiMatch[0];
+    str = str.replace(soiMatch[0], '').trim();
+  }
+
+  let road: string | null = null;
+  const roadMatch = str.match(/(?:ถนน|ถ\.)\s*([^\s]+)/);
+  if (roadMatch) {
+    road = roadMatch[1];
+    str = str.replace(roadMatch[0], '').trim();
+  }
+
+  let subdistrict: string | null = null;
+  const subMatch = str.match(/(?:แขวง|ตำบล|ต\.)\s*([^\s]+)/);
+  if (subMatch) {
+    subdistrict = subMatch[1];
+    str = str.replace(subMatch[0], '').trim();
+  }
+
+  let district: string | null = null;
+  const distMatch = str.match(/(?:เขต|อำเภอ|อ\.)\s*([^\s]+)/);
+  if (distMatch) {
+    district = distMatch[1];
+    str = str.replace(distMatch[0], '').trim();
+  }
+
+  let province: string | null = null;
+  const provMatch = str.match(/(?:จังหวัด|จ\.)\s*([^\s]+)/);
+  if (provMatch) {
+    province = provMatch[1];
+    str = str.replace(provMatch[0], '').trim();
+  }
+
+  if (str && !soi && !district) {
+    soi = str;
+  }
+
+  return { house, moo, soi, road, subdistrict, district, province, postcode };
+}
+
+function isMoney(value: string | null): boolean {
+  if (!value) return false;
+  return /^[\d\s,.\u0e50-\u0e59]+$/.test(value);
+}
+
+function fillPage1(page: PDFPage, font: PDFFont, model: SurveyPrintModel) {
+  // 1.1 ชื่อ ... นามสกุล (template text baseline y = 587.0)
+  const given = [model.titlePrefix, model.firstName].filter(Boolean).join(' ');
+  draw(page, font, given, { x: 265, y: 588.0, w: 110, size: 9.5 });
+  draw(page, font, model.lastName, { x: 425, y: 588.0, w: 145, size: 9.5 });
+
+  // วัน/เดือน/ปีเกิด ... เบอร์โทร (template text baseline y = 566.0)
+  draw(page, font, model.birthDay, { x: 112, y: 567.0, w: 28, size: 9.5, align: 'center' });
+  draw(page, font, model.birthMonth, { x: 150, y: 567.0, w: 68, size: 9.5, align: 'center' });
+  draw(page, font, model.birthYear, { x: 230, y: 567.0, w: 52, size: 9.5, align: 'center' });
+  draw(page, font, model.phone, { x: 345, y: 567.0, w: 225, size: 9.5 });
+
+  // อายุ ... เลขประจำตัวบัตรประชาชน (template text baseline y = 545.0)
+  let ageStr = model.age;
+  if (!ageStr && model.birthYear) {
+    const by = parseInt(model.birthYear, 10);
+    if (by > 2400) ageStr = String(2569 - by);
+  }
+  draw(page, font, ageStr, { x: 65, y: 546.0, w: 38, size: 9.5, align: 'center' });
+  draw(page, font, model.nationalId, { x: 250, y: 546.0, w: 320, size: 9.5 });
+
+  // ที่อยู่ปัจจุบัน (template baseline y = 523.9)
+  const fullAddrStr = [model.addressLine, model.community].filter(Boolean).join(' ');
+  const pAddr = parseThaiAddress(fullAddrStr);
+  draw(page, font, pAddr.house || model.addressLine, { x: 145, y: 524.9, w: 32, size: 8.5 });
+  if (pAddr.moo) draw(page, font, pAddr.moo, { x: 195, y: 524.9, w: 25, size: 8.5, align: 'center' });
+  draw(page, font, pAddr.soi || model.community, { x: 245, y: 524.9, w: 85, size: 8.5 });
+  if (pAddr.road) draw(page, font, pAddr.road, { x: 350, y: 524.9, w: 60, size: 8.5 });
+  draw(page, font, model.subdistrict || pAddr.subdistrict, { x: 470, y: 524.9, w: 100, size: 8.5 });
+
+  // เขต/อำเภอ... จังหวัด... อาชีพ... (template baseline y = 502.9)
+  draw(page, font, model.district || pAddr.district, { x: 105, y: 503.9, w: 125, size: 8.5 });
+  draw(page, font, [model.province || pAddr.province, model.postcode || pAddr.postcode].filter(Boolean).join(' '), { x: 285, y: 503.9, w: 130, size: 8.5 });
+  draw(page, font, model.occupation, { x: 460, y: 503.9, w: 110, size: 8.5 });
+
+  // สถานะ (template baseline y = 482.1)
+  const maritalChecks: Record<string, number> = {
+    single: 128,
+    married: 186,
+    separated: 294,
+    widowed: 405,
+    divorced: 430,
+  };
+  const mCode = model.maritalCode?.toLowerCase() || '';
+  if (maritalChecks[mCode]) {
+    drawCheck(page, maritalChecks[mCode], 484.5);
+  } else if (model.maritalStatus) {
+    if (model.maritalStatus.includes('สมรส') || model.maritalStatus.includes('แต่งงาน')) {
+      drawCheck(page, 186, 484.5);
+    } else if (model.maritalStatus.includes('โสด')) {
+      drawCheck(page, 128, 484.5);
+    } else if (model.maritalStatus.includes('หม้าย')) {
+      drawCheck(page, 405, 484.5);
+    } else if (model.maritalStatus.includes('หย่า')) {
+      drawCheck(page, 430, 484.5);
+    } else {
+      drawCheck(page, 500, 484.5);
+      draw(page, font, model.maritalStatus, { x: 525, y: 483.0, w: 60, size: 8 });
+    }
+  }
+
+  // ที่อยู่อาศัย (Row 1 y = 461.1, Row 2 y = 440.1)
+  const hCode = model.housingCode?.toLowerCase() || '';
+  if (hCode === 'own') drawCheck(page, 130, 463.5);
+  else if (hCode === 'rent') drawCheck(page, 426, 463.5);
+  else if (hCode === 'relative') drawCheck(page, 130, 442.5);
+  else if (hCode === 'other' || model.housingType) {
+    drawCheck(page, 246, 442.5);
+    draw(page, font, model.housingNotes || model.housingType, { x: 285, y: 441.0, w: 285, size: 8 });
+  }
+
+  // โฉนดที่ดิน (template baseline y = 419.1)
+  const hasTitle = ['title_deed', 'ns3', 'nor_sor_3', 'spk', 'sor_por_kor', 'permission_granted', 'rental_agreement'].includes(model.landCode || '');
+  const noTitle = ['no_doc', 'none', 'public_land'].includes(model.landCode || '');
+  if (hasTitle || (model.landTitle && !model.landTitle.includes('ไม่มี'))) drawCheck(page, 390, 421.5);
+  else if (noTitle || (model.landTitle && model.landTitle.includes('ไม่มี'))) drawCheck(page, 465, 421.5);
+
+  // 1.2 สาเหตุที่ควรได้รับการช่วยเหลือ
+  // Row 1: y = 365.5
+  if (model.reasons[0]?.checked) drawCheck(page, 51.5, 367.5); // 1.2.1 ยากจน
+  if (model.reasons[1]?.checked) { // 1.2.2 มีหนี้สิน
+    drawCheck(page, 267.5, 367.5);
+    draw(page, font, model.debt?.type || model.reasons[1].detail, { x: 385, y: 366.5, w: 95, size: 7.5 });
+    draw(page, font, model.debt?.balance, { x: 520, y: 366.5, w: 50, size: 7.5, align: 'right' });
+  }
+  // Row 2: y = 344.5
+  if (model.reasons[2]?.checked) drawCheck(page, 51.5, 346.5); // 1.2.3 ตกงาน
+  if (model.reasons[3]?.checked) drawCheck(page, 267.5, 346.5); // 1.2.4 ปัญหาครอบครัว
+  // Row 3: y = 323.5
+  if (model.reasons[4]?.checked) { // 1.2.5 อื่นๆ
+    drawCheck(page, 51.5, 325.5);
+    draw(page, font, model.reasons[4].detail, { x: 120, y: 324.5, w: 450, size: 8 });
+  }
+
+  // 1.3 สภาพปัจจุบัน
+  // 1.3.1 พิการ y = 273.5
+  if (model.disability) {
+    drawCheck(page, 51.5, 275.5);
+    draw(page, font, model.disability, { x: 210, y: 274.5, w: 360, size: 8 });
+  }
+  // 1.3.2 ป่วยเรื้อรัง y = 252.5
+  if (model.illness) {
+    drawCheck(page, 51.5, 254.5);
+    draw(page, font, model.illness, { x: 160, y: 253.5, w: 410, size: 8 });
+  }
+  // 1.3.3 ช่วยเหลือตนเองไม่ได้ y = 231.5
+  if (model.limitations) {
+    drawCheck(page, 51.5, 233.5);
+    draw(page, font, model.limitations, { x: 180, y: 232.5, w: 390, size: 8 });
+  }
+
+  // 1.4 ความต้องการความช่วยเหลือ (template baseline y = 173.0)
+  if (model.assistanceNeeds.length) {
+    draw(page, font, model.assistanceNeeds.join(', '), { x: 125, y: 174.0, w: 445, size: 8.5 });
+  }
+
+  // 1.5 ประวัติการได้รับความช่วยเหลือ
+  if (model.pastAssistance.length === 0) {
+    drawCheck(page, 51.5, 129.5); // ไม่เคยได้รับ
+  } else {
+    drawCheck(page, 164.5, 129.5); // เคยได้รับ
+    // 1.5.1
+    const p1 = model.pastAssistance[0];
+    if (p1) {
+      draw(page, font, p1.type || p1.notes, { x: 190, y: 107.3, w: 380, size: 8 });
+      if (isMoney(p1.amount)) {
+        drawCheck(page, 174, 87.3);
+        draw(page, font, p1.amount, { x: 245, y: 86.3, w: 90, size: 8, align: 'right' });
+      } else if (p1.amount) {
+        drawCheck(page, 389, 87.3);
+        draw(page, font, p1.amount, { x: 435, y: 86.3, w: 135, size: 8 });
+      }
+      draw(page, font, p1.year, { x: 85, y: 65.3, w: 180, size: 8 });
+      draw(page, font, p1.agency, { x: 345, y: 65.3, w: 225, size: 8 });
+    }
+  }
+}
+
+function fillPage2(page: PDFPage, font: PDFFont, model: SurveyPrintModel) {
+  // 1.5.2 (if exists)
+  if (model.pastAssistance.length > 1) {
+    const p2 = model.pastAssistance[1];
+    draw(page, font, p2.type || p2.notes, { x: 220, y: 683.6, w: 350, size: 8 });
+    if (isMoney(p2.amount)) {
+      drawCheck(page, 174, 663.6);
+      draw(page, font, p2.amount, { x: 250, y: 662.6, w: 90, size: 8, align: 'right' });
+    } else if (p2.amount) {
+      drawCheck(page, 389, 663.6);
+      draw(page, font, p2.amount, { x: 435, y: 662.6, w: 135, size: 8 });
+    }
+    draw(page, font, p2.year, { x: 85, y: 641.6, w: 180, size: 8 });
+    draw(page, font, p2.agency, { x: 345, y: 641.6, w: 225, size: 8 });
+  }
+
+  // 1.6 สภาพเศรษฐกิจ
+  const incomeBaselines = [541.1, 522.7, 504.3, 486.1, 467.7, 449.3, 431.1];
+  const expenseBaselines = [541.1, 522.7, 504.3, 486.1, 467.7, 449.3, 431.1];
+
+  model.incomeRows.slice(0, 7).forEach((row, idx) => {
+    if (row.amount && row.amount !== '0.00' && row.amount !== '0') {
+      draw(page, font, row.amount, { x: 200, y: incomeBaselines[idx] + 1.0, w: 98, size: 8.5, align: 'right' });
+    } else {
+      draw(page, font, '-', { x: 200, y: incomeBaselines[idx] + 1.0, w: 98, size: 8.5, align: 'right' });
+    }
+  });
+
+  model.expenseRows.slice(0, 7).forEach((row, idx) => {
+    if (row.amount && row.amount !== '0.00' && row.amount !== '0') {
+      draw(page, font, row.amount, { x: 410, y: expenseBaselines[idx] + 1.0, w: 98, size: 8.5, align: 'right' });
+    } else {
+      draw(page, font, '-', { x: 410, y: expenseBaselines[idx] + 1.0, w: 98, size: 8.5, align: 'right' });
+    }
+  });
+
+  // Totals
+  draw(page, font, model.incomeTotal || '0.00', { x: 195, y: 401.3, w: 82, size: 8.5, align: 'right' });
+  draw(page, font, model.expenseTotal || '0.00', { x: 420, y: 401.3, w: 86, size: 8.5, align: 'right' });
+
+  // อธิบายเพิ่มเติม (ถ้ามี) - wrapped across the two dotted lines
+  const extraNotes = [
+    model.debt?.monthly ? `ชำระหนี้รายเดือน ${model.debt.monthly} บาท (${model.debt.type || ''})` : null,
+    model.incomeRows[7]?.amount && model.incomeRows[7].amount !== '0.00' ? `รายได้อื่น ${model.incomeRows[7].amount} บาท` : null,
+    model.expenseRows[6]?.amount && model.expenseRows[6].amount !== '0.00' ? `รายจ่ายอื่น ${model.expenseRows[6].amount} บาท` : null,
+  ].filter(Boolean).join(' · ');
+  if (extraNotes) {
+    const extraLines = wrap(font, extraNotes, 8, 420);
+    if (extraLines[0]) draw(page, font, extraLines[0], { x: 145, y: 354.9, w: 425, size: 8 });
+    if (extraLines[1]) draw(page, font, extraLines[1], { x: 45, y: 333.9, w: 525, size: 8 });
+  }
+
+  // 1.7 ประวัติครอบครัว (10 rows)
+  const memberBaselines = [258.5, 237.1, 215.4, 194.1, 172.7, 151.3, 129.7, 108.2, 86.8, 65.2];
+  model.members.slice(0, 10).forEach((m, idx) => {
+    const y = memberBaselines[idx];
+    const relationNote = [m.relation, m.notes].filter(Boolean).join(' ');
+    draw(page, font, m.name, { x: 86, y, w: 135, size: 7.5 });
+    draw(page, font, m.age, { x: 227, y, w: 37, size: 7.5, align: 'center' });
+    draw(page, font, m.education || '-', { x: 270, y, w: 112, size: 7.5 });
+    draw(page, font, m.occupation || '-', { x: 390, y, w: 64, size: 7.5 });
+    draw(page, font, m.income || '0.00', { x: 460, y, w: 48, size: 7.5, align: 'right' });
+    draw(page, font, relationNote || '-', { x: 520, y, w: 52, size: 7.5 });
+  });
+}
+
+function fillPage3(page: PDFPage, font: PDFFont, model: SurveyPrintModel) {
+  // 1.8 สถานภาพครอบครัวโดยละเอียด (4 lines)
+  const situationText = [
+    model.familySituation,
+    model.dependentBurdens ? `(ภาระเลี้ยงดู: ${model.dependentBurdens})` : null
+  ].filter(Boolean).join(' ');
+  const lines = wrap(font, situationText, 9, 520).slice(0, 4);
+  const situationBaselines = [674.6, 653.8, 632.8, 611.8];
+  lines.forEach((line, idx) => {
+    draw(page, font, line, { x: 45, y: situationBaselines[idx] + 1.0, w: 525, size: 9 });
+  });
+
+  // 2.2 รายละเอียดของผู้ประสานงาน
+  const coord = model.coordinator || {};
+  const coordPerson = splitStoredName(coord.name);
+  draw(page, font, coordPerson.given, { x: 215, y: 306.1, w: 145, size: 9.5 });
+  draw(page, font, coordPerson.surname, { x: 430, y: 306.1, w: 140, size: 9.5 });
+
+  draw(page, font, coord.phone, { x: 95, y: 285.1, w: 115, size: 9 });
+  draw(page, font, coord.occupation, { x: 265, y: 285.1, w: 110, size: 9 });
+  draw(page, font, coord.role, { x: 435, y: 285.1, w: 135, size: 9 });
+
+  draw(page, font, coord.age, { x: 68, y: 264.3, w: 40, size: 9, align: 'center' });
+  draw(page, font, coord.nationalId, { x: 255, y: 264.3, w: 315, size: 9 });
+
+  // Coordinator address
+  const cAddr = parseThaiAddress(coord.address);
+  if (cAddr.house) draw(page, font, cAddr.house, { x: 145, y: 243.3, w: 35, size: 8.5 });
+  if (cAddr.moo) draw(page, font, cAddr.moo, { x: 205, y: 243.3, w: 25, size: 8.5, align: 'center' });
+  draw(page, font, cAddr.soi || coord.address, { x: 250, y: 243.3, w: 80, size: 8.5 });
+  if (cAddr.road) draw(page, font, cAddr.road, { x: 350, y: 243.3, w: 60, size: 8.5 });
+  if (cAddr.subdistrict) draw(page, font, cAddr.subdistrict, { x: 470, y: 243.3, w: 100, size: 8.5 });
+
+  if (cAddr.district) draw(page, font, cAddr.district, { x: 95, y: 222.3, w: 135, size: 8.5 });
+  if (cAddr.province) draw(page, font, cAddr.province, { x: 275, y: 222.3, w: 125, size: 8.5 });
+  if (coord.organization) draw(page, font, coord.organization, { x: 440, y: 222.3, w: 130, size: 8.5 });
+
+  // Signatures at y = 191.5
+  if (coord.name) {
+    draw(page, font, coord.name, { x: 95, y: 192.5, w: 155, size: 9, align: 'center' });
+  }
+  const cert = model.certifier || {};
+  if (cert.name) {
+    draw(page, font, cert.name, { x: 375, y: 192.5, w: 155, size: 9, align: 'center' });
+  }
+}
+
+async function run() {
+  const model: SurveyPrintModel = JSON.parse(readFileSync('tmp/zms-12-model.json', 'utf8'));
+  const templatePath = path.join(process.cwd(), 'src', 'lib', 'surveyPrint', 'master-form.pdf');
+  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'Sarabun-Regular.ttf');
+  
+  const templateBytes = readFileSync(templatePath);
+  const doc = await PDFDocument.load(templateBytes);
+  doc.registerFontkit(fontkitEngine());
+  const font = await doc.embedFont(readFileSync(fontPath), { subset: true });
+  
+  const [p1, p2, p3] = doc.getPages();
+  fillPage1(p1, font, model);
+  fillPage2(p2, font, model);
+  fillPage3(p3, font, model);
+
+  doc.setTitle(`แบบสำรวจผู้มีสิทธิ์รับซะกาต - ${model.registryNumber}`);
+  doc.setAuthor(model.printedBy || '');
+
+  const outBytes = await doc.save();
+  const outPath = path.join(process.cwd(), 'tmp', 'perfect-stamp.pdf');
+  writeFileSync(outPath, outBytes);
+  console.log('Saved to', outPath, 'bytes:', outBytes.length, 'numPages:', doc.getPageCount());
+}
+
+run().catch(console.error);

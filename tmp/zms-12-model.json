@@ -1,0 +1,252 @@
+{
+  "registryNumber": "ZMS-2026-000012",
+  "fullName": "นาย อาฟิส มะ",
+  "titlePrefix": "นาย",
+  "firstName": "อาฟิส",
+  "lastName": "มะ",
+  "statusLabel": "รอพิจารณาคุณสมบัติ",
+  "registeredAt": "31 ตุลาคม 2569",
+  "printedAt": "1 พ.ย. 2569 00:55",
+  "printedBy": "ผู้ดูแลระบบ",
+  "officerName": null,
+  "nationalId": "1-9506-01241-01-1",
+  "birthDate": "30 พฤศจิกายน 2542",
+  "birthDay": "30",
+  "birthMonth": "11",
+  "birthYear": "2542",
+  "age": null,
+  "phone": "0987654321",
+  "occupation": "รับจ้างทั่วไป",
+  "maritalStatus": "สมรส",
+  "maritalCode": "married",
+  "address": "151/4 ชุมชนนูรุลยากีน จะกว๊ะ รามัน ยะลา 95140",
+  "addressLine": "151/4",
+  "community": "ชุมชนนูรุลยากีน",
+  "subdistrict": "จะกว๊ะ",
+  "district": "รามัน",
+  "province": "ยะลา",
+  "postcode": "95140",
+  "housingCode": "own",
+  "housingType": "บ้านตนเอง",
+  "housingCondition": "ชำรุดทรุดโทรมมาก",
+  "housingNotes": "บ้านไม้ชั้นเดียวยกพื้น หลังคาสังกะสีรั่ว ผุพัง",
+  "landCode": "title_deed",
+  "landTitle": "โฉนดที่ดิน",
+  "landNotes": "โฉนดที่ดินของตนเอง",
+  "reasonsRecorded": true,
+  "reasons": [
+    {
+      "label": "ยากจน / รายได้น้อย",
+      "checked": true
+    },
+    {
+      "label": "มีหนี้สิน",
+      "checked": true,
+      "detail": "หนี้สินจำเป็นในระบบ (ค่ายาและค่ารักษาพยาบาล)"
+    },
+    {
+      "label": "ตกงาน / ไม่มีงานทำ / ไม่มีอาชีพ",
+      "checked": false
+    },
+    {
+      "label": "ปัญหาครอบครัว",
+      "checked": false,
+      "detail": null
+    },
+    {
+      "label": "อื่น ๆ",
+      "checked": false,
+      "detail": null
+    }
+  ],
+  "disability": null,
+  "illness": "เบาหวานและความดันโลหิตสูง",
+  "limitations": null,
+  "assistanceNeeds": [
+    "ต้องการเงินช่วยเหลือยังชีพฉุกเฉินและค่ายารักษาโรคประจำตัว"
+  ],
+  "pastAssistanceKnownNone": false,
+  "pastAssistance": [],
+  "incomeRows": [
+    {
+      "label": "รายได้จากค่าจ้าง",
+      "amount": "11,000.00"
+    },
+    {
+      "label": "รายได้จากคนในครอบครัวให้",
+      "amount": "1,500.00"
+    },
+    {
+      "label": "รายได้จากการขายผลผลิตทางการเกษตร",
+      "amount": "0.00"
+    },
+    {
+      "label": "รายได้จากการค้าขาย",
+      "amount": "0.00"
+    },
+    {
+      "label": "รายได้จากทรัพย์สิน เช่น ค่าเช่าทรัพย์สิน",
+      "amount": "0.00"
+    },
+    {
+      "label": "รายได้จากอาชีพส่วนตัว",
+      "amount": "500.00"
+    },
+    {
+      "label": "รายได้จากความช่วยเหลือ เช่น สวัสดิการจากรัฐ",
+      "amount": "800.00"
+    },
+    {
+      "label": "รายได้อื่น ๆ",
+      "amount": "0.00"
+    }
+  ],
+  "expenseRows": [
+    {
+      "label": "ค่าใช้จ่ายอุปโภคบริโภค",
+      "amount": "4,500.00"
+    },
+    {
+      "label": "ค่าใช้จ่ายเพื่อการศึกษา",
+      "amount": "1,200.00"
+    },
+    {
+      "label": "ค่าใช้จ่ายเพื่อสุขภาพ",
+      "amount": "1,500.00"
+    },
+    {
+      "label": "ค่าใช้จ่ายค่าน้ำ ค่าไฟ",
+      "amount": "800.00"
+    },
+    {
+      "label": "ค่าใช้จ่ายบ้านเช่า",
+      "amount": "0.00"
+    },
+    {
+      "label": "รายจ่ายเพื่อการชำระหนี้",
+      "amount": "1,000.00"
+    },
+    {
+      "label": "รายจ่ายอื่น ๆ",
+      "amount": "300.00"
+    }
+  ],
+  "incomeTotal": "13,800.00",
+  "expenseTotal": "9,300.00",
+  "net": "4,500.00",
+  "debt": {
+    "type": "หนี้สินจำเป็นในระบบ (ค่ายาและค่ารักษาพยาบาล)",
+    "balance": "15,000.00",
+    "monthly": "1,000.00",
+    "creditor": null,
+    "notes": null
+  },
+  "members": [
+    {
+      "name": "นาง ซาเราะฮ์ สันติภาพ",
+      "age": "48",
+      "education": null,
+      "occupation": "รับจ้างทั่วไป",
+      "income": "0.00",
+      "relation": "คู่สมรส",
+      "notes": null
+    },
+    {
+      "name": "ด.ช. ฟะฮัด สันติภาพ",
+      "age": "12",
+      "education": null,
+      "occupation": "นักเรียน",
+      "income": "0.00",
+      "relation": "บุตร",
+      "notes": null
+    }
+  ],
+  "familySituation": "หัวหน้าครอบครัวประกอบอาชีพรับจ้างทั่วไป รายได้ไม่สม่ำเสมอ คู่สมรสมีภาวะเจ็บป่วยเรื้อรัง ต้องดูแลบุตรวัยเรียน",
+  "dependentBurdens": "มีบุตรวัยเรียน 1 คน และคู่สมรสเจ็บป่วยเรื้อรัง",
+  "criteriaRecorded": false,
+  "criteria": [
+    {
+      "label": "ประกอบอามั้ล–อิบาดะฮอย่างเคร่งครัด (ในกรณีที่เป็นมุสลิม)",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "มีที่ดินเป็นของตนเองหรือมีหนังสือให้ใช้จากเจ้าของที่ดิน",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "โครงสร้างและที่อยู่อาศัยไม่มั่นคงหรือชำรุดทรุดโทรมมากกว่า 70% (กรณีขอซ่อมหรือสร้างบ้าน)",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "ฐานะยากจน รายได้ไม่แน่นอน หรือมีหนี้สิน",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "ชาวบ้านในพื้นที่ต้องมีส่วนร่วมในการช่วยเหลือ",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "ต้องได้รับการรับรองความประพฤติจากอิหม่ามและผู้ใหญ่บ้านหรือผู้นำท้องถิ่น",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "เป็นผู้ด้อยโอกาสและถูกละเลยในสังคม",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "สมาชิกภายในบ้านเป็นผู้พิการ สูงอายุ ป่วยเป็นโรคเรื้อรัง หรือมีภาระต้องเลี้ยงดูบุตรในวัยเรียน",
+      "result": "blank",
+      "note": null
+    },
+    {
+      "label": "สมาชิกในครอบครัวจะต้องไม่มีส่วนเกี่ยวข้องกับยาเสพติดหรืออบายมุข โดยขึ้นอยู่กับการพิจารณาของคณะกรรมการที่ลงพื้นที่",
+      "result": "blank",
+      "note": null
+    }
+  ],
+  "committeeNotes": null,
+  "coordinator": {
+    "name": "นาย ดาริส มานะ",
+    "phone": "089-111-2233",
+    "occupation": "กรรมการชุมชน",
+    "role": null,
+    "age": "45",
+    "nationalId": null,
+    "address": "ชุมชนนูรุลยากีน เขตหนองจอก"
+  },
+  "certifier": {
+    "name": "อิหม่าม มะมูด สุมาลี",
+    "phone": "081-444-5566",
+    "occupation": null,
+    "role": "อิหม่ามประจำมัสยิดนูรุลยากีน",
+    "age": null,
+    "nationalId": null,
+    "address": null
+  },
+  "applicantName": "นาย อาฟิส มะ",
+  "location": {
+    "address": "151/4",
+    "placeName": "ตำแหน่งปัจจุบันของผู้บันทึก",
+    "latitude": "6.5678218",
+    "longitude": "101.2928293",
+    "verification": "ยังไม่ระบุ"
+  },
+  "asnaf": null,
+  "consent": {
+    "accepted": true,
+    "version": "v1.0",
+    "recordedAt": "31 ต.ค. 2569 22:55"
+  },
+  "applications": [],
+  "applicationsNote": null,
+  "documents": [],
+  "images": [],
+  "registrationNote": "บ้านไม้ชั้นเดียวยกพื้น หลังคาสังกะสีรั่ว ผุพัง"
+}

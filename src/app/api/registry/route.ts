@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveServerToken } from '@/lib/serverToken';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
-function resolveToken(req: Request): string | null {
-  const authHeader = req.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.replace('Bearer ', '').trim();
-  }
-  const cookieHeader = req.headers.get('cookie') || '';
-  const match = cookieHeader.match(/zms_session=([^;]+)/);
-  if (match) return decodeURIComponent(match[1]);
-  return null;
+function resolveToken(req: Request): string {
+  return resolveServerToken(req);
 }
 
 export async function GET(request: NextRequest) {

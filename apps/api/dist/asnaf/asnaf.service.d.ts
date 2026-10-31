@@ -9,9 +9,9 @@ export declare class AsnafService {
     private readonly audit;
     constructor(prisma: PrismaService, beneficiaries: BeneficiariesService, audit: AuditService);
     listActive(): import(".prisma/client").Prisma.PrismaPromise<{
+        code: string;
         id: string;
         sortOrder: number;
-        code: string;
         nameTh: string;
     }[]>;
     latestProposal(beneficiaryId: string, actor: AuthUser): Promise<{

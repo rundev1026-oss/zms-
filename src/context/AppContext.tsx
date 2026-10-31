@@ -259,12 +259,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const getAuthHeaders = useCallback((additionalHeaders: Record<string, string> = {}): Record<string, string> => {
+    const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...additionalHeaders,
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }, [authToken]);
+
   // Fetch real data from database via APIs
   const refreshData = useCallback(async () => {
     try {
       setIsLoading(true);
+      const authHeaders = getAuthHeaders();
       // 1. Applications from real database
-      const appRes = await fetch('/api/beneficiaries');
+      const appRes = await fetch('/api/beneficiaries', { headers: authHeaders, credentials: 'include' });
       if (appRes.ok) {
         const appJson = await appRes.json();
         if (appJson.success) {
@@ -273,7 +286,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 1.1 Beneficiary Registries from real database
-      const regRes = await fetch('/api/registry');
+      const regRes = await fetch('/api/registry', { headers: authHeaders, credentials: 'include' });
       if (regRes.ok) {
         const regJson = await regRes.json();
         if (regJson.success) {
@@ -363,7 +376,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/beneficiaries', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           input: {
             titlePrefix: appData.titlePrefix || 'นาย',
@@ -882,7 +896,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/registry', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           input: profileData,
           actor: {
@@ -919,7 +934,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`/api/registry/${beneficiaryId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           input: profileData,
           notes: editNotes,
@@ -976,7 +992,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`/api/registry/${beneficiaryId}/status`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           status,
           notes: notes || `เปลี่ยนสถานะทะเบียนเป็น ${status}`,
@@ -1013,7 +1030,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`/api/registry/${beneficiaryId}/checklist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           checklist,
           actor: {

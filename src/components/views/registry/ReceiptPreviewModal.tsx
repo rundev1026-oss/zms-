@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { formatPersonName } from '@zms/shared';
 import { X, Printer, Download, CheckCircle, FileText, Image as ImageIcon, ExternalLink, ShieldCheck } from 'lucide-react';
 import { AssistanceApplication } from '@/types';
 import { ModalPortal } from '@/components/common/Modal';
@@ -102,7 +103,7 @@ export function ReceiptPreviewModal({
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span className="text-slate-400 block text-[10px]">ผู้รับความช่วยเหลือ:</span>
-                <strong className="text-slate-900 block font-bold">{beneficiaryName || app.fullName}</strong>
+                <strong className="text-slate-900 block font-bold">{beneficiaryName || formatPersonName(app)}</strong>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px]">รหัสทะเบียนผู้มีสิทธิ์:</span>
@@ -217,7 +218,7 @@ export function ReceiptPreviewModal({
             <div className="grid grid-cols-3 gap-4 pt-6 border-t border-slate-200 text-center text-[10px] text-slate-600">
               <div className="space-y-4">
                 <div className="h-10 border-b border-dashed border-slate-300" />
-                <p>ลงชื่อ ผู้รับมอบความช่วยเหลือ<br />( {beneficiaryName || app.fullName} )</p>
+                <p>ลงชื่อ ผู้รับมอบความช่วยเหลือ<br />( {beneficiaryName || formatPersonName(app)} )</p>
               </div>
               <div className="space-y-4">
                 <div className="h-10 border-b border-dashed border-slate-300" />

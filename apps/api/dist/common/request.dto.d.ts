@@ -17,6 +17,11 @@ export declare class HouseholdMemberDto {
     occupation?: string;
     isDependent: boolean;
     sortOrder?: number;
+    monthlyIncome?: number;
+    educationStatus?: string;
+    healthStatus?: string;
+    healthNotes?: string;
+    notes?: string;
 }
 export declare class UpsertHouseholdDto {
     memberCount?: number;
@@ -50,7 +55,7 @@ export declare class UpsertHouseholdDto {
     residenceAddress?: string;
     placeName?: string;
     locationVerificationStatus?: string;
-    members: HouseholdMemberDto[];
+    members?: HouseholdMemberDto[];
 }
 export declare class AddressItemDto {
     addressType: AddressType;
@@ -82,6 +87,7 @@ export declare class LoginDto {
 }
 export declare class UploadDocumentDto {
     documentType: string;
+    replacesDocumentId?: string;
 }
 export declare class Enable2faDto {
     code: string;

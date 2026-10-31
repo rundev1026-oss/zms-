@@ -48,3 +48,5 @@ export interface PageResult<T> {
     pageSize: number;
     total: number;
 }
+export { PERSON_TITLE_OPTIONS, formatPersonName, normalizePersonPrefix, splitPersonName, } from './person-name';
+export type { PersonNameInput, SplitPersonName } from './person-name';

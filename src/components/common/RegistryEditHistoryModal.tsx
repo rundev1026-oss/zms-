@@ -191,13 +191,13 @@ export function RegistryEditHistoryModal({
                                   {c.fieldLabel || c.field}
                                 </td>
                                 <td className="py-2 px-2 text-rose-800 font-mono text-[11px] bg-rose-50/60 rounded">
-                                  {String(c.oldValue || '-')}
+                                  {c.oldValue === 0 || c.oldValue === '0' ? '0' : String(c.oldValue || '-')}
                                 </td>
                                 <td className="py-2 px-2 text-center text-slate-400">
                                   <ArrowRight className="w-3 h-3 mx-auto" />
                                 </td>
                                 <td className="py-2 px-2 text-emerald-800 font-bold font-mono text-[11px] bg-emerald-50/60 rounded">
-                                  {String(c.newValue || '-')}
+                                  {c.newValue === 0 || c.newValue === '0' ? '0' : String(c.newValue || '-')}
                                 </td>
                               </tr>
                             ))}

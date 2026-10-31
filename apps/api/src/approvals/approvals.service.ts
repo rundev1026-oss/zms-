@@ -1,4 +1,5 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
+import { formatPersonName } from '@zms/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -89,7 +90,7 @@ export class ApprovalsService {
 
     const formattedItems = items.map((app) => {
       const ben = app.beneficiary;
-      const fullName = ben ? [ben.title, ben.firstName, ben.lastName].filter(Boolean).join(' ') : '';
+      const fullName = ben ? formatPersonName({ prefix: ben.title, firstName: ben.firstName, lastName: ben.lastName }) : '';
       const idNum = ben?.identityNumberNormalized || ben?.identityNumber || '';
 
       return {

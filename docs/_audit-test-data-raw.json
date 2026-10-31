@@ -1,0 +1,2996 @@
+﻿{
+  "section": "environment",
+  "environment": "Development",
+  "nodeEnv": "development",
+  "host": "localhost",
+  "dbName": "zms",
+  "user": "zms",
+  "localHost": true,
+  "isExampleCreds": true,
+  "productionBlocked": false
+}
+{
+  "section": "table_counts",
+  "counts": [
+    {
+      "label": "users",
+      "count": 25
+    },
+    {
+      "label": "roles",
+      "count": 36
+    },
+    {
+      "label": "permissions",
+      "count": 98
+    },
+    {
+      "label": "beneficiaries",
+      "count": 140
+    },
+    {
+      "label": "beneficiaries_active",
+      "count": 139
+    },
+    {
+      "label": "beneficiary_addresses",
+      "count": 153
+    },
+    {
+      "label": "households",
+      "count": 140
+    },
+    {
+      "label": "household_members",
+      "count": 82
+    },
+    {
+      "label": "income_expense_profiles",
+      "count": 138
+    },
+    {
+      "label": "asnaf_categories",
+      "count": 8
+    },
+    {
+      "label": "asnaf_assessments",
+      "count": 1
+    },
+    {
+      "label": "beneficiary_documents",
+      "count": 0
+    },
+    {
+      "label": "registry_status_history",
+      "count": 31
+    },
+    {
+      "label": "consent_records",
+      "count": 16
+    },
+    {
+      "label": "audit_logs",
+      "count": 1995
+    },
+    {
+      "label": "branches",
+      "count": 4
+    },
+    {
+      "label": "departments",
+      "count": 5
+    },
+    {
+      "label": "assistance_types",
+      "count": 23
+    },
+    {
+      "label": "assistance_applications",
+      "count": 198
+    },
+    {
+      "label": "application_documents",
+      "count": 85
+    },
+    {
+      "label": "application_history",
+      "count": 411
+    },
+    {
+      "label": "assistance_execution_records",
+      "count": 47
+    },
+    {
+      "label": "assistance_refund_records",
+      "count": 6
+    },
+    {
+      "label": "follow_up_plans",
+      "count": 105
+    },
+    {
+      "label": "follow_up_records",
+      "count": 14
+    },
+    {
+      "label": "fund_accounts",
+      "count": 6
+    },
+    {
+      "label": "asnaf_allocations",
+      "count": 7
+    },
+    {
+      "label": "faqir_miskin_sub_funds",
+      "count": 11
+    },
+    {
+      "label": "bank_accounts",
+      "count": 3
+    },
+    {
+      "label": "bank_reconciliations",
+      "count": 21
+    },
+    {
+      "label": "cash_flow_workflows",
+      "count": 37
+    },
+    {
+      "label": "financial_transactions",
+      "count": 135
+    },
+    {
+      "label": "campaigns",
+      "count": 4
+    },
+    {
+      "label": "login_histories",
+      "count": 449
+    },
+    {
+      "label": "system_settings",
+      "count": 3
+    }
+  ]
+}
+{
+  "section": "classification",
+  "users": {
+    "total": 25,
+    "TEST": 18,
+    "KEEP": 7,
+    "REVIEW": 0
+  },
+  "beneficiaries": {
+    "total": 139,
+    "TEST": 1,
+    "KEEP": 70,
+    "REVIEW": 68
+  },
+  "applications": {
+    "total": 198,
+    "TEST": 18,
+    "KEEP": 126,
+    "REVIEW": 54
+  },
+  "beneficiaries_created_only_by_seed_user": 14,
+  "linked_test_beneficiary_children": {
+    "addresses_of_test_ben": 0,
+    "households_of_test_ben": 1,
+    "members_of_test_households": 0,
+    "income_of_test_ben": 0,
+    "assessments_of_test_ben": 0,
+    "documents_of_test_ben": 0,
+    "status_history_of_test_ben": 1,
+    "consents_of_test_ben": 1,
+    "applications_of_test_ben": 0
+  },
+  "funds": 6,
+  "bankAccounts": 3,
+  "financialTransactions": 135,
+  "financial_transactions_linked_to_test_beneficiaries": 0,
+  "branches": 4,
+  "departments": 5
+}
+{
+  "section": "candidate_test_users",
+  "rows": [
+    {
+      "id": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d",
+      "email": "admin@zms.local",
+      "displayName": "ผู้ดูแลระบบสูงสุด (Super Admin)",
+      "roles": [
+        "SUPER_ADMIN"
+      ],
+      "lastLoginAt": "2026-10-31T14:35:45.026Z",
+      "createdAt": "2026-10-30T08:05:51.286Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain",
+        "seed_script_account",
+        "seed_display_name_pattern"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "628ebcde-70fc-4719-86a1-bb4d76c33ad7",
+      "email": "officer@zms.local",
+      "displayName": "เจ้าหน้าที่ฝ่ายสงเคราะห์ (Officer)",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": "2026-10-30T12:44:37.387Z",
+      "createdAt": "2026-10-30T08:05:51.304Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain",
+        "seed_script_account",
+        "seed_display_name_pattern"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "efe33e72-f5f9-436b-971b-a9294033180f",
+      "email": "finance@zms.local",
+      "displayName": "เจ้าหน้าที่ฝ่ายการเงิน (Finance)",
+      "roles": [
+        "FINANCE_OFFICER"
+      ],
+      "lastLoginAt": "2026-10-30T12:44:37.482Z",
+      "createdAt": "2026-10-30T08:05:51.315Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain",
+        "seed_script_account",
+        "seed_display_name_pattern"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "b1b2f0b6-5b67-42d6-a038-a3c2919d64ac",
+      "email": "treasurer@zms.local",
+      "displayName": "เหรัญญิกมูลนิธิ (Treasurer)",
+      "roles": [
+        "TREASURER"
+      ],
+      "lastLoginAt": "2026-10-30T12:44:37.592Z",
+      "createdAt": "2026-10-30T08:05:51.326Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain",
+        "seed_script_account",
+        "seed_display_name_pattern"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "49a652d7-1062-426d-9222-d1cf10dadaad",
+      "email": "approver@zms.local",
+      "displayName": "ผู้มีอำนาจอนุมัติ (Approver)",
+      "roles": [
+        "APPROVER"
+      ],
+      "lastLoginAt": "2026-10-30T12:44:37.684Z",
+      "createdAt": "2026-10-30T08:05:51.339Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain",
+        "seed_script_account",
+        "seed_display_name_pattern"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "3dd21477-ac38-4b42-a61d-c1d4202603a0",
+      "email": "auditor@zms.local",
+      "displayName": "ผู้ตรวจสอบภายใน (Auditor)",
+      "roles": [
+        "AUDITOR"
+      ],
+      "lastLoginAt": "2026-10-30T12:44:37.771Z",
+      "createdAt": "2026-10-30T08:05:51.353Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain",
+        "seed_script_account",
+        "seed_display_name_pattern"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "b759e0f0-4a05-4a84-b7c0-06cc6f1321c3",
+      "email": "test_adv_1793367302429@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T13:35:02.505Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "bc98c2f3-7e60-4c70-b121-1c1f93aa59ad",
+      "email": "test_adv_1793367350934@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T13:35:51.009Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "920c506e-6b95-413e-84f5-c10207ae2cfc",
+      "email": "test_adv_1793367450125@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T13:37:30.188Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "f3802e67-bf74-4c47-947d-dbc345c82d85",
+      "email": "test_adv_1793367526418@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T13:38:46.498Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "2d52692f-751a-4728-8c27-07e9af5e6a45",
+      "email": "test_adv_1793367579108@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T13:39:39.178Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "0607e948-d16b-4ee6-9454-858a5d2b70bc",
+      "email": "test_adv_1793367645159@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T13:40:45.234Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "a62e4361-b762-4c98-84f6-0f8822321c92",
+      "email": "test_adv_1793368653444@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T13:57:33.518Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "cd17ce1a-0338-4dd7-a03e-b10d5cdb279b",
+      "email": "test_adv_1793369092639@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T14:04:52.725Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "e6439fac-0904-4210-8b47-78e963e2d084",
+      "email": "test_adv_1793369552593@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T14:12:32.687Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "2139fafd-a4ed-4c2c-bbb8-f88261e26c38",
+      "email": "test_adv_1793371775437@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T14:49:35.511Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "1c8cb58a-9d3f-4d4d-a759-aab2c0342a1c",
+      "email": "test_adv_1793372366661@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-30T14:59:26.726Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "3c5251d6-5a25-43f3-9e67-cef6e5608880",
+      "email": "test_adv_1793457029433@zms.local",
+      "displayName": "สมเกียรติ สิทธิการันตี",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ],
+      "lastLoginAt": null,
+      "createdAt": "2026-10-31T14:30:29.524Z",
+      "isActive": true,
+      "reasons": [
+        "seed_email_domain"
+      ],
+      "bucket": "TEST"
+    }
+  ]
+}
+{
+  "section": "keep_users",
+  "rows": [
+    {
+      "id": "8c7dc0fc-1980-46b3-8a62-9b19db1a3f6f",
+      "email": "admin@zakatfoundation.or.th",
+      "displayName": "อิบรอฮีม มานะชัย",
+      "roles": [
+        "SUPER_ADMIN"
+      ]
+    },
+    {
+      "id": "88613aff-be46-4bbf-8bf8-cdd7b80c6f29",
+      "email": "exec@zakatfoundation.or.th",
+      "displayName": "ดร. อับดุลลอฮ์ สัจจะธรรม",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ]
+    },
+    {
+      "id": "f31f51ea-3704-4372-8436-e2eeab379309",
+      "email": "officer@zakatfoundation.or.th",
+      "displayName": "อุสมาน เจริญสุข",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ]
+    },
+    {
+      "id": "a2c54227-df59-4300-812b-fbc4bf3eaf57",
+      "email": "yusuf.donor@email.com",
+      "displayName": "ยูซุฟ มีลาภ",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ]
+    },
+    {
+      "id": "934ba24b-58af-4659-8a08-2642f071ecd1",
+      "email": "approver@zakatfoundation.or.th",
+      "displayName": "ฟารุก อาลี (ผู้ทรงคุณวุฒิ)",
+      "roles": [
+        "APPROVER"
+      ]
+    },
+    {
+      "id": "9386570a-90ed-43de-8ce1-a53c3f7723d4",
+      "email": "finance@zakatfoundation.or.th",
+      "displayName": "ฟาติมะฮ์ หวังดี",
+      "roles": [
+        "FINANCE_OFFICER"
+      ]
+    },
+    {
+      "id": "9a1b8bf9-c609-43da-8f12-9c50225b53d8",
+      "email": "areefin.unreg@email.com",
+      "displayName": "อารีฟีน ไร้ทะเบียน",
+      "roles": [
+        "ASSISTANCE_OFFICER"
+      ]
+    }
+  ]
+}
+{
+  "section": "candidate_test_beneficiaries",
+  "rows": [
+    {
+      "id": "4745730c-1905-4a85-8f14-2755171cceae",
+      "registryNumber": "REG-2569-0003",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••80",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-16T04:26:24.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "a7f2634c-6e92-4f8b-807b-a3de62c5350b",
+      "registryNumber": "REG-2569-0004",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••02",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-16T04:27:47.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "14f6fbbd-68a5-4a8b-8bb4-aa27fd441439",
+      "registryNumber": "REG-2569-0005",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••48",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-16T04:28:38.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "6137b0e0-9dea-43ab-88ff-02431d573bbd",
+      "registryNumber": "ZMS-2026-HH-8903",
+      "name": "มาเรียม สุมาลี",
+      "identityMasked": "1•••••••••12",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:12:18.000Z",
+      "reasons": [
+        "sqlite_migration_dummy_national_id"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ac276a62-0fe7-4228-85f6-f0f3eeb2e1dc",
+      "registryNumber": "REG-2569-0015",
+      "name": "สิทธิ์ ทดสอบ",
+      "identityMasked": "3•••••••••69",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:12:18.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "5dd37574-342e-40ec-82c9-f05bdac8cea2",
+      "registryNumber": "REG-2569-0014",
+      "name": "ทดสอบ ไม่อนุมัติ",
+      "identityMasked": "3•••••••••23",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:12:18.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "808ce461-ea56-4915-8c94-3913a1122113",
+      "registryNumber": "REG-2569-0017",
+      "name": "ทดสอบ ไม่อนุมัติ",
+      "identityMasked": "3•••••••••55",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:20:06.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "70ae3713-6f5b-4062-89b9-3e8a4acb7b9f",
+      "registryNumber": "REG-2569-0018",
+      "name": "สิทธิ์ ทดสอบ",
+      "identityMasked": "3•••••••••38",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:20:06.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "dc0a066c-b93a-4e04-8557-12af486c9add",
+      "registryNumber": "REG-2569-0020",
+      "name": "ทดสอบ ไม่อนุมัติ",
+      "identityMasked": "3•••••••••50",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:22:13.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "b51be02b-af9d-4d0b-8e4d-0011748d5fe2",
+      "registryNumber": "REG-2569-0021",
+      "name": "สิทธิ์ ทดสอบ",
+      "identityMasked": "3•••••••••67",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:22:13.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "91cf1b6e-dfc4-4e76-8c7a-a26e4b29d6b7",
+      "registryNumber": "REG-2569-0025",
+      "name": "สิทธิ์ ทดสอบ",
+      "identityMasked": "3•••••••••07",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:26:55.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "d439a768-a738-4149-860e-5e97e2d93b4c",
+      "registryNumber": "REG-2569-0024",
+      "name": "ทดสอบ ไม่อนุมัติ",
+      "identityMasked": "3•••••••••21",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T07:26:55.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "6c5d12ff-2cfb-451c-8367-da617de39915",
+      "registryNumber": "REG-2569-0033",
+      "name": "สิทธิ์ ทดสอบ",
+      "identityMasked": "3•••••••••23",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T08:32:50.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "c2c6e678-c7b5-44d2-8f16-cc5e917418ac",
+      "registryNumber": "REG-2569-0032",
+      "name": "ทดสอบ ไม่อนุมัติ",
+      "identityMasked": "3•••••••••23",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T08:32:50.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "e35a90d2-7fdd-497f-81fd-32eccc6a0a8d",
+      "registryNumber": "REG-2569-0035",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••34",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-19T08:33:16.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ad143d39-7dff-4779-83cd-1bee691870be",
+      "registryNumber": "REG-2569-0039",
+      "name": "ทดสอบ บันทึกแบบสำรวจ",
+      "identityMasked": "1•••••••••49",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-20T05:04:34.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "d3b48007-36f6-47d0-8f48-9c65958a6096",
+      "registryNumber": "REG-2569-0041",
+      "name": "ซากีรีน หะยีเต๊ะ (ทดสอบแบบสำรวจ)",
+      "identityMasked": "1•••••••••52",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-20T10:36:27.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "2b0d9dd2-1b04-46d8-821e-ebe66f07aa38",
+      "registryNumber": "REG-2569-0042",
+      "name": "ซากีรีน หะยีเต๊ะ (ทดสอบแบบสำรวจ)",
+      "identityMasked": "1•••••••••91",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-20T10:41:14.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "812c3878-37b5-420a-81ce-302e35bfe646",
+      "registryNumber": "REG-2569-0043",
+      "name": "ซากีรีน หะยีเต๊ะ (ทดสอบแบบสำรวจ)",
+      "identityMasked": "1•••••••••10",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-20T10:45:24.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "2cc49527-a7eb-4e68-8d9f-348683b454e3",
+      "registryNumber": "REG-2569-0044",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••67",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-21T07:42:54.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "5608c121-7d3c-4791-81ae-c6c377e51288",
+      "registryNumber": "REG-2569-0045",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••92",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-21T07:49:18.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "89522704-d9a9-4d52-88d3-1bb063268510",
+      "registryNumber": "REG-2569-0046",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••96",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-21T07:50:24.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "27720848-1dbe-4077-85c5-d41b763fe379",
+      "registryNumber": "REG-2569-0047",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••46",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-21T08:13:40.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "379fac9c-cd83-4811-8b8c-61ebbcec434a",
+      "registryNumber": "REG-2569-0048",
+      "name": "ทดสอบ การเงิน",
+      "identityMasked": "1•••••••••17",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-21T09:06:50.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "059efc86-a8db-43c9-89d7-fffff6f7a879",
+      "registryNumber": "REG-T4-01",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••01",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:49:30.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "517392a1-c43e-4049-8834-0a312b89b337",
+      "registryNumber": "REG-T4-02",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••02",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:49:30.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "b0048770-51dd-4f14-82c3-859850187611",
+      "registryNumber": "REG-T4-02-1",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••02",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:50:14.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "f57522bc-a688-4654-80e9-bb3eaeb2ffa0",
+      "registryNumber": "REG-T4-01-1",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••01",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:50:14.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "950d5fc7-9fed-4854-82dc-e8504d20e45b",
+      "registryNumber": "REG-T4-01-2",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••21",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:50:39.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "db1e789d-b6af-4a53-81e9-152cadc32b57",
+      "registryNumber": "REG-T4-02-2",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••22",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:50:39.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ffb10ffd-9b50-4818-86d6-c1691594aea6",
+      "registryNumber": "REG-T4-02-3",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••42",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:51:21.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "372298a4-0d5a-4bd1-8622-c5843c91fa71",
+      "registryNumber": "REG-T4-01-3",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••41",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:51:21.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "7c97776a-c830-4a22-83bf-a1b27accdcca",
+      "registryNumber": "REG-T4-01-4",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••91",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:52:58.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ccb3f6d3-ad87-413c-83ac-7d50b5005ee7",
+      "registryNumber": "REG-T4-02-4",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••92",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:52:58.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "f00d7701-165d-45ca-8ba1-48c13f1f952d",
+      "registryNumber": "REG-T4-02-5",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••92",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:55:36.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "a83639f8-89ef-4f8a-8b87-8ae69c5ec622",
+      "registryNumber": "REG-T4-01-5",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••91",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:55:36.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "fe9244ea-ffd8-4ed1-88d1-a95f06fecacc",
+      "registryNumber": "REG-T4-01-6",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••51",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:58:12.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "53af2a76-6d2f-478b-8e12-ab2ff12fae14",
+      "registryNumber": "REG-T4-02-6",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••52",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T18:58:12.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "8dddab9e-3bff-4a5e-88c4-2642742fe6f2",
+      "registryNumber": "REG-T4-02-7",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••92",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:10:25.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "dc33bb56-75ac-4007-8d49-069c00a26985",
+      "registryNumber": "REG-T4-01-7",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••91",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:10:25.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "1ea26b6f-5bf2-4033-8f80-23012d342acc",
+      "registryNumber": "REG-T4-02-8",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••52",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:12:10.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "bc5d9f31-5bd5-4a5a-8ca3-1e8844579c92",
+      "registryNumber": "REG-T4-01-8",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••51",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:12:10.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "761eac09-203f-460d-8fc4-1d99e0ef302b",
+      "registryNumber": "REG-T4-01-9",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••91",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:23:05.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "93f76aea-8ded-4ad3-85b2-33980414ac16",
+      "registryNumber": "REG-T4-02-9",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••92",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:23:05.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "a44f5048-b8a1-4ad6-8abe-d3ecd56d9917",
+      "registryNumber": "REG-T5-01",
+      "name": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "identityMasked": "1•••••••••01",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:33:00.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "6ea908ab-5413-4e41-885c-3bb06f68b62f",
+      "registryNumber": "REG-T5-02",
+      "name": "มาลี ผู้มีภาระหนี้ทดสอบ 5.2",
+      "identityMasked": "1•••••••••02",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:33:00.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "e0c126c8-5fe4-468a-89d5-e9c0689f5453",
+      "registryNumber": "REG-T5-02-1",
+      "name": "มาลี ผู้มีภาระหนี้ทดสอบ 5.2",
+      "identityMasked": "1•••••••••52",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:34:09.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "8445d648-9703-487f-8516-a3ab320c7bb9",
+      "registryNumber": "REG-T5-01-1",
+      "name": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "identityMasked": "1•••••••••51",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:34:09.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "c756d64c-a907-49d9-84d3-0b1f940fb24e",
+      "registryNumber": "REG-T5-02-2",
+      "name": "มาลี ผู้มีภาระหนี้ทดสอบ 5.2",
+      "identityMasked": "1•••••••••62",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:37:44.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "fdc9219b-c0b2-429a-85c9-03d8d8d80cd6",
+      "registryNumber": "REG-T5-01-2",
+      "name": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "identityMasked": "1•••••••••61",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:37:44.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ae58f610-063d-4598-8f22-e8a27dff950d",
+      "registryNumber": "REG-T5-02-3",
+      "name": "มาลี ผู้มีภาระหนี้ทดสอบ 5.2",
+      "identityMasked": "1•••••••••52",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:39:01.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "7871616e-e459-46ba-8db2-a6c747d46b22",
+      "registryNumber": "REG-T5-01-3",
+      "name": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "identityMasked": "1•••••••••51",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:39:01.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "04c59cb8-560e-4529-8329-93becc8bae35",
+      "registryNumber": "REG-T4-02-10",
+      "name": "รอฮานา ฆอริมีนทดสอบ",
+      "identityMasked": "1•••••••••22",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:39:15.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "3c29d062-46f7-41ad-81ca-f3428a2cffb1",
+      "registryNumber": "REG-T4-01-10",
+      "name": "สุไลมาน ฟากีรทดสอบ",
+      "identityMasked": "1•••••••••21",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-22T19:39:15.000Z",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "200b457e-43d7-4f40-9601-79ceac4aa17e",
+      "registryNumber": "ZMS-2026-000001",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••94",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T08:25:28.336Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "2a84f074-e9f2-4e2b-89a0-45fbe82b50d1",
+      "registryNumber": "ZMS-2026-000002",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••86",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T08:27:05.543Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "b5938cda-8f69-4336-b92c-045f547365b5",
+      "registryNumber": "ZMS-2026-000003",
+      "name": "นาย มูฮัมหมัด มีสุข",
+      "identityMasked": "1•••••••••10",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T08:27:45.941Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "91b1b38e-3c43-4c5e-94f3-bd8f8ed4ae8c",
+      "registryNumber": "ZMS-2026-000004",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••03",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T08:28:00.008Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "fc6c952a-210a-4330-a251-83a3ae009445",
+      "registryNumber": "ZMS-2026-000005",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••98",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T08:41:36.577Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "078bd405-5342-4bb8-9df9-e9a45219afc0",
+      "registryNumber": "ZMS-2026-000006",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••07",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T08:53:24.975Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "a87df7eb-a883-454b-a58d-d7d93e6623df",
+      "registryNumber": "ZMS-2026-000007",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••88",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T09:25:23.848Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ff30835b-6242-4c86-8ea5-bf6d2a8f2ca8",
+      "registryNumber": "ZMS-2026-000008",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••58",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T09:42:52.127Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "8af2039d-dc32-443d-9e95-92f18d308ac1",
+      "registryNumber": "ZMS-2026-000009",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••53",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T10:05:23.754Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "a2d1f426-7283-40e5-a7b4-72afe6c74a19",
+      "registryNumber": "ZMS-2026-000010",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••91",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T10:16:00.054Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "6d3f6b5d-5814-4478-8b6b-622c7d50f69f",
+      "registryNumber": "ZMS-2026-000011",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••61",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T10:49:37.147Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "62058bcc-5b70-448f-a4fc-1a2361c98127",
+      "registryNumber": "ZMS-2026-000012",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••40",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T11:09:37.350Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "83304a1f-8ee6-4571-8b39-f832ffd4a4f2",
+      "registryNumber": "ZMS-2026-000013",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••93",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T11:24:03.029Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "4161e5bd-31e8-441b-8186-225a8be6231a",
+      "registryNumber": "ZMS-2026-000014",
+      "name": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "identityMasked": "1•••••••••90",
+      "status": "PENDING_REVIEW",
+      "createdAt": "2026-10-30T12:37:02.157Z",
+      "reasons": [
+        "created_by_seed_user"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "9f11df68-98ef-4cc3-858b-f9b5ff6dd847",
+      "registryNumber": "ZMS-2026-000015",
+      "name": "นายทดสอบ ระบบ",
+      "identityMasked": "1•••••••••04",
+      "status": "DRAFT",
+      "createdAt": "2026-10-31T14:23:06.495Z",
+      "reasons": [
+        "test_name_token",
+        "created_by_seed_user"
+      ],
+      "bucket": "TEST"
+    }
+  ]
+}
+{
+  "section": "keep_beneficiaries_sample",
+  "count": 70,
+  "rows": [
+    {
+      "id": "b0ecd2ee-d70b-45ea-86d7-c005e906622a",
+      "registryNumber": "REG-2569-0001",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••22"
+    },
+    {
+      "id": "7fda1a5e-63bc-4086-8617-49c2da518158",
+      "registryNumber": "REG-2569-0002",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••88"
+    },
+    {
+      "id": "20986526-a5b1-4e0c-8047-3323fe87de28",
+      "registryNumber": "REG-2569-0006",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••37"
+    },
+    {
+      "id": "cbee59ad-791a-440d-8721-aa40e1c84c31",
+      "registryNumber": "REG-2569-0007",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••15"
+    },
+    {
+      "id": "66a5b860-2142-4e0e-85e6-33646ff32f2e",
+      "registryNumber": "REG-2569-0008",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••38"
+    },
+    {
+      "id": "bf9d9d54-1c99-4531-8fb5-abf167de95a2",
+      "registryNumber": "REG-2569-0009",
+      "name": "ซากีรีน หะยีสาและ (ข้อมูลจำลอง)",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••44"
+    },
+    {
+      "id": "a7257b08-aa31-4070-8ff7-f24f64d5394c",
+      "registryNumber": "REG-2569-0010",
+      "name": "ซากีรีน หะยีสาและ (ข้อมูลจำลอง)",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••61"
+    },
+    {
+      "id": "41c2977a-03a1-4e38-8cb0-203f1f56abdb",
+      "registryNumber": "REG-2569-0011",
+      "name": "ดาโอะ มะแซ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••20"
+    },
+    {
+      "id": "15976c0e-e847-4014-872a-9f6bb8faa285",
+      "registryNumber": "REG-2569-0012",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••92"
+    },
+    {
+      "id": "20f15e66-08ae-4591-8bd1-4a05aae9c1f0",
+      "registryNumber": "REG-2569-0013",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••58"
+    },
+    {
+      "id": "2cdc5f4d-8664-4739-8bd6-d1153685b1e9",
+      "registryNumber": "REG-2569-0016",
+      "name": "อับดุลเลาะห์ สุมาลี",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "3•••••••••39"
+    },
+    {
+      "id": "93dcf1d3-5c8e-48d3-8f1c-80fab122d461",
+      "registryNumber": "REG-2569-0019",
+      "name": "อับดุลเลาะห์ สุมาลี",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "3•••••••••95"
+    },
+    {
+      "id": "71d82474-2f6b-4036-84a5-a37410d6ec86",
+      "registryNumber": "REG-2569-0022",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••69"
+    },
+    {
+      "id": "f2dac876-ada2-447a-8e08-30b90aff75e2",
+      "registryNumber": "REG-2569-0023",
+      "name": "อับดุลเลาะห์ สุมาลี",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "3•••••••••14"
+    },
+    {
+      "id": "314c5101-e140-41c5-86ae-9ad1228bfacd",
+      "registryNumber": "REG-2569-0026",
+      "name": "มะฮ์มูด อิสลามิกา",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••99"
+    },
+    {
+      "id": "c0ee2fa7-0ce2-4367-890e-fe9bbf46f1a9",
+      "registryNumber": "REG-2569-0027",
+      "name": "มะฮ์มูด อิสลามิกา",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••44"
+    },
+    {
+      "id": "2bfa7da9-f4d0-40d9-8e94-7acf0e5da2da",
+      "registryNumber": "REG-2569-0028",
+      "name": "มะฮ์มูด อิสลามิกา",
+      "status": "ELIGIBLE",
+      "identityMasked": "1•••••••••25"
+    },
+    {
+      "id": "6aa910bc-ce03-41c7-8cb3-a0f96a541f0c",
+      "registryNumber": "REG-2569-0029",
+      "name": "มะฮ์มูด อิสลามิกา",
+      "status": "ELIGIBLE",
+      "identityMasked": "1•••••••••62"
+    },
+    {
+      "id": "ee6af587-a648-4608-826f-a98b5db9c2c0",
+      "registryNumber": "REG-2569-0030",
+      "name": "มะฮ์มูด อิสลามิกา",
+      "status": "ELIGIBLE",
+      "identityMasked": "1•••••••••67"
+    },
+    {
+      "id": "96cf3688-c06a-4367-82c4-ec7708cd3494",
+      "registryNumber": "REG-2569-0031",
+      "name": "อับดุลเลาะห์ สุมาลี",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "3•••••••••95"
+    },
+    {
+      "id": "4cf2345a-d491-484e-8d5b-8d6f7c7a728e",
+      "registryNumber": "REG-2569-0034",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••03"
+    },
+    {
+      "id": "d989f79b-7a4a-4536-8f36-c134f8a4116d",
+      "registryNumber": "REG-2569-0006-2",
+      "name": "ยูซุฟ มีลาภ",
+      "status": "ELIGIBLE",
+      "identityMasked": "1•••••••••06"
+    },
+    {
+      "id": "886554ed-c58c-47e6-86c4-fe1489f5bfda",
+      "registryNumber": "REG-2569-0037",
+      "name": "มะฮ์มูด อิสลามิกา",
+      "status": "ELIGIBLE",
+      "identityMasked": "1•••••••••84"
+    },
+    {
+      "id": "48900ba1-3642-474a-872d-d16baebefa05",
+      "registryNumber": "REG-2569-0038",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••19"
+    },
+    {
+      "id": "33a23b85-fc95-4cf7-8e67-5b337faa069f",
+      "registryNumber": "REG-2569-0040",
+      "name": "มุกลิส มีรยะ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••37"
+    },
+    {
+      "id": "e228d75a-db8f-446c-8cd7-2cbd5af70abb",
+      "registryNumber": "REG-2569-0049",
+      "name": "สุไลมาน สันติภาพ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••92"
+    },
+    {
+      "id": "66971e81-e485-4cbe-89ca-c22c0e72f4bf",
+      "registryNumber": "REG-2569-0102",
+      "name": "มะหะมะ สะมะแอ",
+      "status": "ELIGIBLE",
+      "identityMasked": "1•••••••••92"
+    },
+    {
+      "id": "b2667298-e7c3-4f58-885f-763772946f6c",
+      "registryNumber": "REG-2569-0101",
+      "name": "คอดีเยาะห์ ดาโอ๊ะ",
+      "status": "ELIGIBLE",
+      "identityMasked": "1•••••••••91"
+    },
+    {
+      "id": "1f4f48b6-e221-40ce-8d72-01314e1f40a2",
+      "registryNumber": "REG-2569-0812",
+      "name": "มีนะห์ สาและ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••62"
+    },
+    {
+      "id": "efcbbd1d-a05e-4f28-8ca2-370bacb5a32b",
+      "registryNumber": "REG-2569-0811",
+      "name": "รอซี มะแซ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••61"
+    },
+    {
+      "id": "99970007-5f42-415d-8607-4a950827a6f4",
+      "registryNumber": "REG-2569-0813",
+      "name": "อับดุลเลาะ ยูโซ๊ะ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••63"
+    },
+    {
+      "id": "63c0bf50-899f-434c-8cde-bd7a38fb129c",
+      "registryNumber": "REG-2569-0812-1",
+      "name": "มีนะห์ สาและ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••02"
+    },
+    {
+      "id": "4eb23f5f-80d9-41f4-817a-ca1e6a6fd2ce",
+      "registryNumber": "REG-2569-0811-2",
+      "name": "รอซี มะแซ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••01"
+    },
+    {
+      "id": "128515e9-a8f7-45b7-83c3-d3123aa5ba22",
+      "registryNumber": "REG-2569-0813-1",
+      "name": "อับดุลเลาะ ยูโซ๊ะ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••03"
+    },
+    {
+      "id": "73ba6b09-16ba-4a0e-8764-42bc6a8b3bce",
+      "registryNumber": "REG-2569-0811-3",
+      "name": "รอซี มะแซ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••41"
+    },
+    {
+      "id": "95cf2fec-2b42-491e-8d92-7335475e345a",
+      "registryNumber": "REG-2569-0812-2",
+      "name": "มีนะห์ สาและ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••42"
+    },
+    {
+      "id": "6ab0b26b-9607-479d-86f4-ae9e93ec225d",
+      "registryNumber": "REG-2569-0813-2",
+      "name": "อับดุลเลาะ ยูโซ๊ะ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••43"
+    },
+    {
+      "id": "4b6f3bb1-1140-4e53-825a-f4b00126266c",
+      "registryNumber": "REG-2569-0903",
+      "name": "รอฮิม เจะและ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••23"
+    },
+    {
+      "id": "eaa7f601-b155-4c70-8465-5832ba6f98ee",
+      "registryNumber": "REG-2569-0902",
+      "name": "ฟาตีมะห์ ยะผา",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••22"
+    },
+    {
+      "id": "372e2a3f-7ef9-4781-8e0b-270f0eb37ddd",
+      "registryNumber": "REG-2569-0901",
+      "name": "สุไลมาน ดอเลาะ",
+      "status": "PENDING_REVIEW",
+      "identityMasked": "1•••••••••21"
+    }
+  ]
+}
+{
+  "section": "candidate_test_applications",
+  "rows": [
+    {
+      "id": "14e58412-3566-44e4-b3e7-27b09dbd1a39",
+      "applicationNo": "APP-2569-TEST-445464",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "16f05585-2719-4aea-82e9-462b73476331",
+      "applicationNo": "APP-2569-0028",
+      "fullName": "สิทธิ์ ทดสอบ",
+      "status": "pending_approval",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "19bd48aa-ddf6-48b9-80f8-49b246a985c7",
+      "applicationNo": "APP-TEST-2-4728",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "19bdb042-9f9d-42df-a29e-47d190cd60b1",
+      "applicationNo": "APP-2569-TEST-404825",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "1ad174f0-16c0-424a-a844-67e0a1c8611b",
+      "applicationNo": "APP-2569-TEST-703898",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "1b6c1df3-b2bd-4ae4-809b-845c4682c3b1",
+      "applicationNo": "APP-T4-01-0050",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "1c0d5439-e1a3-4f92-847b-899b9c107cf3",
+      "applicationNo": "APP-T5-01-1515",
+      "fullName": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "221d7d40-67ca-412a-843f-07f340cc6126",
+      "applicationNo": "APP-TEST-FIN-8386",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "23a5378c-f789-40aa-8768-30ebc8de36e6",
+      "applicationNo": "APP-T4-02-0050",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "23f94d10-0c93-4670-841a-649ef9730520",
+      "applicationNo": "APP-2569-0036",
+      "fullName": "ทดสอบ ไม่อนุมัติ",
+      "status": "rejected",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "25083296-b6ea-4ffd-87f8-11b47dbb10bd",
+      "applicationNo": "APP-TEST-FIN-4390",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "25429bc0-96ac-4bf3-804a-7f3e6b834552",
+      "applicationNo": "APP-2569-0023",
+      "fullName": "ทดสอบ ไม่อนุมัติ",
+      "status": "rejected",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "2e161183-cde5-45d5-864f-3c0d66cadf12",
+      "applicationNo": "APP-T5-01-9305",
+      "fullName": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "316c4037-1d83-4bc9-86c6-a75cce965a10",
+      "applicationNo": "APP-T4-01-2755",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "3547a0f9-cc5f-4022-87d9-1b8474e86e28",
+      "applicationNo": "APP-TEST-2-4434",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "37ed64ce-3fc9-43d9-87c2-0d5b72160090",
+      "applicationNo": "APP-T5-02-1515",
+      "fullName": "มาลี ผู้มีภาระหนี้ทดสอบ 5.2",
+      "status": "partially_disbursed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "38348522-01eb-4144-848d-0eb0739ed80c",
+      "applicationNo": "APP-2569-0020",
+      "fullName": "ทดสอบ ไม่อนุมัติ",
+      "status": "rejected",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "38bd7cf0-4481-4671-bffb-b7e621c8ef5a",
+      "applicationNo": "APP-2569-TEST-422044",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "3b3deb70-bd40-4e2b-abe6-969d91cbcfe3",
+      "applicationNo": "APP-2569-TEST-690143",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "3f7c4c5a-b063-452b-908d-95e4f2c32667",
+      "applicationNo": "APP-2569-TEST-458404",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "404af0c6-ae32-43df-8f1e-e3bbbc9a8666",
+      "applicationNo": "APP-TEST-FIN-8243",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "40c82aab-bc8b-4a8c-8b49-152f8dd8336a",
+      "applicationNo": "APP-2569-0017",
+      "fullName": "ทดสอบ ไม่อนุมัติ",
+      "status": "rejected",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "4510ca65-7ac8-4fa2-8d65-42b76f005dec",
+      "applicationNo": "APP-T4-02-5949",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "45cee62a-25a7-46ef-9338-633483a35a2f",
+      "applicationNo": "APP-2569-TEST-802388",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "4b676d92-2384-4461-8105-9d1dba532791",
+      "applicationNo": "APP-T4-02-0155",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "completed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "4dc38251-ead1-4ce4-81f0-06eabbd24a63",
+      "applicationNo": "APP-2569-TEST-633284",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "515f25c2-d961-4158-8f46-9ef89dd71663",
+      "applicationNo": "APP-T4-02-2755",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "57d41e90-9ee7-48bd-b5cd-ac874216c97f",
+      "applicationNo": "APP-2569-TEST-856475",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "5969d648-a231-4def-8a50-4035d5a40216",
+      "applicationNo": "APP-T4-01-4670",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "5a9be657-b641-4d4e-80a0-101220134df3",
+      "applicationNo": "APP-TEST-FIN-7598",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "5b027ee7-d7d7-45f4-89f9-0f0c67390e59",
+      "applicationNo": "APP-T4-02-1424",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "5b2f937d-0a55-4263-8c24-88589861dc26",
+      "applicationNo": "APP-T5-01-0390",
+      "fullName": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "687fe256-ced3-4028-a2fb-bfc62572fb61",
+      "applicationNo": "APP-2569-TEST-674288",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "6ae76efa-013a-4658-8d53-72f5140a9650",
+      "applicationNo": "APP-TEST-2-4425",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "6c7e1b6f-0c9f-46ba-890f-8918ffbf094c",
+      "applicationNo": "APP-TEST-2-7639",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "74671611-bcc5-48f1-8ed9-d2f3ea2cd2c3",
+      "applicationNo": "APP-TEST-2-0873",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "82305fda-b292-45cb-871e-a10c41882904",
+      "applicationNo": "APP-T4-01-5949",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "8287674e-e9c6-4f05-8022-4c9015809185",
+      "applicationNo": "APP-T4-01-5372",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "855f0434-9ce1-4fcc-a7cd-fb164639c21e",
+      "applicationNo": "APP-2569-TEST-630346",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "906fc427-3b45-4561-821e-4555d9d6f4a0",
+      "applicationNo": "APP-T5-02-4316",
+      "fullName": "มาลี ผู้มีภาระหนี้ทดสอบ 5.2",
+      "status": "partially_disbursed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "94a7a804-223a-4955-88bf-92b6d9df4a24",
+      "applicationNo": "APP-T4-01-0155",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "completed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "9871cdc2-5da6-48ec-8260-d47491d0dd0d",
+      "applicationNo": "APP-T4-01-5369",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "completed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "9fdeeeb6-96ad-45bb-82e2-e0fd07c64151",
+      "applicationNo": "APP-TEST-FIN-6329",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "a25e548f-7c0f-45a5-837c-b2583ae9e153",
+      "applicationNo": "APP-T4-03-0155",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "a90945fd-608b-4180-8342-9fbc6e3d79d8",
+      "applicationNo": "APP-T4-01-1424",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ad0fdac2-5ce0-4088-8a7b-9d5163304bf0",
+      "applicationNo": "APP-T4-02-8429",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "ae192111-be82-4208-8d4d-339903ed1334",
+      "applicationNo": "APP-T4-01-8962",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "b068c7ac-18cf-4fe1-8b49-34f57e2273ac",
+      "applicationNo": "APP-2569-0027",
+      "fullName": "ทดสอบ ไม่อนุมัติ",
+      "status": "rejected",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "b15a90a7-c189-4890-a1f1-331a351fa2aa",
+      "applicationNo": "APP-2569-TEST-493406",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "b4aa48cc-de1e-4281-8b0e-12a916294162",
+      "applicationNo": "APP-2569-0021",
+      "fullName": "สิทธิ์ ทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "bc8a9d57-a2d8-47f4-8af7-123a0055d484",
+      "applicationNo": "APP-TEST-2-8433",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "bcae6f13-9a0d-4256-82a9-9496ac2efb4d",
+      "applicationNo": "APP-T4-03-5369",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "c6b03ec7-cf28-4308-87b6-822921fcb701",
+      "applicationNo": "APP-TEST-FIN-4375",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "d06ed768-0f06-4651-8abf-593c6c2c558f",
+      "applicationNo": "APP-T4-02-4959",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "completed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "d1fbd56e-cc5b-45e9-84cd-314c6867f020",
+      "applicationNo": "APP-T4-02-8962",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "d2977788-d9bb-4cb0-8ae9-2fabe89c25be",
+      "applicationNo": "APP-TEST-FIN-0809",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "closed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "d2d02357-4c60-4fd9-8647-622277ffa820",
+      "applicationNo": "APP-T4-02-4670",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "d338514a-a318-4b1d-8f58-cb76f576b61f",
+      "applicationNo": "APP-T4-01-4959",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "completed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "da0ef19d-c32d-49d5-8c93-69df88c4605a",
+      "applicationNo": "APP-2569-TEST-650971",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "dbbc6396-f048-40f1-8d58-81e949f173b2",
+      "applicationNo": "APP-T5-01-4316",
+      "fullName": "สมชาย ผู้ยากไร้ทดสอบ 5.1",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "decf3b58-e7ad-43c4-81b6-b7b2bcdb5b6f",
+      "applicationNo": "APP-2569-0024",
+      "fullName": "สิทธิ์ ทดสอบ",
+      "status": "submitted",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "e703ecb8-13df-488e-8844-e49994aeea44",
+      "applicationNo": "APP-2569-TEST-472486",
+      "fullName": "อับดุลเลาะห์ ศรัทธาธรรม",
+      "status": "disbursed",
+      "reasons": [
+        "test_application_no"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "e87f1650-ff7f-474f-81ae-a819a691cb1c",
+      "applicationNo": "APP-TEST-2-8288",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "ef422f79-a0ac-4d7b-8256-80fcd370e467",
+      "applicationNo": "APP-T4-02-5372",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "f2d000b8-d57c-416c-8ff5-7e205b657d02",
+      "applicationNo": "APP-2569-0018",
+      "fullName": "สิทธิ์ ทดสอบ",
+      "status": "submitted",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "f93a2e4a-cd3e-45ef-8f93-1421a3f6c1cb",
+      "applicationNo": "APP-TEST-FIN-0639",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "fa0586d6-96d5-4608-8d73-95b88e620b31",
+      "applicationNo": "APP-T4-02-5369",
+      "fullName": "รอฮานา ฆอริมีนทดสอบ",
+      "status": "completed",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "fa24b43d-01a9-47eb-8552-58f035570a8a",
+      "applicationNo": "APP-TEST-2-6380",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "fafa61c5-e2b4-49ed-8695-74115a3b0be6",
+      "applicationNo": "APP-TEST-2-0686",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "fc5ea145-c4f0-47ef-8a06-254fe03a0da5",
+      "applicationNo": "APP-T4-01-8429",
+      "fullName": "สุไลมาน ฟากีรทดสอบ",
+      "status": "wait_disbursement",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    },
+    {
+      "id": "fccfc5a8-8fc8-4721-8edc-8c511c3c0682",
+      "applicationNo": "APP-TEST-FIN-4661",
+      "fullName": "ทดสอบ การเงิน",
+      "status": "disbursed",
+      "reasons": [
+        "test_name_token",
+        "test_application_no"
+      ],
+      "bucket": "TEST"
+    },
+    {
+      "id": "fd978960-379a-472b-8da5-f4a126b2a518",
+      "applicationNo": "APP-2569-0037",
+      "fullName": "สิทธิ์ ทดสอบ",
+      "status": "submitted",
+      "reasons": [
+        "test_name_token"
+      ],
+      "bucket": "REVIEW"
+    }
+  ]
+}
+{
+  "section": "finance_reference",
+  "funds": [
+    {
+      "id": "817729f8-8919-43e6-8a57-260f473ea2d0",
+      "code": "FND-ZKT-02",
+      "name": "กองทุนซะกาตเพื่อการปลดเปลื้องหนี้สิน (Gharimin)",
+      "availableAmount": "550000",
+      "totalReceived": "1400000",
+      "disbursedAmount": "850000",
+      "isActive": true
+    },
+    {
+      "id": "527fe50d-3204-4178-8a0b-73de18a2a64c",
+      "code": "FND-ZKT-03",
+      "name": "กองทุนซะกาตทุนการศึกษาและเยาวชน (Fi Sabilillah)",
+      "availableAmount": "650000",
+      "totalReceived": "2100000",
+      "disbursedAmount": "1450000",
+      "isActive": true
+    },
+    {
+      "id": "e5c33b32-eed9-443e-8431-fa821f40b306",
+      "code": "FND-ZKT-04",
+      "name": "กองทุนซะกาตผู้เดินทางตกยาก (Ibn Sabil)",
+      "availableAmount": "135000",
+      "totalReceived": "450000",
+      "disbursedAmount": "315000",
+      "isActive": true
+    },
+    {
+      "id": "129d1c3b-c532-4040-874d-357671c741b6",
+      "code": "FND-SDQ-01",
+      "name": "กองทุนศอดะเกาะฮ์และเงินบริจาคทั่วไป (General Sadaqah)",
+      "availableAmount": "756000",
+      "totalReceived": "2606000",
+      "disbursedAmount": "1850000",
+      "isActive": true
+    },
+    {
+      "id": "fda93bd9-002a-4ef0-82fd-5db4c2fcb296",
+      "code": "FND-OPR-01",
+      "name": "กองทุนค่าใช้จ่ายดำเนินงานมูลนิธิ (Amil & Operations)",
+      "availableAmount": "512500",
+      "totalReceived": "1230000",
+      "disbursedAmount": "717500",
+      "isActive": true
+    },
+    {
+      "id": "3d32f831-b5f4-4cfe-861b-fb8d6d7f0a36",
+      "code": "FND-ZKT-01",
+      "name": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "availableAmount": "1830007.5",
+      "totalReceived": "5312507.5",
+      "disbursedAmount": "3462007",
+      "isActive": true
+    }
+  ],
+  "bankAccounts": [
+    {
+      "id": "c82fa07f-6a88-4d3c-876d-06c78a698f50",
+      "bankName": "ธนาคารอิสลามแห่งประเทศไทย",
+      "accountName": "ธนาคารอิสลามแห่งประเทศไทย — มูลนิธิบัยตุลมาล ยะลา",
+      "currentBalance": "2800000",
+      "status": "active"
+    },
+    {
+      "id": "0e00a9dd-a6ed-409e-8461-8c428c33e1b5",
+      "bankName": "ธนาคารกรุงไทย",
+      "accountName": "ธนาคารกรุงไทย — มูลนิธิบัยตุลมาล ยะลา",
+      "currentBalance": "1750000",
+      "status": "active"
+    },
+    {
+      "id": "6ea3ad11-b7a2-4218-8d5c-f9627490312a",
+      "bankName": "ธนาคารอิสลามแห่งประเทศไทย",
+      "accountName": "ธนาคารอิสลามแห่งประเทศไทย — มูลนิธิซะกาตและสาธารณกุศล",
+      "currentBalance": "2427993",
+      "status": "active"
+    }
+  ],
+  "recentTransactions": [
+    {
+      "id": "260abc7a-c9ea-4064-afb6-fc0a4620af7a",
+      "transactionNo": "TXN-DISB-2569-096432",
+      "type": "disbursement",
+      "notes": "เบิกจ่ายผ่าน Next.js BFF Proxy",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T12:37:37.293Z"
+    },
+    {
+      "id": "52f0ded3-ac11-49bd-bd59-d610cc5f8cd3",
+      "transactionNo": "TXN-DISB-2569-096431",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T12:37:36.719Z"
+    },
+    {
+      "id": "1c3a4245-4144-4a08-9a3b-b86179d78642",
+      "transactionNo": "TXN-DISB-2569-096430",
+      "type": "disbursement",
+      "notes": "เบิกจ่ายผ่าน Next.js BFF Proxy",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T11:24:34.440Z"
+    },
+    {
+      "id": "53b19783-bfde-4052-9bb8-28de5c0d4f87",
+      "transactionNo": "TXN-DISB-2569-096429",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T11:24:32.728Z"
+    },
+    {
+      "id": "fdd00f88-94c1-426d-b698-f3ea4ef5446d",
+      "transactionNo": "TXN-DISB-2569-096428",
+      "type": "disbursement",
+      "notes": "เบิกจ่ายผ่าน Next.js BFF Proxy",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T11:10:31.183Z"
+    },
+    {
+      "id": "8e44a8f1-da29-4bdb-bc9a-2b5fb4ce74bc",
+      "transactionNo": "TXN-DISB-2569-096427",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T11:10:30.572Z"
+    },
+    {
+      "id": "1baf8641-c938-4ca5-b7a0-0c4acfb3e02c",
+      "transactionNo": "TXN-DISB-2569-096426",
+      "type": "disbursement",
+      "notes": "เบิกจ่ายผ่าน Next.js BFF Proxy",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:50:05.561Z"
+    },
+    {
+      "id": "ec0753fb-ce7d-4635-ba1d-88bef4441a8b",
+      "transactionNo": "TXN-DISB-2569-096425",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:50:05.049Z"
+    },
+    {
+      "id": "66f84dd4-b996-438d-bed0-7b9313bfd703",
+      "transactionNo": "TXN-DISB-2569-096424",
+      "type": "disbursement",
+      "notes": "เบิกจ่ายผ่าน Next.js BFF Proxy",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:17:39.179Z"
+    },
+    {
+      "id": "b3d844e4-7f19-4eb1-a3b5-1096730f322e",
+      "transactionNo": "TXN-DISB-2569-096423",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:17:38.620Z"
+    },
+    {
+      "id": "eab19ccc-4089-4410-a29e-6b920ffaf49d",
+      "transactionNo": "TXN-DISB-2569-096422",
+      "type": "disbursement",
+      "notes": "เบิกจ่ายผ่าน Next.js BFF Proxy",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:06:43.074Z"
+    },
+    {
+      "id": "3fad948c-3a7a-4537-bad4-ab1db9d4894f",
+      "transactionNo": "TXN-DISB-2569-096421",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:06:42.602Z"
+    },
+    {
+      "id": "34553c2e-cf3c-47e5-9cd3-9721a19cfeab",
+      "transactionNo": "TXN-DISB-2569-096420",
+      "type": "disbursement",
+      "notes": "เบิกจ่ายผ่าน Next.js BFF Proxy",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:05:05.629Z"
+    },
+    {
+      "id": "6a39739c-6903-4147-a84a-b3d59988e50a",
+      "transactionNo": "TXN-DISB-2569-096419",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:05:04.113Z"
+    },
+    {
+      "id": "bbe8e96f-a644-42a5-b88b-a631da0fba60",
+      "transactionNo": "TXN-DISB-2569-096418",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:04:50.395Z"
+    },
+    {
+      "id": "37c38a89-1487-4802-97c3-8220ac9b5ef3",
+      "transactionNo": "TXN-DISB-2569-096417",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:04:34.527Z"
+    },
+    {
+      "id": "485d220f-f393-4dca-9796-66079dc5f163",
+      "transactionNo": "TXN-DISB-2569-096416",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:04:11.195Z"
+    },
+    {
+      "id": "5e69c990-016f-45a9-8752-a68e144bdb8e",
+      "transactionNo": "TXN-DISB-2569-096415",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:03:53.585Z"
+    },
+    {
+      "id": "78db31f6-e90a-4445-9af2-ad011b2d2c12",
+      "transactionNo": "TXN-DISB-2569-096414",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:01:33.648Z"
+    },
+    {
+      "id": "a4ee70e3-bbce-4ac8-b39f-8616000a058d",
+      "transactionNo": "TXN-DISB-2569-096413",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:00:45.712Z"
+    },
+    {
+      "id": "bf7bba1d-98b2-48f2-b88c-e8499c7be273",
+      "transactionNo": "TXN-DISB-2569-096412",
+      "type": "disbursement",
+      "notes": "โอนเงินสงเคราะห์ผ่านระบบ KTB Corporate Online สำเร็จ",
+      "amount": "6500.5",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-30T10:00:22.299Z"
+    },
+    {
+      "id": "aa8cb2ef-bbea-4ac4-8ff1-05234b36d82b",
+      "transactionNo": "TXN-S1-5372",
+      "type": "transfer",
+      "notes": null,
+      "amount": "15000",
+      "fundName": "กองทุนซะกาต",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:39:15.000Z"
+    },
+    {
+      "id": "667d05df-2b64-4eaf-84ae-6cd83b329109",
+      "transactionNo": "TXN-REF-42290",
+      "type": "reversal",
+      "notes": "รับคืนเงินเหลือจากการช่วยเหลือ (REF-20261023-2288): ส่งคืนเงินช่วยเหลือคงเหลือจากงวดที่ 1 เนื่องจากเจ้าหนี้ลดหย่อนยอดหนี้",
+      "amount": "6000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:39:02.000Z"
+    },
+    {
+      "id": "4dd9012b-16a3-432a-80ce-73f85fd275db",
+      "transactionNo": "TXN-T5-S1-1515",
+      "type": "transfer",
+      "notes": null,
+      "amount": "20000",
+      "fundName": "กองทุนซะกาต",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:39:01.000Z"
+    },
+    {
+      "id": "a1591c0b-c104-4b36-89ea-d4a5fdd13815",
+      "transactionNo": "TXN-REF-65063",
+      "type": "reversal",
+      "notes": "รับคืนเงินเหลือจากการช่วยเหลือ (REF-20261023-5062): ส่งคืนเงินช่วยเหลือคงเหลือจากงวดที่ 1 เนื่องจากเจ้าหนี้ลดหย่อนยอดหนี้",
+      "amount": "6000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:37:45.000Z"
+    },
+    {
+      "id": "1bc4f9c2-b09b-463b-8241-5c2e38e199d5",
+      "transactionNo": "TXN-T5-S1-4316",
+      "type": "transfer",
+      "notes": null,
+      "amount": "20000",
+      "fundName": "กองทุนซะกาต",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:37:44.000Z"
+    },
+    {
+      "id": "f3b1b95d-7973-49ec-8df4-aa08b377f8f0",
+      "transactionNo": "TXN-T5-S1-9305",
+      "type": "transfer",
+      "notes": null,
+      "amount": "20000",
+      "fundName": "กองทุนซะกาต",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:34:09.000Z"
+    },
+    {
+      "id": "dd052a43-a51e-44ed-83b9-0668e2ad98a1",
+      "transactionNo": "TXN-T5-S1-0390",
+      "type": "transfer",
+      "notes": null,
+      "amount": "20000",
+      "fundName": "กองทุนซะกาต",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:33:00.000Z"
+    },
+    {
+      "id": "a36a113b-c149-439f-8508-1db28f46c99f",
+      "transactionNo": "TXN-REF-86519",
+      "type": "reversal",
+      "notes": "รับคืนเงินเหลือจากการช่วยเหลือ (REF-20261023-6518): ส่งคืนเงินช่วยเหลือคงเหลือสุทธิ",
+      "amount": "2500",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:23:06.000Z"
+    },
+    {
+      "id": "40e1224f-f07c-4762-8b49-cd527e07d683",
+      "transactionNo": "TXN-REF-86243",
+      "type": "reversal",
+      "notes": "รับคืนเงินเหลือจากการช่วยเหลือ (REF-20261023-6241): ส่งคืนเงินช่วยเหลือคงเหลือจากงวดที่ 1 และ 2 เข้ากองทุน",
+      "amount": "3000",
+      "fundName": "กองทุนซะกาตผู้ยากไร้และขัดสน",
+      "linkedTestBeneficiary": false,
+      "createdAt": "2026-10-22T19:23:06.000Z"
+    }
+  ]
+}
+{
+  "section": "org",
+  "branches": [
+    {
+      "id": "ee63cdf4-c469-4209-89aa-44bc087e688a",
+      "code": "BR-YL",
+      "name": "สำนักงานใหญ่",
+      "status": "active"
+    },
+    {
+      "id": "8c619d41-891c-4aaf-8ba4-dad4ffcd39ee",
+      "code": "BR-CTR",
+      "name": "สาขาภาคกลางและปริมณฑล",
+      "status": "active"
+    },
+    {
+      "id": "4953164d-fae1-4f76-84de-39af79592f3e",
+      "code": "BR-STH",
+      "name": "สาขาภาคใต้ (ปัตตานี)",
+      "status": "active"
+    },
+    {
+      "id": "a3e119d0-af19-4b02-8791-2fe4b4355873",
+      "code": "BR-NTH",
+      "name": "สาขาภาคเหนือ (เชียงใหม่)",
+      "status": "active"
+    }
+  ],
+  "departments": [
+    {
+      "id": "01a69c4b-e019-4863-8836-7a6ed6f80967",
+      "code": "DEPT-BRD",
+      "name": "คณะกรรมการมูลนิธิและชะรีอะฮ์",
+      "status": "active"
+    },
+    {
+      "id": "c3e99207-5727-4e00-83a8-301d294bbeda",
+      "code": "DEPT-SOC",
+      "name": "ฝ่ายสังคมสงเคราะห์และลงพื้นที่",
+      "status": "active"
+    },
+    {
+      "id": "7b5ffdc1-25f8-4afa-8950-eb6da3d98846",
+      "code": "DEPT-FIN",
+      "name": "ฝ่ายการเงินและบัญชีกองทุน",
+      "status": "active"
+    },
+    {
+      "id": "1ff1c70a-cf0c-4855-8bc3-76ea64a5acc3",
+      "code": "DEPT-SYS",
+      "name": "ฝ่ายเทคโนโลยีสารสนเทศและการรักษาความปลอดภัย",
+      "status": "active"
+    },
+    {
+      "id": "516d4a42-f28f-475b-855b-7e0c78820343",
+      "code": "DEPT-PUB",
+      "name": "แผนกบริการสมาชิกและผู้บริจาคทั่วไป",
+      "status": "active"
+    }
+  ]
+}
+{
+  "section": "audit_sample",
+  "rows": [
+    {
+      "id": "ca180655-095f-4314-a532-d27388019ac6",
+      "action": "BENEFICIARY_SOFT_DELETE",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:42:24.989Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "e4cd4757-0e8b-4c84-8576-4605417b7c84",
+      "action": "AUTH_LOGIN",
+      "resourceType": "user",
+      "createdAt": "2026-10-31T14:35:45.039Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "722c7e9e-2d4c-4fb1-a5f4-563cb7b1f04c",
+      "action": "BENEFICIARY_VIEW",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:29:45.621Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "ef734ee1-7112-4079-8fd8-fa624caafc26",
+      "action": "CONSENT_RECORDED",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:29:37.654Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "677b633c-7008-45d4-b8de-a6de8ff57927",
+      "action": "ASNAF_PROPOSAL",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:29:37.604Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "78ec7e83-9ea8-4872-a554-2b6ca8941bdd",
+      "action": "HOUSEHOLD_UPDATE",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:29:37.527Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "7c0947ee-308b-414f-8815-d41170cc812e",
+      "action": "INCOME_PROFILE_UPDATE",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:29:37.472Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "64726418-4f0d-4b9b-93ca-823d1976eddb",
+      "action": "ADDRESS_UPDATE",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:29:37.428Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "e8023cf7-f1ce-4942-a0d1-d2ceda77a1d2",
+      "action": "BENEFICIARY_CREATE",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:29:37.381Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "d69d80a8-4e90-4607-a021-05b045bd835b",
+      "action": "AUTH_LOGIN",
+      "resourceType": "user",
+      "createdAt": "2026-10-31T14:28:58.790Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "5f9dbe5d-8547-4c4c-87b8-b28501dff864",
+      "action": "CONSENT_RECORDED",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:23:06.692Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "826ba044-7dd8-4db9-8692-f3b0e006805b",
+      "action": "HOUSEHOLD_UPDATE",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:23:06.627Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "aaf1034a-7ca8-4b77-840f-6c00ea7f12fe",
+      "action": "BENEFICIARY_CREATE",
+      "resourceType": "beneficiary",
+      "createdAt": "2026-10-31T14:23:06.563Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "6d944f33-691b-4a15-9baa-c623e80bc0bb",
+      "action": "AUTH_LOGIN",
+      "resourceType": "user",
+      "createdAt": "2026-10-31T14:17:55.187Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "b338b973-c018-48d2-85f7-df1472120ad0",
+      "action": "AUTH_LOGIN",
+      "resourceType": "user",
+      "createdAt": "2026-10-31T14:09:14.183Z",
+      "actorId": "fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d"
+    },
+    {
+      "id": "643294a5-8d23-4ae6-adaa-369f79cd989f",
+      "action": "AUTH_LOGIN_FAILED",
+      "resourceType": "auth",
+      "createdAt": "2026-10-31T14:08:36.966Z",
+      "actorId": null
+    },
+    {
+      "id": "e39d7130-f0ec-441d-bbe9-c851337655e4",
+      "action": "AUTH_LOGIN_FAILED",
+      "resourceType": "auth",
+      "createdAt": "2026-10-31T14:05:56.478Z",
+      "actorId": null
+    },
+    {
+      "id": "0ed6f5f9-6ee4-4a11-82f5-23a53e661e92",
+      "action": "AUTH_LOGIN_FAILED",
+      "resourceType": "auth",
+      "createdAt": "2026-10-31T14:05:56.271Z",
+      "actorId": null
+    },
+    {
+      "id": "2a5623f0-362f-4894-84e9-6c53abca2880",
+      "action": "AUTH_LOGIN_FAILED",
+      "resourceType": "auth",
+      "createdAt": "2026-10-31T14:05:55.910Z",
+      "actorId": null
+    },
+    {
+      "id": "867856a3-a361-4819-8cca-0a446209146d",
+      "action": "AUTH_LOGIN_FAILED",
+      "resourceType": "auth",
+      "createdAt": "2026-10-31T14:05:55.310Z",
+      "actorId": null
+    }
+  ]
+}

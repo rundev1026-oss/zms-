@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   FileText,
   Image as ImageIcon,
@@ -31,6 +31,7 @@ export interface DocumentListTableProps {
   title?: string;
   readOnly?: boolean;
   onDelete?: (docId: string) => Promise<void> | void;
+  onReplace?: (doc: BeneficiaryDocument, file: File) => Promise<void> | void;
   onVerify?: (docId: string, status: 'verified' | 'rejected') => Promise<void> | void;
   showVerificationControls?: boolean;
 }
@@ -54,6 +55,7 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
   title,
   readOnly = false,
   onDelete,
+  onReplace,
   onVerify,
   showVerificationControls = false,
 }) => {
@@ -65,6 +67,15 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
   const [deletingDoc, setDeletingDoc] = useState<BeneficiaryDocument | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const replaceTargetRef = useRef<BeneficiaryDocument | null>(null);
+
+  const authHeaders = (): Record<string, string> => {
+    const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const isPrivateDocument = (doc: BeneficiaryDocument) => Boolean(doc.fileUrl?.startsWith('/api/documents/'));
 
   const formatSize = (bytes?: number): string => {
     if (!bytes || bytes === 0) return 'ไม่ระบุขนาด';
@@ -135,8 +146,13 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
       if (currentUser?.role) params.set('actorRole', currentUser.role);
       if (currentUser?.name) params.set('actorName', currentUser.name);
 
-      const downloadUrl = `/api/storage/file/${doc.id}?${params.toString()}`;
-      const res = await fetch(downloadUrl);
+      const downloadUrl = isPrivateDocument(doc)
+        ? `/api/documents/${doc.id}/content`
+        : `/api/storage/file/${doc.id}?${params.toString()}`;
+      const res = await fetch(downloadUrl, {
+        headers: authHeaders(),
+        credentials: 'include',
+      });
       if (!res.ok) {
         const errorJson = await res.json().catch(() => ({}));
         throw new Error(errorJson.error || 'ดาวน์โหลดเอกสารไม่สำเร็จ');
@@ -171,7 +187,10 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const res = await fetch(`/api/storage/file/${deletingDoc.id}`, {
+        const deleteUrl = isPrivateDocument(deletingDoc)
+          ? `/api/documents/${deletingDoc.id}`
+          : `/api/storage/file/${deletingDoc.id}`;
+        const res = await fetch(deleteUrl, {
           method: 'DELETE',
           headers,
         });
@@ -189,8 +208,29 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
     }
   };
 
+  const handleReplaceFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const target = replaceTargetRef.current;
+    replaceTargetRef.current = null;
+    if (!file || !target || !onReplace) return;
+    try {
+      await onReplace(target, file);
+      showToast(`เปลี่ยนเอกสาร "${target.name}" เรียบร้อยแล้ว`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'เปลี่ยนเอกสารไม่สำเร็จ', 'error');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <input
+        ref={replaceInputRef}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png"
+        className="hidden"
+        onChange={handleReplaceFile}
+      />
       {/* Optional Title Header */}
       {title && (
         <div className="flex items-center justify-between pb-1">
@@ -207,8 +247,8 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
       {documents.length === 0 ? (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-400 space-y-1">
           <FileQuestion className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-          <p className="font-semibold text-slate-600">ไม่มีเอกสารแนบในรายการนี้</p>
-          <p className="text-[11px] text-slate-400">ยังไม่มีการอัปโหลดไฟล์หลักฐานประกอบในระบบ</p>
+          <p className="font-semibold text-slate-600">ยังไม่มีเอกสารแนบ</p>
+          <p className="text-[11px] text-slate-400">เมื่อแนบไฟล์และบันทึกสำเร็จ เอกสารจะแสดงในรายการนี้</p>
         </div>
       ) : (
         <>
@@ -244,7 +284,7 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
                             </span>
                             {isLegacyMissing && (
                               <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 inline-flex items-center gap-1 mt-0.5">
-                                <AlertTriangle className="w-2.5 h-2.5" /> พาธเดิมไม่มีไฟล์จริง
+                                <AlertTriangle className="w-2.5 h-2.5" /> ไม่พบไฟล์ต้นฉบับ
                               </span>
                             )}
                           </div>
@@ -290,7 +330,7 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
                           <div>
                             {doc.status === 'verified' ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
-                                <CheckCircle2 className="w-2.5 h-2.5" /> ผ่านการตรวจ
+                                <CheckCircle2 className="w-2.5 h-2.5" /> พร้อมใช้งาน
                               </span>
                             ) : doc.status === 'rejected' ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full">
@@ -312,8 +352,9 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
                           <button
                             type="button"
                             onClick={() => setPreviewDoc(doc)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold text-xs transition-colors"
-                            title="เปิดดูเอกสาร"
+                            disabled={isLegacyMissing}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold text-xs transition-colors disabled:opacity-40"
+                            title={isLegacyMissing ? 'ไม่พบไฟล์ต้นฉบับ' : 'เปิดดูเอกสาร'}
                           >
                             <Eye className="w-3.5 h-3.5" />
                             <span>เปิดดู</span>
@@ -329,7 +370,7 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
                                 ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                             }`}
-                            title={isLegacyMissing ? 'ไฟล์เดิมไม่มีอยู่ในพื้นที่จัดเก็บ' : 'ดาวน์โหลดไฟล์'}
+                            title={isLegacyMissing ? 'ไม่พบไฟล์ต้นฉบับ' : 'ดาวน์โหลดไฟล์'}
                           >
                             {downloadingId === doc.id ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -338,6 +379,21 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
                             )}
                             <span>ดาวน์โหลด</span>
                           </button>
+
+                          {!readOnly && onReplace && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                replaceTargetRef.current = doc;
+                                replaceInputRef.current?.click();
+                              }}
+                              disabled={isLegacyMissing}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs transition-colors disabled:opacity-40"
+                              title="เปลี่ยนเอกสาร"
+                            >
+                              <span>เปลี่ยน</span>
+                            </button>
+                          )}
 
                           {/* Details Button */}
                           <button

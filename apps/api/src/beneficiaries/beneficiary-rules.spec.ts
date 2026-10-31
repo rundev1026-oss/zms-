@@ -140,6 +140,7 @@ function sample(): BeneficiaryRecord {
     updatedAt: now,
     createdById: null,
     updatedById: null,
+    createdBy: null,
     addresses: [],
     assessments: [],
   };

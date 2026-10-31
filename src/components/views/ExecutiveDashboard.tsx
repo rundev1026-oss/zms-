@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
 import { Branch, Department } from '@/types';
 import { 
@@ -702,7 +703,7 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
                     {app.applicationNo}
                   </td>
                   <td className="py-3 px-3">
-                    <div className="font-medium text-slate-900">{app.fullName}</div>
+                    <div className="font-medium text-slate-900">{formatPersonName(app)}</div>
                     <div className="text-[11px] text-slate-400">{app.province} ({app.district})</div>
                   </td>
                   <td className="py-3 px-3">

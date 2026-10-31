@@ -73,6 +73,11 @@ class HouseholdMemberDto {
     occupation;
     isDependent;
     sortOrder;
+    monthlyIncome;
+    educationStatus;
+    healthStatus;
+    healthNotes;
+    notes;
 }
 exports.HouseholdMemberDto = HouseholdMemberDto;
 __decorate([
@@ -122,6 +127,42 @@ __decorate([
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], HouseholdMemberDto.prototype, "sortOrder", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'รายได้ต่อเดือนของสมาชิก' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], HouseholdMemberDto.prototype, "monthlyIncome", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(150),
+    __metadata("design:type", String)
+], HouseholdMemberDto.prototype, "educationStatus", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(80),
+    __metadata("design:type", String)
+], HouseholdMemberDto.prototype, "healthStatus", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(500),
+    __metadata("design:type", String)
+], HouseholdMemberDto.prototype, "healthNotes", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(500),
+    __metadata("design:type", String)
+], HouseholdMemberDto.prototype, "notes", void 0);
 class UpsertHouseholdDto {
     memberCount;
     householdIncome;
@@ -349,7 +390,8 @@ __decorate([
     __metadata("design:type", String)
 ], UpsertHouseholdDto.prototype, "locationVerificationStatus", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({ type: [HouseholdMemberDto] }),
+    (0, swagger_1.ApiPropertyOptional)({ type: [HouseholdMemberDto] }),
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)(),
     (0, class_validator_1.ValidateNested)({ each: true }),
     (0, class_transformer_1.Type)(() => HouseholdMemberDto),
@@ -517,6 +559,7 @@ __decorate([
 ], LoginDto.prototype, "password", void 0);
 class UploadDocumentDto {
     documentType;
+    replacesDocumentId;
 }
 exports.UploadDocumentDto = UploadDocumentDto;
 __decorate([
@@ -526,6 +569,12 @@ __decorate([
     (0, class_validator_1.MaxLength)(80),
     __metadata("design:type", String)
 ], UploadDocumentDto.prototype, "documentType", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'รหัสเอกสารเดิมที่ถูกแทนที่' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsUUID)('4', { message: 'รหัสเอกสารเดิมไม่ถูกต้อง' }),
+    __metadata("design:type", String)
+], UploadDocumentDto.prototype, "replacesDocumentId", void 0);
 class Enable2faDto {
     code;
     secret;

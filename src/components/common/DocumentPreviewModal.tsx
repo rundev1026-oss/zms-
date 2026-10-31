@@ -44,6 +44,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [hasError, setHasError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -54,6 +55,49 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       setErrorMessage('');
     }
   }, [isOpen, doc]);
+
+  useEffect(() => {
+    if (!isOpen || !doc || doc.fileExists === false) return;
+    let active = true;
+    let created = '';
+    const load = async () => {
+      const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+      const endpoint = doc.fileUrl?.startsWith('/api/documents/')
+        ? `/api/documents/${doc.id}/content?inline=1`
+        : `/api/storage/file/${doc.id}?action=preview${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+      const response = await fetch(endpoint, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        if (active) {
+          setHasError(true);
+          setErrorMessage(body.error || 'เปิดเอกสารไม่สำเร็จ');
+          setIsLoading(false);
+        }
+        return;
+      }
+      const blob = await response.blob();
+      created = URL.createObjectURL(blob);
+      if (active) {
+        setObjectUrl(created);
+        setIsLoading(false);
+      }
+    };
+    load().catch(() => {
+      if (active) {
+        setHasError(true);
+        setErrorMessage('เปิดเอกสารไม่สำเร็จ');
+        setIsLoading(false);
+      }
+    });
+    return () => {
+      active = false;
+      if (created) URL.revokeObjectURL(created);
+      setObjectUrl(null);
+    };
+  }, [isOpen, doc, authToken]);
 
   // Handle keyboard escape
   useEffect(() => {
@@ -93,10 +137,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     if (currentUser?.id) params.set('actorId', currentUser.id);
     if (currentUser?.role) params.set('actorRole', currentUser.role);
     if (currentUser?.name) params.set('actorName', currentUser.name);
+    if (doc.fileUrl?.startsWith('/api/documents/')) {
+      return `/api/documents/${doc.id}/content${action === 'preview' ? '?inline=1' : ''}`;
+    }
     return `/api/storage/file/${doc.id}?${params.toString()}`;
   };
 
-  const previewUrl = getFileEndpoint('preview');
   const downloadUrl = getFileEndpoint('download');
 
   const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.25, 3));
@@ -110,7 +156,11 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      const res = await fetch(downloadUrl);
+      const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+      const res = await fetch(downloadUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
       if (!res.ok) {
         const errorJson = await res.json().catch(() => ({}));
         throw new Error(errorJson.error || 'ดาวน์โหลดเอกสารไม่สำเร็จ');
@@ -354,7 +404,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 }}
               >
                 <iframe
-                  src={`${previewUrl}#toolbar=1&navpanes=0`}
+                  src={objectUrl ? `${objectUrl}#toolbar=1&navpanes=0` : undefined}
                   title={fileName}
                   onLoad={() => setIsLoading(false)}
                   onError={() => {
@@ -385,7 +435,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={previewUrl}
+                  src={objectUrl || undefined}
                   alt={fileName}
                   onLoad={() => setIsLoading(false)}
                   onError={() => {

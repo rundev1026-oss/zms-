@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import type { DocumentStatus } from '@prisma/client';
@@ -26,8 +26,15 @@ export class DocumentsService {
     const rows = await this.prisma.beneficiaryDocument.findMany({
       where: { beneficiaryId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
+      include: { uploadedBy: { select: { displayName: true, email: true } } },
     });
-    return rows.map((row) => this.toView(row));
+    return Promise.all(
+      rows.map(async (row) => ({
+        ...this.toView(row),
+        fileAvailable: await this.fileAvailable(row.storageKey),
+        uploadedByName: row.uploadedBy?.displayName || row.uploadedBy?.email || null,
+      })),
+    );
   }
 
   async upload(
@@ -35,6 +42,7 @@ export class DocumentsService {
     file: { buffer: Buffer; originalname: string; mimetype: string } | undefined,
     documentType: string,
     actor: AuthUser,
+    replacesDocumentId?: string,
   ) {
     await this.beneficiaries.requireRecord(beneficiaryId);
     if (file === undefined) {
@@ -54,6 +62,16 @@ export class DocumentsService {
     await mkdir(path.dirname(fullPath), { recursive: true });
     await writeFile(fullPath, file.buffer);
     const row = await this.prisma.$transaction(async (tx) => {
+      let previous: { id: string; originalFileName: string } | null = null;
+      if (replacesDocumentId) {
+        previous = await tx.beneficiaryDocument.findFirst({
+          where: { id: replacesDocumentId, beneficiaryId, deletedAt: null },
+          select: { id: true, originalFileName: true },
+        });
+        if (previous === null) {
+          throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบเอกสารเดิมที่ต้องการเปลี่ยน');
+        }
+      }
       const created = await tx.beneficiaryDocument.create({
         data: {
           beneficiaryId,
@@ -65,16 +83,32 @@ export class DocumentsService {
           uploadedById: actor.id,
         },
       });
+      if (previous) {
+        await tx.beneficiaryDocument.update({
+          where: { id: previous.id },
+          data: { deletedAt: new Date() },
+        });
+      }
       await this.audit.record(tx, {
         actorId: actor.id,
-        action: 'DOCUMENT_UPLOAD',
+        action: previous ? 'DOCUMENT_REPLACE' : 'DOCUMENT_UPLOAD',
         resourceType: 'beneficiary_document',
         resourceId: created.id,
-        metadata: { beneficiaryId, kind, sizeBytes: file.buffer.length },
+        metadata: {
+          beneficiaryId,
+          kind,
+          sizeBytes: file.buffer.length,
+          previousDocumentId: previous?.id ?? null,
+          previousFileName: previous?.originalFileName ?? null,
+        },
       });
       return created;
     });
-    return this.toView(row);
+    return {
+      ...this.toView(row),
+      fileAvailable: true,
+      uploadedByName: actor.displayName || actor.email,
+    };
   }
 
   async review(
@@ -126,7 +160,12 @@ export class DocumentsService {
   async readContent(documentId: string, actor: AuthUser) {
     const existing = await this.findActive(documentId);
     const fullPath = this.resolve(existing.storageKey);
-    const bytes = await readFile(fullPath);
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(fullPath);
+    } catch {
+      throw new AppException(HttpStatus.NOT_FOUND, 'FILE_MISSING', 'ไม่พบไฟล์ต้นฉบับ');
+    }
     await this.audit.write({
       actorId: actor.id,
       action: 'DOCUMENT_DOWNLOAD',
@@ -161,6 +200,15 @@ export class DocumentsService {
       throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบเอกสาร');
     }
     return full;
+  }
+
+  private async fileAvailable(storageKey: string): Promise<boolean> {
+    try {
+      await access(this.resolve(storageKey));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private toView(row: {

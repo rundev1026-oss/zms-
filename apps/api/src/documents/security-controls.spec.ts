@@ -16,6 +16,7 @@ jest.mock('node:fs/promises', () => ({
   mkdir: jest.fn(),
   writeFile: jest.fn(),
   readFile: jest.fn(),
+  access: jest.fn(),
 }));
 
 const actor: AuthUser = {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
 import { 
   Receipt, 
@@ -484,7 +485,7 @@ export function PaymentAndMemberView({
                     สถานะคำร้องขอรับความช่วยเหลือของคุณ
                   </h2>
                   <p className="text-xs text-slate-500 font-mono mt-0.5">
-                    เลขที่คำร้อง: {myApp.applicationNo} • ผู้ยื่น: {myApp.fullName}
+                    เลขที่คำร้อง: {myApp.applicationNo} • ผู้ยื่น: {formatPersonName(myApp)}
                   </p>
                 </div>
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-800 border border-teal-200">

@@ -11,6 +11,8 @@ exports.planReject = planReject;
 exports.planSuspend = planSuspend;
 exports.planArchive = planArchive;
 exports.canEditRegistry = canEditRegistry;
+exports.canReviseRegistry = canReviseRegistry;
+exports.revisionRequiresReview = revisionRequiresReview;
 exports.isRegistryStatus = isRegistryStatus;
 const shared_1 = require("@zms/shared");
 exports.REGISTRY_WORKFLOW = {
@@ -102,6 +104,16 @@ function planArchive(status) {
 }
 function canEditRegistry(status) {
     return status === 'DRAFT' || status === 'NEEDS_CORRECTION';
+}
+function canReviseRegistry(status) {
+    return status !== 'ARCHIVED';
+}
+function revisionRequiresReview(status) {
+    return (status === 'PENDING_REVIEW' ||
+        status === 'UNDER_ASSESSMENT' ||
+        status === 'ELIGIBLE' ||
+        status === 'INELIGIBLE' ||
+        status === 'SUSPENDED');
 }
 function isRegistryStatus(status) {
     return shared_1.REGISTRY_STATUSES.includes(status);

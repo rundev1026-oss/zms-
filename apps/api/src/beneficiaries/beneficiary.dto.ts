@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { IdentityType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -14,6 +15,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { REGISTRY_STATUSES } from '@zms/shared';
 
@@ -172,3 +174,56 @@ export class CreateConsentDto {
 }
 
 export class UpdateBeneficiaryDto extends PartialType(CreateBeneficiaryDto) {}
+
+export class RegistryFieldChangeDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(80)
+  field!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  fieldLabel!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  oldValue?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  newValue?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  material?: boolean;
+}
+
+export class RecordRevisionDto {
+  @ApiProperty()
+  @IsString()
+  expectedUpdatedAt!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  ipAddress?: string;
+
+  @ApiProperty({ type: [RegistryFieldChangeDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RegistryFieldChangeDto)
+  changes!: RegistryFieldChangeDto[];
+}

@@ -58,20 +58,24 @@ let IncomeService = class IncomeService {
         return this.toView(saved);
     }
     fields(input) {
-        return {
-            personalIncome: this.money(input.personalIncome),
-            regularExpense: this.money(input.regularExpense),
-            debtBurden: this.money(input.debtBurden),
-            housingCondition: input.housingCondition ?? null,
-            livingConstraints: input.livingConstraints ?? null,
-            assistanceNeeds: input.assistanceNeeds ?? null,
-            otherAgencyAssistance: input.otherAgencyAssistance ?? null,
-            priorAssistanceHistory: input.priorAssistanceHistory ?? null,
-            officerNote: input.officerNote ?? null,
+        const data = {};
+        const assign = (key, value) => {
+            if (value !== undefined)
+                data[key] = value;
         };
+        assign('personalIncome', this.money(input.personalIncome));
+        assign('regularExpense', this.money(input.regularExpense));
+        assign('debtBurden', this.money(input.debtBurden));
+        assign('housingCondition', input.housingCondition);
+        assign('livingConstraints', input.livingConstraints);
+        assign('assistanceNeeds', input.assistanceNeeds);
+        assign('otherAgencyAssistance', input.otherAgencyAssistance);
+        assign('priorAssistanceHistory', input.priorAssistanceHistory);
+        assign('officerNote', input.officerNote);
+        return data;
     }
     money(value) {
-        return value === undefined ? null : new client_1.Prisma.Decimal(value);
+        return value === undefined ? undefined : new client_1.Prisma.Decimal(value);
     }
     toView(row) {
         return {

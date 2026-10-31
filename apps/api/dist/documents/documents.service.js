@@ -42,10 +42,15 @@ let DocumentsService = class DocumentsService {
         const rows = await this.prisma.beneficiaryDocument.findMany({
             where: { beneficiaryId, deletedAt: null },
             orderBy: { createdAt: 'desc' },
+            include: { uploadedBy: { select: { displayName: true, email: true } } },
         });
-        return rows.map((row) => this.toView(row));
+        return Promise.all(rows.map(async (row) => ({
+            ...this.toView(row),
+            fileAvailable: await this.fileAvailable(row.storageKey),
+            uploadedByName: row.uploadedBy?.displayName || row.uploadedBy?.email || null,
+        })));
     }
-    async upload(beneficiaryId, file, documentType, actor) {
+    async upload(beneficiaryId, file, documentType, actor, replacesDocumentId) {
         await this.beneficiaries.requireRecord(beneficiaryId);
         if (file === undefined) {
             throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR', 'ข้อมูลไม่ถูกต้อง', [
@@ -64,6 +69,16 @@ let DocumentsService = class DocumentsService {
         await (0, promises_1.mkdir)(node_path_1.default.dirname(fullPath), { recursive: true });
         await (0, promises_1.writeFile)(fullPath, file.buffer);
         const row = await this.prisma.$transaction(async (tx) => {
+            let previous = null;
+            if (replacesDocumentId) {
+                previous = await tx.beneficiaryDocument.findFirst({
+                    where: { id: replacesDocumentId, beneficiaryId, deletedAt: null },
+                    select: { id: true, originalFileName: true },
+                });
+                if (previous === null) {
+                    throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบเอกสารเดิมที่ต้องการเปลี่ยน');
+                }
+            }
             const created = await tx.beneficiaryDocument.create({
                 data: {
                     beneficiaryId,
@@ -75,16 +90,32 @@ let DocumentsService = class DocumentsService {
                     uploadedById: actor.id,
                 },
             });
+            if (previous) {
+                await tx.beneficiaryDocument.update({
+                    where: { id: previous.id },
+                    data: { deletedAt: new Date() },
+                });
+            }
             await this.audit.record(tx, {
                 actorId: actor.id,
-                action: 'DOCUMENT_UPLOAD',
+                action: previous ? 'DOCUMENT_REPLACE' : 'DOCUMENT_UPLOAD',
                 resourceType: 'beneficiary_document',
                 resourceId: created.id,
-                metadata: { beneficiaryId, kind, sizeBytes: file.buffer.length },
+                metadata: {
+                    beneficiaryId,
+                    kind,
+                    sizeBytes: file.buffer.length,
+                    previousDocumentId: previous?.id ?? null,
+                    previousFileName: previous?.originalFileName ?? null,
+                },
             });
             return created;
         });
-        return this.toView(row);
+        return {
+            ...this.toView(row),
+            fileAvailable: true,
+            uploadedByName: actor.displayName || actor.email,
+        };
     }
     async review(documentId, input, actor) {
         const existing = await this.findActive(documentId);
@@ -129,7 +160,13 @@ let DocumentsService = class DocumentsService {
     async readContent(documentId, actor) {
         const existing = await this.findActive(documentId);
         const fullPath = this.resolve(existing.storageKey);
-        const bytes = await (0, promises_1.readFile)(fullPath);
+        let bytes;
+        try {
+            bytes = await (0, promises_1.readFile)(fullPath);
+        }
+        catch {
+            throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'FILE_MISSING', 'ไม่พบไฟล์ต้นฉบับ');
+        }
         await this.audit.write({
             actorId: actor.id,
             action: 'DOCUMENT_DOWNLOAD',
@@ -162,6 +199,15 @@ let DocumentsService = class DocumentsService {
             throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบเอกสาร');
         }
         return full;
+    }
+    async fileAvailable(storageKey) {
+        try {
+            await (0, promises_1.access)(this.resolve(storageKey));
+            return true;
+        }
+        catch {
+            return false;
+        }
     }
     toView(row) {
         return {

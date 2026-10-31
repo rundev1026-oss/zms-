@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { PERSON_TITLE_OPTIONS, formatPersonName } from '@zms/shared';
 import { 
   User, 
   Home, 
@@ -74,6 +75,25 @@ const MARITAL_STATUS_LABELS: Record<string, string> = {
 };
 
 // Helper to format currency or show "ยังไม่มีข้อมูล" when not filled
+function blankToNull(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function sumFilledAmounts(source: Record<string, unknown> | null | undefined, keys: string[]): number | null {
+  if (!source) return null;
+  let seen = false;
+  let total = 0;
+  for (const key of keys) {
+    const amount = blankToNull(source[key]);
+    if (amount === null) continue;
+    seen = true;
+    total += amount;
+  }
+  return seen ? total : null;
+}
+
 export function formatCurrencyOrNotProvided(val: number | null | undefined): React.ReactNode {
   if (val === null || val === undefined || isNaN(val) || val === ('' as any)) {
     return <span className="text-slate-400 italic text-xs font-normal">ยังไม่มีข้อมูล</span>;
@@ -174,10 +194,15 @@ export function PersonalSection({
     ? (editForm.pastAssistance || [])
     : (registry.pastAssistance || []);
 
-  // Compute calculated balance
-  const totalIncome = isEditing ? (Number(editForm.monthlyIncome) || 0) : (registry.monthlyIncome || 0);
-  const totalExpense = isEditing ? (Number(editForm.monthlyExpense) || 0) : (registry.monthlyExpense || 0);
-  const netEstimated = totalIncome - totalExpense;
+  const incomeLines = isEditing ? editForm.incomeBreakdown : registry.incomeBreakdown;
+  const expenseLines = isEditing ? editForm.expenseBreakdown : registry.expenseBreakdown;
+  const lineIncome = sumFilledAmounts(incomeLines, ['salary', 'familySupport', 'agriculture', 'trading', 'assetIncome', 'freelance', 'welfare', 'otherIncome']);
+  const lineExpense = sumFilledAmounts(expenseLines, ['living', 'education', 'healthcare', 'utilities', 'rent', 'debtPayment', 'otherExpense']);
+  const storedIncome = isEditing ? editForm.monthlyIncome : registry.monthlyIncome;
+  const storedExpense = isEditing ? editForm.monthlyExpense : registry.monthlyExpense;
+  const totalIncome = lineIncome ?? blankToNull(storedIncome);
+  const totalExpense = lineExpense ?? blankToNull(storedExpense);
+  const netEstimated = totalIncome === null || totalExpense === null ? null : totalIncome - totalExpense;
 
   return (
     <div className="space-y-6">
@@ -294,7 +319,7 @@ export function PersonalSection({
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">คำนำหน้า ชื่อ-นามสกุล:</span>
-                      <strong className="text-slate-900 block font-bold text-sm">{registry.titlePrefix} {registry.fullName}</strong>
+                      <strong className="text-slate-900 block font-bold text-sm">{formatPersonName(registry)}</strong>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">เลขประจำตัวประชาชน:</span>
@@ -354,12 +379,12 @@ export function PersonalSection({
                       <div>
                         <span className="text-slate-400 block text-[11px]">ลักษณะการครอบครองที่อยู่อาศัย:</span>
                         <span className="text-slate-900 block font-bold">
-                          {HOUSING_TYPE_LABELS[registry.housingType || ''] || registry.housingType || 'บ้านตนเอง'}
+                          {HOUSING_TYPE_LABELS[registry.housingType || ''] || registry.housingType || 'ไม่มีข้อมูล'}
                         </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[11px]">สภาพบ้านพัก:</span>
-                        <span className="text-slate-900 block">{registry.housingCondition || 'ทรุดโทรม'}</span>
+                        <span className="text-slate-900 block">{registry.housingCondition || 'ไม่มีข้อมูล'}</span>
                       </div>
                       <div className="col-span-2">
                         <span className="text-slate-400 block text-[11px]">ข้อมูลโฉนดหรือสิทธิในที่ดิน:</span>
@@ -381,28 +406,73 @@ export function PersonalSection({
             ) : (
               /* Editable Info Form */
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1">คำนำหน้า *</label>
+                    <label className="font-bold text-slate-700 block mb-1">คำนำหน้า</label>
                     <select
-                      value={editForm.titlePrefix || 'นาย'}
-                      onChange={(e) => setEditForm({ ...editForm, titlePrefix: e.target.value })}
+                      value={editForm.titlePrefix || ''}
+                      onChange={(e) => {
+                        const titlePrefix = e.target.value;
+                        setEditForm({
+                          ...editForm,
+                          titlePrefix,
+                          fullName: formatPersonName({
+                            prefix: titlePrefix,
+                            firstName: editForm.firstName,
+                            lastName: editForm.lastName,
+                          }),
+                        });
+                      }}
                       className="w-full p-2 bg-white border border-slate-300 rounded-xl"
                     >
-                      <option value="นาย">นาย</option>
-                      <option value="นาง">นาง</option>
-                      <option value="นางสาว">นางสาว</option>
-                      <option value="ฮัจญี">ฮัจญี</option>
-                      <option value="ฮัจญะห์">ฮัจญะห์</option>
+                      <option value="">ไม่ระบุ</option>
+                      {PERSON_TITLE_OPTIONS.map((title) => (
+                        <option key={title} value={title}>{title}</option>
+                      ))}
+                      {editForm.titlePrefix && !PERSON_TITLE_OPTIONS.includes(editForm.titlePrefix as typeof PERSON_TITLE_OPTIONS[number]) && (
+                        <option value={editForm.titlePrefix}>{editForm.titlePrefix}</option>
+                      )}
                     </select>
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="font-bold text-slate-700 block mb-1">ชื่อ-นามสกุล *</label>
+                    <label className="font-bold text-slate-700 block mb-1">ชื่อ *</label>
                     <input
                       type="text"
-                      value={editForm.fullName || ''}
-                      onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
-                      placeholder="ระบุชื่อและนามสกุล"
+                      value={editForm.firstName || ''}
+                      onChange={(e) => {
+                        const firstName = e.target.value;
+                        setEditForm({
+                          ...editForm,
+                          firstName,
+                          fullName: formatPersonName({
+                            prefix: editForm.titlePrefix,
+                            firstName,
+                            lastName: editForm.lastName,
+                          }),
+                        });
+                      }}
+                      placeholder="เช่น มารีแย"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-xl"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">นามสกุล *</label>
+                    <input
+                      type="text"
+                      value={editForm.lastName || ''}
+                      onChange={(e) => {
+                        const lastName = e.target.value;
+                        setEditForm({
+                          ...editForm,
+                          lastName,
+                          fullName: formatPersonName({
+                            prefix: editForm.titlePrefix,
+                            firstName: editForm.firstName,
+                            lastName,
+                          }),
+                        });
+                      }}
+                      placeholder="เช่น ลาเต๊ะ"
                       className="w-full p-2 bg-white border border-slate-300 rounded-xl"
                     />
                   </div>
@@ -821,8 +891,8 @@ export function PersonalSection({
               </div>
               <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200">
                 <span className="text-[11px] text-slate-700 font-semibold block">รายได้คงเหลือโดยประมาณ</span>
-                <span className={`text-base sm:text-lg font-bold font-mono ${netEstimated < 0 ? 'text-rose-700' : 'text-slate-900'}`}>
-                  ฿{netEstimated.toLocaleString()}
+                <span className={`text-base sm:text-lg font-bold font-mono ${netEstimated !== null && netEstimated < 0 ? 'text-rose-700' : 'text-slate-900'}`}>
+                  {formatCurrencyOrNotProvided(netEstimated)}
                 </span>
               </div>
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
@@ -933,7 +1003,7 @@ export function PersonalSection({
                     <div>
                       <span className="text-slate-400 block text-[11px]">ประเภทหนี้สิน:</span>
                       <span className="text-slate-900 block font-medium">
-                        {registry.debtType || (registry.debtAmount && registry.debtAmount > 0 ? 'หนี้สินเพื่อการยังชีพ' : 'ไม่มีหนี้สิน')}
+                        {registry.debtType || (registry.debtAmount === 0 ? 'ไม่มีหนี้สิน' : 'ยังไม่มีข้อมูล')}
                       </span>
                     </div>
                     <div>
@@ -946,11 +1016,11 @@ export function PersonalSection({
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">เจ้าหนี้หรือแหล่งหนี้:</span>
-                      <span className="text-slate-900 block">{registry.debtPurpose || '-'}</span>
+                      <span className="text-slate-900 block">{registry.creditorName || registry.debtPurpose || 'ยังไม่มีข้อมูล'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">หมายเหตุ:</span>
-                      <span className="text-slate-600 italic block">{registry.debtPurpose || '-'}</span>
+                      <span className="text-slate-600 italic block">{registry.debtNotes || 'ยังไม่มีข้อมูล'}</span>
                     </div>
                   </div>
                 </div>
@@ -1283,19 +1353,25 @@ export function PersonalSection({
 
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
                   <span className="font-bold text-slate-800 block text-xs">ปัญหาครอบครัว:</span>
-                  <p className="text-slate-700">{registry.familySituationSummary || 'ไม่มีบันทึกปัญหาครอบครัว'}</p>
+                  <p className="text-slate-700">
+                    {[registry.familySituationSummary, registry.hardshipReasons?.familyIssueDetails]
+                      .filter((value, index, list) => value && list.indexOf(value) === index)
+                      .join(' ') || 'ไม่มีบันทึกปัญหาครอบครัว'}
+                  </p>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
                   <span className="font-bold text-slate-800 block text-xs">สภาพที่อยู่อาศัย:</span>
                   <p className="text-slate-700">
-                    {registry.housingCondition || 'ปกติ'} {registry.housingNotes ? `(${registry.housingNotes})` : ''}
+                    {registry.housingCondition || 'ไม่มีข้อมูล'} {registry.housingNotes ? `(${registry.housingNotes})` : ''}
                   </p>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1 sm:col-span-2">
                   <span className="font-bold text-slate-800 block text-xs">ความเปราะบางของสมาชิกในครัวเรือน & รายละเอียดเพิ่มเติม:</span>
-                  <p className="text-slate-700">{registry.dependentBurdens || registry.urgentNeeds || 'ไม่มีบันทึกเพิ่มเติม'}</p>
+                  <p className="text-slate-700">
+                    {[registry.dependentBurdens, registry.urgentNeeds].filter(Boolean).join(' — ') || 'ไม่มีบันทึกเพิ่มเติม'}
+                  </p>
                 </div>
               </div>
             ) : (

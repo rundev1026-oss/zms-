@@ -1,13 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import type { Prisma, RegistryStatus } from '@prisma/client';
-import type { RegistryStatusCode } from '@zms/shared';
+import { formatPersonName, type RegistryStatusCode } from '@zms/shared';
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import type { AuthUser } from '../common/auth-user';
 import { pageWindow } from '../common/pagination';
 import { isUniqueConflict } from '../common/prisma-error';
 import { PrismaService } from '../prisma/prisma.service';
-import { canEditRegistry } from '../registry-workflow/registry-rules';
+import { canReviseRegistry, revisionRequiresReview } from '../registry-workflow/registry-rules';
 import { verifyPassword } from '../security/password-hash';
 import {
   buildBeneficiaryOrder,
@@ -130,11 +130,7 @@ export class BeneficiariesService {
           'ไม่สามารถออกเลขทะเบียนได้ กรุณาลองอีกครั้ง',
         );
       }
-      throw new AppException(
-        HttpStatus.CONFLICT,
-        'DUPLICATE_IDENTITY',
-        'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว',
-      );
+      throw await this.duplicateIdentityConflict(identity.identityNumberNormalized);
     }
   }
 
@@ -232,10 +228,8 @@ export class BeneficiariesService {
       return presentBeneficiary(updated, this.viewOptions(actor));
     } catch (error) {
       if (isUniqueConflict(error) !== null) {
-        throw new AppException(
-          HttpStatus.CONFLICT,
-          'DUPLICATE_IDENTITY',
-          'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว',
+        throw await this.duplicateIdentityConflict(
+          identity?.identityNumberNormalized ?? existing.identityNumberNormalized,
         );
       }
       throw error;
@@ -302,6 +296,18 @@ export class BeneficiariesService {
     };
   }
 
+  async recordSurveyPrint(id: string, actor: AuthUser) {
+    const row = await this.requireRecord(id);
+    await this.audit.write({
+      actorId: actor.id,
+      action: 'REGISTRY_SURVEY_PRINT',
+      resourceType: 'beneficiary',
+      resourceId: row.id,
+      metadata: { registryNumber: row.registryNumber },
+    });
+    return { recorded: true, registryNumber: row.registryNumber };
+  }
+
   async requireRecord(id: string) {
     const row = await this.prisma.beneficiary.findFirst({
       where: { id, deletedAt: null },
@@ -314,11 +320,11 @@ export class BeneficiariesService {
   }
 
   assertEditable(status: RegistryStatus): void {
-    if (!canEditRegistry(status as RegistryStatusCode)) {
+    if (!canReviseRegistry(status as RegistryStatusCode)) {
       throw new AppException(
         HttpStatus.CONFLICT,
         'INVALID_STATE',
-        'แก้ไขได้เฉพาะทะเบียนที่เป็นร่างหรือรอแก้ไข',
+        'ทะเบียนที่เก็บถาวรแล้วแก้ไขไม่ได้',
       );
     }
   }
@@ -376,7 +382,7 @@ export class BeneficiariesService {
       summary: {
         id: row.id,
         registryNumber: row.registryNumber,
-        fullName: `${row.title ? row.title + ' ' : ''}${row.firstName} ${row.lastName}`.trim(),
+        fullName: formatPersonName({ prefix: row.title, firstName: row.firstName, lastName: row.lastName }),
         identityType: row.identityType,
         identityNumberMasked: maskIdentityNumber(row.identityNumber),
         status: row.status,
@@ -583,6 +589,137 @@ export class BeneficiariesService {
     return presentBeneficiary(restored, this.viewOptions(actor));
   }
 
+  async recordRevision(
+    id: string,
+    input: {
+      expectedUpdatedAt: string;
+      reason?: string;
+      ipAddress?: string;
+      changes: { field: string; fieldLabel: string; oldValue?: string; newValue?: string; material?: boolean }[];
+    },
+    actor: AuthUser,
+  ) {
+    const existing = await this.requireRecord(id);
+    this.assertEditable(existing.status);
+    const baseline = existing.updatedAt.toISOString();
+    if (input.expectedUpdatedAt && input.expectedUpdatedAt !== baseline) {
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        'VERSION_CONFLICT',
+        'มีผู้อื่นบันทึกทะเบียนนี้ไปแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนแก้ไขอีกครั้ง',
+      );
+    }
+    const materialFields = new Set([
+      'address',
+      'province',
+      'district',
+      'monthlyIncome',
+      'monthlyExpense',
+      'debtAmount',
+      'debtType',
+      'creditorName',
+      'disabilityNotes',
+      'illnessNotes',
+      'livingLimitations',
+      'nationalId',
+      'householdMembers',
+      'householdMemberNames',
+      'incomeBreakdown',
+      'expenseBreakdown',
+    ]);
+    const material = input.changes.some((change) => materialFields.has(change.field));
+    const sendBack = revisionRequiresReview(existing.status as RegistryStatusCode) && material;
+    if (sendBack && (input.reason ?? '').trim().length < 5) {
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'REASON_REQUIRED',
+        'การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร',
+      );
+    }
+    const changes = input.changes.map((change) => ({
+      field: change.field,
+      fieldLabel: change.fieldLabel,
+      oldValue: change.field === 'nationalId' ? maskHistoryValue(change.oldValue) : change.oldValue ?? '',
+      newValue: change.field === 'nationalId' ? maskHistoryValue(change.newValue) : change.newValue ?? '',
+    }));
+    await this.prisma.$transaction(async (tx) => {
+      if (sendBack) {
+        await tx.beneficiary.update({
+          where: { id },
+          data: { status: 'NEEDS_CORRECTION', updatedById: actor.id },
+        });
+        await tx.registryStatusHistory.create({
+          data: {
+            beneficiaryId: id,
+            fromStatus: existing.status,
+            toStatus: 'NEEDS_CORRECTION',
+            reason: input.reason?.trim() || 'แก้ไขข้อมูลที่มีผลต่อคุณสมบัติ',
+            actedById: actor.id,
+          },
+        });
+      } else if (changes.length > 0) {
+        await tx.beneficiary.update({
+          where: { id },
+          data: { updatedById: actor.id },
+        });
+      }
+      if (changes.length > 0) {
+        await tx.beneficiaryEditHistory.create({
+          data: {
+            beneficiaryId: id,
+            editedById: actor.id,
+            editedByName: actor.displayName || actor.email,
+            editedByRole: actor.roles[0]?.name || actor.roles[0]?.code || 'เจ้าหน้าที่',
+            timestamp: new Date().toISOString(),
+            changesSummary: changes.map((change) => change.fieldLabel).join(', ').slice(0, 500),
+            changesDetail: JSON.stringify(changes),
+            notes: [input.reason?.trim(), input.ipAddress ? `อุปกรณ์: ${input.ipAddress}` : '']
+              .filter(Boolean)
+              .join(' | ')
+              .slice(0, 2000),
+          },
+        });
+        await this.audit.record(tx, {
+          actorId: actor.id,
+          action: 'BENEFICIARY_REVISED',
+          resourceType: 'beneficiary',
+          resourceId: id,
+          metadata: {
+            fields: changes.map((change) => change.field).join(','),
+            reReview: sendBack,
+          },
+        });
+      }
+    });
+    const fresh = await this.requireRecord(id);
+    return {
+      reReview: sendBack,
+      status: fresh.status,
+      updatedAt: fresh.updatedAt.toISOString(),
+    };
+  }
+
+  async listRevisions(id: string, _actor: AuthUser) {
+    await this.requireRecord(id);
+    const rows = await this.prisma.beneficiaryEditHistory.findMany({
+      where: { beneficiaryId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      beneficiaryId: row.beneficiaryId,
+      editedById: row.editedById,
+      editedByName: row.editedByName,
+      editedByRole: row.editedByRole,
+      timestamp: row.timestamp,
+      changesSummary: row.changesSummary,
+      changesDetail: parseHistoryDetail(row.changesDetail),
+      notes: row.notes,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
   /**
    * Audit log history for a specific beneficiary
    */
@@ -615,6 +752,28 @@ export class BeneficiariesService {
     }));
   }
 
+  private async duplicateIdentityConflict(identityNumberNormalized: string | null) {
+    let registryNumber: string | undefined;
+    if (identityNumberNormalized) {
+      const existing = await this.prisma.beneficiary.findFirst({
+        where: {
+          identityType: 'THAI_NATIONAL_ID',
+          identityNumberNormalized,
+          deletedAt: null,
+        },
+        select: { registryNumber: true },
+      });
+      registryNumber = existing?.registryNumber;
+    }
+    return new AppException(
+      HttpStatus.CONFLICT,
+      'DUPLICATE_IDENTITY',
+      registryNumber
+        ? `เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว (รหัส ${registryNumber}) กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ`
+        : 'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ',
+    );
+  }
+
   private viewOptions(actor: AuthUser): { revealIdentity: boolean; revealAid: boolean } {
     return {
       revealIdentity: actor.permissions.includes('beneficiaries.read.sensitive'),
@@ -624,3 +783,19 @@ export class BeneficiariesService {
 }
 
 export type BeneficiaryTransaction = Prisma.TransactionClient;
+
+function maskHistoryValue(value: string | undefined): string {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  if (digits.length !== 13) return value ? 'ปกปิด' : '';
+  return `${digits[0]}-••••-•••••-••-${digits[12]}`;
+}
+
+function parseHistoryDetail(raw: string | null) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}

@@ -11,9 +11,11 @@ import {
   Filter,
   Image as ImageIcon
 } from 'lucide-react';
-import { BeneficiaryRegistryItem, BeneficiaryDocument } from '@/types';
+import { BeneficiaryRegistryItem } from '@/types';
 import { DocumentListTable } from '@/components/common/DocumentListTable';
 import { DocumentUploader, UploadedDocumentItem } from '@/components/common/DocumentUploader';
+import { uploadRegistryDocument } from '@/lib/registryDocuments';
+import { useApp } from '@/context/AppContext';
 
 interface DocumentsSectionProps {
   registry: BeneficiaryRegistryItem;
@@ -28,6 +30,7 @@ export function DocumentsSection({
   onRefreshRegistry,
   onDocumentsUploaded,
 }: DocumentsSectionProps) {
+  const { authToken } = useApp();
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
@@ -186,6 +189,29 @@ export function DocumentsSection({
         <DocumentListTable
           documents={filteredDocs}
           readOnly={!canEdit}
+          onDelete={async (documentId) => {
+            const headers: Record<string, string> = {};
+            if (authToken) headers.Authorization = `Bearer ${authToken}`;
+            const response = await fetch(`/api/documents/${documentId}`, {
+              method: 'DELETE',
+              headers,
+              credentials: 'include',
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || !body.success) throw new Error(body.error || 'ลบเอกสารไม่สำเร็จ');
+            onRefreshRegistry?.();
+          }}
+          onReplace={async (document, file) => {
+            const result = await uploadRegistryDocument(
+              registry.id,
+              file,
+              document.category,
+              authToken,
+              document.id,
+            );
+            if (!result.ok) throw new Error(result.error || 'เปลี่ยนเอกสารไม่สำเร็จ');
+            onRefreshRegistry?.();
+          }}
         />
       </div>
 

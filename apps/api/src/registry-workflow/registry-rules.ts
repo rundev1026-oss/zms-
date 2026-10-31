@@ -129,6 +129,22 @@ export function canEditRegistry(status: RegistryStatusCode): boolean {
   return status === 'DRAFT' || status === 'NEEDS_CORRECTION';
 }
 
+/** Staff with write permission may revise a registry that is not archived. */
+export function canReviseRegistry(status: RegistryStatusCode): boolean {
+  return status !== 'ARCHIVED';
+}
+
+/** Reviewed or decided registries go back to re-check when qualifying data changes. */
+export function revisionRequiresReview(status: RegistryStatusCode): boolean {
+  return (
+    status === 'PENDING_REVIEW' ||
+    status === 'UNDER_ASSESSMENT' ||
+    status === 'ELIGIBLE' ||
+    status === 'INELIGIBLE' ||
+    status === 'SUSPENDED'
+  );
+}
+
 export function isRegistryStatus(status: string): status is RegistryStatusCode {
   return (REGISTRY_STATUSES as readonly string[]).includes(status);
 }

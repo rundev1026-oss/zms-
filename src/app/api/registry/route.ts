@@ -1,10 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { formatPersonName, splitPersonName } from '@zms/shared';
 import { resolveServerToken } from '@/lib/serverToken';
+import {
+  buildHouseholdPayload,
+  buildIncomeProfilePayload,
+  mapNestBeneficiaryToRegistryItem,
+  readNestFailure,
+} from '@/lib/registrySurvey';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 function resolveToken(req: Request): string {
   return resolveServerToken(req);
+}
+
+function nestApiError(payload: any, fallback: string) {
+  const rawMessage = payload?.message;
+  const message =
+    typeof rawMessage === 'string'
+      ? rawMessage
+      : Array.isArray(rawMessage) && typeof rawMessage[0] === 'string'
+        ? rawMessage[0]
+        : typeof payload?.error === 'string'
+          ? payload.error
+          : fallback;
+  return {
+    success: false as const,
+    error: message,
+    code: typeof payload?.code === 'string' ? payload.code : undefined,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -52,8 +76,14 @@ export async function GET(request: NextRequest) {
     const mappedItems = (data.items || []).map((item: any) => {
       const cleanId = item.identityNumber || item.nationalId || '';
       const maskedId = item.nationalIdMasked || (cleanId ? (cleanId.length === 13 ? `${cleanId[0]}-${cleanId.slice(1, 5)}-${cleanId.slice(5, 10)}-${cleanId.slice(10, 12)}-${cleanId[12]}` : cleanId) : '-');
-      const titlePrefix = item.titlePrefix || item.title || 'นาย';
-      const fullName = item.fullName || `${titlePrefix} ${item.firstName || ''} ${item.lastName || ''}`.trim() || 'ไม่ระบุชื่อ';
+      const name = splitPersonName({
+        prefix: item.titlePrefix || item.title,
+        firstName: item.firstName,
+        lastName: item.lastName,
+        fullName: item.fullName,
+      });
+      const titlePrefix = name.prefix;
+      const fullName = formatPersonName(name) || 'ไม่ระบุชื่อ';
 
       // Determine asnaf category key
       let asnafCategory = 'miskin';
@@ -77,8 +107,10 @@ export async function GET(request: NextRequest) {
       else if (statusUpper === 'NEED_INFO') regStatus = 'need_more_info';
       else regStatus = String(regStatus).toLowerCase();
 
+      const survey = mapNestBeneficiaryToRegistryItem(item);
       return {
         ...item,
+        ...survey,
         id: item.id,
         registrationNo: item.registrationNo || item.registryNumber || `REG-${item.id?.slice(0, 8)}`,
         fullName,
@@ -130,11 +162,14 @@ export async function POST(request: NextRequest) {
     };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    // Split name into firstName and lastName
-    const rawName = (input.fullName || input.name || '').trim();
-    const nameParts = rawName.split(/\s+/);
-    const firstName = nameParts[0] || 'ไม่ระบุชื่อ';
-    const lastName = nameParts.slice(1).join(' ') || '-';
+    const name = splitPersonName({
+      prefix: input.titlePrefix,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      fullName: input.fullName || input.name,
+    });
+    const firstName = name.firstName || 'ไม่ระบุชื่อ';
+    const lastName = name.lastName || '-';
     const cleanNationalId = (input.nationalId || '').replace(/[^0-9]/g, '');
 
     // 1. Create Draft Beneficiary in NestJS
@@ -142,7 +177,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        title: input.titlePrefix || 'นาย',
+        title: name.prefix || undefined,
         firstName,
         lastName,
         identityType: 'THAI_NATIONAL_ID',
@@ -155,12 +190,11 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    const createData = await createRes.json();
+    const createData = await createRes.json().catch(() => ({}));
     if (!createRes.ok) {
-      return NextResponse.json(
-        { success: false, error: createData.message || 'ไม่สามารถสร้างทะเบียนได้' },
-        { status: createRes.status }
-      );
+      return NextResponse.json(nestApiError(createData, 'ไม่สามารถสร้างทะเบียนได้'), {
+        status: createRes.status,
+      });
     }
 
     const beneficiaryId = createData.id;
@@ -199,94 +233,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 3. Save Income Profile
-    if (input.incomeBreakdown || input.expenseBreakdown || input.debtAmount !== undefined) {
-      const personalInc = Number(input.incomeBreakdown?.salary || 0) + Number(input.incomeBreakdown?.freelance || 0);
-      const regularExp = Number(input.expenseBreakdown?.living || 0) + Number(input.expenseBreakdown?.utilities || 0);
-      const debtVal = Number(input.debtAmount || 0);
-
-      await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/income-profile`, {
+    // 3. Save Income Profile — full monthly totals, not only salary + freelance
+    const incomePayload = buildIncomeProfilePayload(input);
+    if (incomePayload) {
+      const incomeRes = await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/income-profile`, {
         method: 'PUT',
         headers,
-        body: JSON.stringify({
-          personalIncome: personalInc.toFixed(2),
-          regularExpense: regularExp.toFixed(2),
-          debtBurden: debtVal.toFixed(2),
-          housingCondition: input.housingNotes || input.housingCondition || undefined,
-          livingConstraints: input.familySituationSummary || undefined,
-          assistanceNeeds: input.necessityDetails || input.assistanceTypeDetails || undefined,
-        }),
+        body: JSON.stringify(incomePayload),
       });
+      if (!incomeRes.ok) {
+        const message = await readNestFailure(incomeRes, 'บันทึกรายได้รายจ่ายไม่สำเร็จ');
+        return NextResponse.json(
+          { success: false, error: message, data: { id: beneficiaryId, beneficiaryId } },
+          { status: incomeRes.status },
+        );
+      }
     }
 
-    // 4. Save Household (Members & Comprehensive Survey Details)
-    const rawMembers = input.householdMembers || input.members || [];
-    const mappedMembers = Array.isArray(rawMembers)
-      ? rawMembers
-          .filter((m: any) => (m.fullName || '').trim() !== '')
-          .map((m: any, idx: number) => ({
-            fullName: m.fullName || `สมาชิก ${idx + 1}`,
-            relationship: m.relationship || m.relation || 'สมาชิกในครอบครัว',
-            ageYears: m.ageYears ?? (m.age ? Number(m.age) : undefined),
-            dateOfBirth: m.dateOfBirth || undefined,
-            occupation: m.occupation || undefined,
-            isDependent:
-              m.isDependent ??
-              (m.relation === 'บุตร' ||
-                m.relation === 'คู่สมรส' ||
-                m.relationship === 'บุตร' ||
-                m.relationship === 'คู่สมรส' ||
-                m.healthStatus === 'disabled' ||
-                m.healthStatus === 'chronically_ill'),
-            sortOrder: idx + 1,
-          }))
-      : [];
-
-    const householdPayload: any = {
-      memberCount: mappedMembers.length + 1,
-      householdIncome: Number(input.monthlyIncome ?? input.totalIncome ?? 0).toFixed(2),
-      householdExpense: Number(input.monthlyExpense ?? input.totalExpense ?? 0).toFixed(2),
-      debtAmount: Number(input.debtAmount ?? 0).toFixed(2),
-      debtPurpose: input.debtPurpose || input.debtType || undefined,
-      dependentCount: mappedMembers.filter((m: any) => m.isDependent).length,
-      additionalNotes: input.familySituationSummary || input.livingLimitations || undefined,
-      address: input.address || undefined,
-      province: input.province || undefined,
-      district: input.district || undefined,
-      subdistrict: input.subdistrict || undefined,
-      community: input.community || undefined,
-      housingType: input.housingType || undefined,
-      housingCondition: input.housingCondition || undefined,
-      housingNotes: input.housingNotes || undefined,
-      landTitleType: input.landTitleType || undefined,
-      landTitleNotes: input.landTitleNotes || undefined,
-      incomeBreakdown: input.incomeBreakdown ? JSON.stringify(input.incomeBreakdown) : undefined,
-      expenseBreakdown: input.expenseBreakdown ? JSON.stringify(input.expenseBreakdown) : undefined,
-      pastAssistance: input.pastAssistance ? JSON.stringify(input.pastAssistance) : undefined,
-      familySituationSummary: input.familySituationSummary || undefined,
-      urgentNeeds: input.urgentNeeds || undefined,
-      dependentBurdens: input.dependentBurdens || undefined,
-      coordinatorInfo: input.coordinator ? JSON.stringify(input.coordinator) : undefined,
-      certifierInfo: input.certifier ? JSON.stringify(input.certifier) : undefined,
-      latitude:
-        input.latitude !== undefined && input.latitude !== null && input.latitude !== ''
-          ? Number(input.latitude)
-          : undefined,
-      longitude:
-        input.longitude !== undefined && input.longitude !== null && input.longitude !== ''
-          ? Number(input.longitude)
-          : undefined,
-      residenceAddress: input.residenceAddress || input.address || undefined,
-      placeName: input.placeName || undefined,
-      locationVerificationStatus: input.locationVerificationStatus || 'not_specified',
-      members: mappedMembers,
-    };
-
-    await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/household`, {
+    // 4. Save Household (line items, debt, situation, members)
+    const householdPayload = buildHouseholdPayload(input);
+    const householdRes = await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/household`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(householdPayload),
     });
+    if (!householdRes.ok) {
+      const message = await readNestFailure(householdRes, 'บันทึกข้อมูลครัวเรือนไม่สำเร็จ');
+      return NextResponse.json(
+        { success: false, error: message, data: { id: beneficiaryId, beneficiaryId } },
+        { status: householdRes.status },
+      );
+    }
 
     // 5. Asnaf Category Proposal
     if (input.asnafCategory) {

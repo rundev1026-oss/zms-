@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { 
   MapPin, 
   ExternalLink, 
@@ -213,7 +214,7 @@ export function LocationSection({
             longitude={currentLocation.longitude}
             residenceAddress={currentLocation.residenceAddress}
             placeName={currentLocation.placeName}
-            beneficiaryName={registry.fullName}
+            beneficiaryName={formatPersonName(registry)}
             readOnly={!canEdit}
             locationUpdatedAt={registry.locationUpdatedAt}
             locationUpdatedBy={registry.locationUpdatedBy}

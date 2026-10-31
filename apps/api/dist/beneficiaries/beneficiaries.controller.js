@@ -49,8 +49,19 @@ let BeneficiariesController = class BeneficiariesController {
         const ip = req.headers['x-forwarded-for'] || req.ip || undefined;
         return this.beneficiaries.restore(id, dto, user, ip);
     }
+    listRevisions(id, user) {
+        return this.beneficiaries.listRevisions(id, user);
+    }
+    recordRevision(id, dto, user, req) {
+        const forwarded = req.headers['x-forwarded-for'];
+        const ip = dto.ipAddress || (Array.isArray(forwarded) ? forwarded[0] : forwarded) || req.ip;
+        return this.beneficiaries.recordRevision(id, { ...dto, ipAddress: ip }, user);
+    }
     getAuditHistory(id, user) {
         return this.beneficiaries.getAuditHistory(id, user);
+    }
+    recordSurveyPrint(id, user) {
+        return this.beneficiaries.recordSurveyPrint(id, user);
     }
     get(id, user) {
         return this.beneficiaries.getById(id, user);
@@ -146,6 +157,28 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], BeneficiariesController.prototype, "restore", null);
 __decorate([
+    (0, common_1.Get)(':id/revisions'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.read'),
+    (0, swagger_1.ApiOperation)({ summary: 'ประวัติการแก้ไขรายฟิลด์ อ่านอย่างเดียว' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "listRevisions", null);
+__decorate([
+    (0, common_1.Post)(':id/revisions'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.write'),
+    (0, swagger_1.ApiOperation)({ summary: 'บันทึกประวัติการแก้ไข และส่งกลับรอตรวจสอบเมื่อข้อมูลมีผลต่อคุณสมบัติ' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, beneficiary_dto_1.RecordRevisionDto, Object, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "recordRevision", null);
+__decorate([
     (0, common_1.Get)(':id/audit-history'),
     (0, roles_decorator_1.Roles)('SUPER_ADMIN'),
     (0, permissions_decorator_1.RequirePermissions)('beneficiaries.delete'),
@@ -156,6 +189,16 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], BeneficiariesController.prototype, "getAuditHistory", null);
+__decorate([
+    (0, common_1.Post)(':id/survey-print'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.read'),
+    (0, swagger_1.ApiOperation)({ summary: 'บันทึกประวัติการพิมพ์แบบสำรวจ โดยไม่แก้ไขข้อมูลทะเบียน' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "recordSurveyPrint", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, permissions_decorator_1.RequirePermissions)('beneficiaries.read'),

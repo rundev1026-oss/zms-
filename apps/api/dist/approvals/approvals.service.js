@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ApprovalsService = void 0;
 const common_1 = require("@nestjs/common");
+const shared_1 = require("@zms/shared");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const audit_service_1 = require("../audit/audit.service");
@@ -82,7 +83,7 @@ let ApprovalsService = class ApprovalsService {
         const canSeeSensitive = user?.permissions?.includes('beneficiaries.read.sensitive') ?? true;
         const formattedItems = items.map((app) => {
             const ben = app.beneficiary;
-            const fullName = ben ? [ben.title, ben.firstName, ben.lastName].filter(Boolean).join(' ') : '';
+            const fullName = ben ? (0, shared_1.formatPersonName)({ prefix: ben.title, firstName: ben.firstName, lastName: ben.lastName }) : '';
             const idNum = ben?.identityNumberNormalized || ben?.identityNumber || '';
             return {
                 ...app,

@@ -10,6 +10,8 @@ export declare class DocumentsService {
     private readonly storageRoot;
     constructor(prisma: PrismaService, beneficiaries: BeneficiariesService, audit: AuditService, storageRoot: string);
     list(beneficiaryId: string): Promise<{
+        fileAvailable: boolean;
+        uploadedByName: string | null;
         id: string;
         beneficiaryId: string;
         documentType: string;
@@ -24,7 +26,9 @@ export declare class DocumentsService {
         buffer: Buffer;
         originalname: string;
         mimetype: string;
-    } | undefined, documentType: string, actor: AuthUser): Promise<{
+    } | undefined, documentType: string, actor: AuthUser, replacesDocumentId?: string): Promise<{
+        fileAvailable: boolean;
+        uploadedByName: string;
         id: string;
         beneficiaryId: string;
         documentType: string;
@@ -54,11 +58,12 @@ export declare class DocumentsService {
         deleted: boolean;
     }>;
     readContent(documentId: string, actor: AuthUser): Promise<{
-        bytes: NonSharedBuffer;
+        bytes: Buffer<ArrayBufferLike>;
         mimeType: string;
         fileName: string;
     }>;
     private findActive;
     private resolve;
+    private fileAvailable;
     private toView;
 }

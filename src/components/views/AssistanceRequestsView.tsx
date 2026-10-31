@@ -10,6 +10,7 @@ import {
   FaqirMiskinSubFund,
   AsnafAllocation
 } from '@/types';
+import { formatPersonName } from '@zms/shared';
 import { normalizePrimaryGroupCode } from '@/lib/financeUtils';
 import { DocumentUploader, UploadedDocumentItem } from '@/components/common/DocumentUploader';
 import { DocumentListTable } from '@/components/common/DocumentListTable';
@@ -921,7 +922,7 @@ export function AssistanceRequestsView({
                       {/* Applicant Name */}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900">
-                          {app.titlePrefix} {app.fullName}
+                          {formatPersonName(app)}
                         </div>
                         <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                           <span>{app.phone}</span>
@@ -1105,7 +1106,7 @@ export function AssistanceRequestsView({
                   <span>วันที่ยื่น: {selectedApp.appliedDate ? new Date(selectedApp.appliedDate).toLocaleDateString('th-TH') : '-'}</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-extrabold text-white mt-0.5">
-                  คำร้องขอความช่วยเหลือ: {selectedApp.titlePrefix} {selectedApp.fullName}
+                  คำร้องขอความช่วยเหลือ: {formatPersonName(selectedApp)}
                 </h2>
                 <div className="text-xs text-slate-300 flex flex-wrap items-center gap-2 mt-1">
                   <span>ประเภท: {selectedApp.assistanceType}</span>
@@ -1636,7 +1637,7 @@ export function AssistanceRequestsView({
             <div className="p-5 space-y-3.5 text-xs">
               <div>
                 <span className="text-slate-400 block mb-0.5">ผู้ยื่นคำร้อง:</span>
-                <strong className="text-slate-900 text-sm block">{selectedApp.fullName}</strong>
+                <strong className="text-slate-900 text-sm block">{formatPersonName(selectedApp)}</strong>
                 <span className="font-mono text-slate-500">{selectedApp.applicationNo}</span>
               </div>
 
@@ -1720,7 +1721,7 @@ export function AssistanceRequestsView({
             <div className="p-5 space-y-3.5 text-xs">
               <div>
                 <span className="text-slate-400 block mb-0.5">ผู้ยื่นคำร้อง:</span>
-                <strong className="text-slate-900 text-sm block">{selectedApp.fullName}</strong>
+                <strong className="text-slate-900 text-sm block">{formatPersonName(selectedApp)}</strong>
                 <span className="font-mono text-slate-500">{selectedApp.applicationNo}</span>
               </div>
 
@@ -1780,7 +1781,7 @@ export function AssistanceRequestsView({
             <div className="p-5 space-y-3.5 text-xs">
               <div>
                 <span className="text-slate-400 block mb-0.5">ผู้รับความช่วยเหลือ:</span>
-                <strong className="text-slate-900 text-sm block">{selectedApp.fullName}</strong>
+                <strong className="text-slate-900 text-sm block">{formatPersonName(selectedApp)}</strong>
                 <span className="font-mono text-emerald-700 font-bold">
                   ยอดอนุมัติ: ฿{(selectedApp.approvedAmount || selectedApp.requestedAmount).toLocaleString()} บาท
                 </span>
@@ -1855,7 +1856,7 @@ export function AssistanceRequestsView({
             <div className="p-5 space-y-3.5 text-xs">
               <div>
                 <span className="text-slate-400 block mb-0.5">คำร้อง:</span>
-                <strong className="text-slate-900 text-sm block">{selectedApp.applicationNo} - {selectedApp.fullName}</strong>
+                <strong className="text-slate-900 text-sm block">{selectedApp.applicationNo} - {formatPersonName(selectedApp)}</strong>
               </div>
 
               <div>
@@ -2102,7 +2103,7 @@ export function AssistanceRequestsView({
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 p-4 bg-white rounded-xl border border-emerald-200 text-xs">
                           <div>
                             <span className="text-slate-400 block text-[11px]">ชื่อ–นามสกุล:</span>
-                            <strong className="text-slate-900 text-sm block mt-0.5">{verifiedBeneficiary.fullName}</strong>
+                            <strong className="text-slate-900 text-sm block mt-0.5">{formatPersonName(verifiedBeneficiary)}</strong>
                           </div>
                           <div>
                             <span className="text-slate-400 block text-[11px]">เลขประจำตัวประชาชน:</span>
@@ -2551,7 +2552,7 @@ export function AssistanceRequestsView({
                           <div>
                             <span className="text-slate-400 block text-[11px]">ผู้ยื่นคำร้อง:</span>
                             <strong className="text-slate-900 text-sm block mt-0.5">
-                              {verifiedBeneficiary?.fullName}
+                              {verifiedBeneficiary ? formatPersonName(verifiedBeneficiary) : ''}
                             </strong>
                             <span className="font-mono text-teal-800 font-bold">
                               รหัสทะเบียน: {verifiedBeneficiary?.registrationNo}
@@ -2683,7 +2684,7 @@ export function AssistanceRequestsView({
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">ผู้ยื่นคำร้อง:</span>
-                          <strong className="text-slate-800">{verifiedBeneficiary?.fullName}</strong>
+                          <strong className="text-slate-800">{verifiedBeneficiary ? formatPersonName(verifiedBeneficiary) : ''}</strong>
                         </div>
                       </div>
 

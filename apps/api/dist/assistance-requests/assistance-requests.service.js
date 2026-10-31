@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AssistanceRequestsService = void 0;
 const common_1 = require("@nestjs/common");
+const shared_1 = require("@zms/shared");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const audit_service_1 = require("../audit/audit.service");
@@ -61,7 +62,11 @@ let AssistanceRequestsService = class AssistanceRequestsService {
             const statusLabel = statusUpper === 'SUSPENDED' ? 'ระงับทะเบียน' : 'ไม่มีคุณสมบัติตามเกณฑ์';
             throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'BENEFICIARY_INELIGIBLE', `ทะเบียนนี้อยู่ในสถานะ "${statusLabel}" จึงไม่สามารถยื่นคำร้องขอความช่วยเหลือได้`);
         }
-        const fullName = [beneficiary.title, beneficiary.firstName, beneficiary.lastName].filter(Boolean).join(' ');
+        const fullName = (0, shared_1.formatPersonName)({
+            prefix: beneficiary.title,
+            firstName: beneficiary.firstName,
+            lastName: beneficiary.lastName,
+        });
         const idNum = beneficiary.identityNumberNormalized || beneficiary.identityNumber || '';
         const canSeeSensitive = user?.permissions?.includes('beneficiaries.read.sensitive') ?? true;
         const currentAddr = beneficiary.addresses?.find((a) => a.addressType === 'CURRENT') || beneficiary.addresses?.[0];
@@ -213,6 +218,9 @@ let AssistanceRequestsService = class AssistanceRequestsService {
         if (query.branchId && query.branchId.trim()) {
             where.branchId = query.branchId.trim();
         }
+        if (query.beneficiaryId) {
+            where.beneficiaryId = query.beneficiaryId;
+        }
         if (query.search && query.search.trim()) {
             const q = query.search.trim();
             const cleanQ = q.replace(/[^0-9]/g, '');
@@ -269,7 +277,7 @@ let AssistanceRequestsService = class AssistanceRequestsService {
         const canSeeSensitive = user?.permissions?.includes('beneficiaries.read.sensitive') ?? true;
         const formattedItems = items.map((app) => {
             const ben = app.beneficiary;
-            const fullName = ben ? [ben.title, ben.firstName, ben.lastName].filter(Boolean).join(' ') : '';
+            const fullName = ben ? (0, shared_1.formatPersonName)({ prefix: ben.title, firstName: ben.firstName, lastName: ben.lastName }) : '';
             const idNum = ben?.identityNumberNormalized || ben?.identityNumber || '';
             return {
                 ...app,
@@ -335,7 +343,7 @@ let AssistanceRequestsService = class AssistanceRequestsService {
         }
         const canSeeSensitive = user?.permissions?.includes('beneficiaries.read.sensitive') ?? true;
         const ben = app.beneficiary;
-        const fullName = ben ? [ben.title, ben.firstName, ben.lastName].filter(Boolean).join(' ') : '';
+        const fullName = ben ? (0, shared_1.formatPersonName)({ prefix: ben.title, firstName: ben.firstName, lastName: ben.lastName }) : '';
         const idNum = ben?.identityNumberNormalized || ben?.identityNumber || '';
         return {
             ...app,

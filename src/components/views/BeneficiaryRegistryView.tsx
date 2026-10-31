@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { formatPersonName, splitPersonName } from '@zms/shared';
+import { diffRegistryFields, registryNeedsReReview } from '@/lib/registrySurvey';
 import { useApp } from '@/context/AppContext';
 import { 
   BeneficiaryRegistryItem, 
@@ -106,7 +108,7 @@ const REGISTRATION_STATUS_LABELS: Record<RegistrationStatus, { label: string; co
   pending_qualification: { label: 'รอพิจารณาคุณสมบัติ', color: 'text-purple-800', bg: 'bg-purple-50', border: 'border-purple-200' },
   qualified: { label: 'มีคุณสมบัติตามเกณฑ์', color: 'text-emerald-800', bg: 'bg-emerald-50', border: 'border-emerald-200' },
   disqualified: { label: 'ไม่มีคุณสมบัติตามเกณฑ์', color: 'text-rose-800', bg: 'bg-rose-50', border: 'border-rose-200' },
-  need_more_info: { label: 'ต้องตรวจสอบเพิ่มเติม', color: 'text-orange-800', bg: 'bg-orange-50', border: 'border-orange-200' },
+  need_more_info: { label: 'รอตรวจสอบใหม่', color: 'text-orange-800', bg: 'bg-orange-50', border: 'border-orange-200' },
   suspended: { label: 'ระงับหรือยกเลิกทะเบียน', color: 'text-slate-800', bg: 'bg-slate-200', border: 'border-slate-400' },
 };
 
@@ -137,7 +139,8 @@ export function BeneficiaryRegistryView({
     createAssistanceRequest,
     showToast, 
     refreshData,
-    isLoading 
+    isLoading,
+    authToken,
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -243,6 +246,12 @@ export function BeneficiaryRegistryView({
 
   // In-app unsaved changes confirmation modal state (replaces native window.confirm)
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState<boolean>(false);
+  const [savePreview, setSavePreview] = useState<null | {
+    changes: { field: string; fieldLabel: string; oldValue: string; newValue: string; material: boolean }[];
+    material: boolean;
+    reviewed: boolean;
+  }>(null);
+  const editBaseline = useRef<any>(null);
 
   // Lock body scroll cleanly whenever any modal in this view is active
   const isAnyModalActive = Boolean(
@@ -323,7 +332,20 @@ export function BeneficiaryRegistryView({
     return false;
   };
 
-  // Open details modal
+  const loadRegistryDetail = async (id: string): Promise<BeneficiaryRegistryItem | null> => {
+    const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`/api/registry/${id}`, { headers, credentials: 'include' });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success && json.data) {
+      setSelectedRegistry(json.data);
+      return json.data as BeneficiaryRegistryItem;
+    }
+    return null;
+  };
+
+  // Open details modal from the full record, not the trimmed list row
   const handleOpenDetails = (
     reg: BeneficiaryRegistryItem, 
     mainSection: RegistryMainSection = 'personal',
@@ -333,6 +355,7 @@ export function BeneficiaryRegistryView({
     setActiveMainSection(mainSection);
     setActivePersonalSubSection(personalSub);
     setIsEditing(false);
+    void loadRegistryDetail(reg.id);
     setChecklist(reg.evaluatorChecklist || {
       amalIbadah: true,
       landRights: true,
@@ -349,66 +372,71 @@ export function BeneficiaryRegistryView({
   };
 
   // Start editing registry
-  const handleStartEdit = (mainSec: RegistryMainSection = 'personal', personalSub?: PersonalSubTab) => {
+  const handleStartEdit = async (mainSec: RegistryMainSection = 'personal', personalSub?: PersonalSubTab) => {
     if (!selectedRegistry) return;
     if (!canEditRegistry(selectedRegistry)) {
       showToast('ท่านไม่มีสิทธิ์แก้ไขข้อมูลทะเบียนนี้', 'error');
       return;
     }
+    const fresh = await loadRegistryDetail(selectedRegistry.id);
+    const source = fresh || selectedRegistry;
+    editBaseline.current = JSON.parse(JSON.stringify(source));
     setIsEditing(true);
     setActiveMainSection(mainSec);
     if (personalSub) setActivePersonalSubSection(personalSub);
+    const name = splitPersonName(source);
     setEditForm({
-      titlePrefix: selectedRegistry.titlePrefix || 'นาย',
-      fullName: selectedRegistry.fullName || '',
-      nationalId: selectedRegistry.nationalId || '',
-      phone: selectedRegistry.phone || '',
-      email: selectedRegistry.email || '',
-      birthDate: selectedRegistry.birthDate || '',
-      age: selectedRegistry.age || 0,
-      occupation: selectedRegistry.occupation || '',
-      maritalStatus: selectedRegistry.maritalStatus || 'married',
-      asnafCategory: selectedRegistry.asnafCategory || 'miskin',
-      branchId: selectedRegistry.branchId || 'br-hq',
-      branchName: selectedRegistry.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
-      address: selectedRegistry.address || '',
-      province: selectedRegistry.province || '',
-      district: selectedRegistry.district || '',
-      subdistrict: selectedRegistry.subdistrict || '',
-      community: selectedRegistry.community || '',
-      postcode: selectedRegistry.postcode || '',
-      housingType: selectedRegistry.housingType || 'own',
-      housingCondition: selectedRegistry.housingCondition || 'dilapidated',
-      housingNotes: selectedRegistry.housingNotes || '',
-      landTitleType: selectedRegistry.landTitleType || 'title_deed',
-      landTitleNotes: selectedRegistry.landTitleNotes || '',
-      monthlyIncome: selectedRegistry.monthlyIncome ?? null,
-      monthlyExpense: selectedRegistry.monthlyExpense ?? null,
-      debtAmount: selectedRegistry.debtAmount ?? null,
-      debtMonthlyPayment: selectedRegistry.debtMonthlyPayment ?? null,
-      creditorName: selectedRegistry.creditorName || '',
-      debtPurpose: selectedRegistry.debtPurpose || selectedRegistry.debtType || '',
-      incomeBreakdown: selectedRegistry.incomeBreakdown ? { ...selectedRegistry.incomeBreakdown } : null,
-      expenseBreakdown: selectedRegistry.expenseBreakdown ? { ...selectedRegistry.expenseBreakdown } : null,
-      householdMembers: selectedRegistry.householdMembers ? selectedRegistry.householdMembers.map(m => ({ ...m })) : [],
-      pastAssistance: selectedRegistry.pastAssistance ? selectedRegistry.pastAssistance.map(a => ({ ...a })) : [],
-      hardshipReasons: selectedRegistry.hardshipReasons || {
-        poverty: true,
-        hasDebt: true,
-      },
-      disabilityNotes: selectedRegistry.disabilityNotes || '',
-      illnessNotes: selectedRegistry.illnessNotes || '',
-      livingLimitations: selectedRegistry.livingLimitations || '',
-      familySituationSummary: selectedRegistry.familySituationSummary || '',
-      urgentNeeds: selectedRegistry.urgentNeeds || '',
-      dependentBurdens: selectedRegistry.dependentBurdens || '',
-      coordinator: selectedRegistry.coordinator ? { ...selectedRegistry.coordinator } : { fullName: '', phone: '', occupation: '' },
-      certifier: selectedRegistry.certifier ? { ...selectedRegistry.certifier } : { fullName: '', phone: '', roleTitle: '', organization: '', comments: '' },
-      latitude: selectedRegistry.latitude !== undefined ? selectedRegistry.latitude : null,
-      longitude: selectedRegistry.longitude !== undefined ? selectedRegistry.longitude : null,
-      residenceAddress: selectedRegistry.residenceAddress || selectedRegistry.address || '',
-      placeName: selectedRegistry.placeName || '',
-      locationVerificationStatus: selectedRegistry.locationVerificationStatus || 'not_specified',
+      titlePrefix: name.prefix,
+      firstName: name.firstName,
+      lastName: name.lastName,
+      fullName: formatPersonName(name),
+      nationalId: source.nationalId || '',
+      phone: source.phone || '',
+      email: source.email || '',
+      birthDate: source.birthDate || '',
+      age: source.age || 0,
+      occupation: source.occupation || '',
+      maritalStatus: source.maritalStatus || '',
+      asnafCategory: source.asnafCategory || 'miskin',
+      branchId: source.branchId || 'br-hq',
+      branchName: source.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
+      address: source.address || '',
+      province: source.province || '',
+      district: source.district || '',
+      subdistrict: source.subdistrict || '',
+      community: source.community || '',
+      postcode: source.postcode || '',
+      housingType: source.housingType || '',
+      housingCondition: source.housingCondition || '',
+      housingNotes: source.housingNotes || '',
+      landTitleType: source.landTitleType || '',
+      landTitleNotes: source.landTitleNotes || '',
+      monthlyIncome: source.monthlyIncome ?? null,
+      monthlyExpense: source.monthlyExpense ?? null,
+      debtAmount: source.debtAmount ?? null,
+      debtMonthlyPayment: source.debtMonthlyPayment ?? null,
+      debtType: source.debtType || '',
+      creditorName: source.creditorName || '',
+      debtPurpose: source.creditorName || source.debtPurpose || '',
+      debtNotes: source.debtNotes || '',
+      incomeBreakdown: source.incomeBreakdown ? { ...source.incomeBreakdown } : null,
+      expenseBreakdown: source.expenseBreakdown ? { ...source.expenseBreakdown } : null,
+      householdMembers: source.householdMembers ? source.householdMembers.map(m => ({ ...m })) : [],
+      pastAssistance: source.pastAssistance ? source.pastAssistance.map(a => ({ ...a })) : [],
+      hardshipReasons: source.hardshipReasons || {},
+      disabilityNotes: source.disabilityNotes || '',
+      illnessNotes: source.illnessNotes || '',
+      livingLimitations: source.livingLimitations || '',
+      familySituationSummary: source.familySituationSummary || '',
+      urgentNeeds: source.urgentNeeds || '',
+      dependentBurdens: source.dependentBurdens || '',
+      coordinator: source.coordinator ? { ...source.coordinator } : { fullName: '', phone: '', occupation: '' },
+      certifier: source.certifier ? { ...source.certifier } : { fullName: '', phone: '', roleTitle: '', organization: '', comments: '' },
+      latitude: source.latitude !== undefined ? source.latitude : null,
+      longitude: source.longitude !== undefined ? source.longitude : null,
+      residenceAddress: source.residenceAddress || source.address || '',
+      placeName: source.placeName || '',
+      locationVerificationStatus: source.locationVerificationStatus || '',
       editNotes: '',
       newUploadedDocs: [] as UploadedDocumentItem[],
     });
@@ -487,12 +515,22 @@ export function BeneficiaryRegistryView({
     });
   };
 
+  useEffect(() => {
+    if (!isEditing) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isEditing]);
+
   // Save edit changes to real database
   const handleSaveEdit = async () => {
     if (!selectedRegistry) return;
 
-    if (!editForm.fullName?.trim()) {
-      showToast('กรุณาระบุชื่อ-นามสกุลผู้มีสิทธิ์', 'error');
+    if (!editForm.firstName?.trim() || !editForm.lastName?.trim()) {
+      showToast('กรุณาระบุชื่อและนามสกุลผู้มีสิทธิ์', 'error');
       return;
     }
     const cleanId = String(editForm.nationalId || '').replace(/[^0-9]/g, '');
@@ -525,11 +563,31 @@ export function BeneficiaryRegistryView({
       }
     }
 
+    const baseline = editBaseline.current || selectedRegistry;
+    const changes = diffRegistryFields(baseline, { ...editForm, nationalId: cleanId });
+    if (changes.length === 0) {
+      showToast('ไม่พบข้อมูลที่เปลี่ยนแปลง', 'error');
+      return;
+    }
+    const reviewed = registryNeedsReReview(selectedRegistry.registrationStatus);
+    const material = changes.some((change) => change.material);
+    if (reviewed && material && String(editForm.editNotes || '').trim().length < 5) {
+      showToast('การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร', 'error');
+      return;
+    }
+    setSavePreview({ changes, material, reviewed });
+  };
+
+  const handleConfirmSave = async () => {
+    if (!selectedRegistry || !savePreview) return;
+    const cleanId = String(editForm.nationalId || '').replace(/[^0-9]/g, '');
     setIsSaving(true);
     try {
       const payload = {
         ...editForm,
         nationalId: cleanId,
+        expectedUpdatedAt: selectedRegistry.updatedAt,
+        changes: savePreview.changes,
         documents: (editForm.newUploadedDocs || []).map((d: UploadedDocumentItem) => ({
           name: d.name,
           category: d.category,
@@ -543,13 +601,10 @@ export function BeneficiaryRegistryView({
 
       const ok = await updateBeneficiaryRegistry(selectedRegistry.id, payload, editForm.editNotes);
       if (ok) {
-        // Fetch fresh registry record from database
-        const res = await fetch(`/api/registry/${selectedRegistry.id}`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          setSelectedRegistry(json.data);
-        }
+        await loadRegistryDetail(selectedRegistry.id);
         setIsEditing(false);
+        setSavePreview(null);
+        editBaseline.current = null;
       }
     } finally {
       setIsSaving(false);
@@ -560,7 +615,7 @@ export function BeneficiaryRegistryView({
   const handleOpenHistoryModal = async (benId: string, name?: string, regNo?: string) => {
     const reg = registries.find(r => r.id === benId) || selectedRegistry;
     setHistoryTarget({
-      name: name || reg?.fullName || 'ผู้มีสิทธิ์',
+      name: name || (reg ? formatPersonName(reg) : '') || 'ผู้มีสิทธิ์',
       regNo: regNo || reg?.registrationNo || '-'
     });
     setIsHistoryModalOpen(true);
@@ -641,7 +696,7 @@ export function BeneficiaryRegistryView({
     setAssistanceDetails('');
     setRequestedAmount(ast?.defaultMinAmount || (reg.netIncome < 0 ? 10000 : 8000));
     setUrgencyLevel('normal');
-    setNecessityDetails(`ขอรับการสนับสนุนสำหรับครัวเรือน ${reg.fullName} เนื่องจากมีรายได้ไม่เพียงพอต่อค่าครองชีพ`);
+    setNecessityDetails(`ขอรับการสนับสนุนสำหรับครัวเรือน ${formatPersonName(reg)} เนื่องจากมีรายได้ไม่เพียงพอต่อค่าครองชีพ`);
     setIsAssistanceDialogOpen(true);
   };
 
@@ -915,7 +970,7 @@ export function BeneficiaryRegistryView({
                       {/* Name & Masked ID */}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>{reg.titlePrefix || (reg as any).title || ''} {reg.fullName || `${(reg as any).firstName || ''} ${(reg as any).lastName || ''}`.trim() || 'ไม่ระบุชื่อ'}</span>
+                          <span>{formatPersonName(reg)}</span>
                           {reg.age && <span className="text-[10px] font-normal text-slate-400">({reg.age} ปี)</span>}
                         </div>
                         <div className="text-[11px] font-mono text-slate-500 flex items-center gap-2 mt-0.5">
@@ -1040,7 +1095,7 @@ export function BeneficiaryRegistryView({
                                 setSoftDeleteTarget({
                                   id: reg.id,
                                   registryNumber: reg.registrationNo || (reg as any).registryNumber || reg.id,
-                                  fullName: `${reg.titlePrefix || ''} ${reg.fullName || ''}`.trim(),
+                                  fullName: formatPersonName(reg),
                                 });
                               }}
                               className="p-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors ml-0.5"
@@ -1123,7 +1178,7 @@ export function BeneficiaryRegistryView({
                 
                 <div className="flex flex-wrap items-center gap-2.5">
                   <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight">
-                    {selectedRegistry.titlePrefix} {selectedRegistry.fullName}
+                    {formatPersonName(selectedRegistry)}
                   </h2>
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                     REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus]?.bg || 'bg-slate-100'
@@ -1173,6 +1228,18 @@ export function BeneficiaryRegistryView({
                       <span className="hidden sm:inline">ปรับสถานะ</span>
                     </button>
 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.assign(`/beneficiaries/${selectedRegistry.id}/print`);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-semibold transition-colors border border-white/10"
+                      title="พิมพ์แบบสำรวจเพื่อพิจารณาความช่วยเหลือ"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">พิมพ์เอกสาร</span>
+                    </button>
+
                     {/* ดูประวัติการแก้ไข */}
                     <button
                       type="button"
@@ -1192,7 +1259,7 @@ export function BeneficiaryRegistryView({
                           setSoftDeleteTarget({
                             id: selectedRegistry.id,
                             registryNumber: selectedRegistry.registrationNo,
-                            fullName: `${selectedRegistry.titlePrefix || ''} ${selectedRegistry.fullName || ''}`.trim(),
+                            fullName: formatPersonName(selectedRegistry),
                           });
                         }}
                         className="flex items-center gap-1.5 px-3 py-2 bg-red-600/85 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors border border-red-500/50 shadow-sm"
@@ -1215,6 +1282,16 @@ export function BeneficiaryRegistryView({
                       <span>ยกเลิก</span>
                     </button>
 
+                    {selectedRegistry.registrationStatus === 'draft' && (
+                      <button
+                        type="button"
+                        onClick={handleSaveEdit}
+                        disabled={isSaving}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/25 text-white font-semibold rounded-xl text-xs transition-colors"
+                      >
+                        <span>บันทึกฉบับร่าง</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleSaveEdit}
@@ -1222,7 +1299,7 @@ export function BeneficiaryRegistryView({
                       className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-xl text-xs transition-colors shadow-md disabled:opacity-50"
                     >
                       {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</span>
+                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</span>
                     </button>
                   </>
                 )}
@@ -1333,14 +1410,18 @@ export function BeneficiaryRegistryView({
                   registry={selectedRegistry}
                   canEdit={canEditRegistry(selectedRegistry)}
                   onRefreshRegistry={async () => {
-                    const res = await fetch(`/api/registry/${selectedRegistry.id}`);
+                    const headers: Record<string, string> = {};
+                    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+                    const res = await fetch(`/api/registry/${selectedRegistry.id}`, { headers, credentials: 'include' });
                     const json = await res.json();
                     if (json.success && json.data) {
                       setSelectedRegistry(json.data);
                     }
                   }}
-                  onDocumentsUploaded={async (newDocs) => {
-                    const res = await fetch(`/api/registry/${selectedRegistry.id}`);
+                  onDocumentsUploaded={async () => {
+                    const headers: Record<string, string> = {};
+                    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+                    const res = await fetch(`/api/registry/${selectedRegistry.id}`, { headers, credentials: 'include' });
                     const json = await res.json();
                     if (json.success && json.data) {
                       setSelectedRegistry(json.data);
@@ -1422,7 +1503,12 @@ export function BeneficiaryRegistryView({
                 </>
               ) : (
                 <>
-                  <div className="flex-1 min-w-[200px]">
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    {registryNeedsReReview(selectedRegistry.registrationStatus) && (
+                      <p className="text-[11px] text-amber-800 font-semibold">
+                        ทะเบียนนี้ผ่านการตรวจสอบแล้ว หากแก้รายได้ หนี้สิน หรือสมาชิกครัวเรือน ระบบจะส่งกลับไปรอตรวจสอบใหม่
+                      </p>
+                    )}
                     <input
                       type="text"
                       value={editForm.editNotes || ''}
@@ -1453,7 +1539,7 @@ export function BeneficiaryRegistryView({
                       ) : (
                         <Save className="w-4 h-4" />
                       )}
-                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}</span>
+                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</span>
                     </button>
                   </div>
                 </>
@@ -1493,7 +1579,7 @@ export function BeneficiaryRegistryView({
               <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4 text-xs">
                 <div>
                   <span className="text-slate-400 block mb-0.5">ผู้มีสิทธิ์:</span>
-                  <strong className="text-slate-900 block text-sm">{selectedRegistry.fullName}</strong>
+                  <strong className="text-slate-900 block text-sm">{formatPersonName(selectedRegistry)}</strong>
                   <span className="text-[11px] font-mono text-slate-500">{selectedRegistry.registrationNo}</span>
                 </div>
 
@@ -1582,7 +1668,7 @@ export function BeneficiaryRegistryView({
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] text-slate-400 block">ผู้มีสิทธิ์รับความช่วยเหลือ:</span>
-                    <strong className="text-slate-900 block font-bold">{selectedRegistry.fullName}</strong>
+                    <strong className="text-slate-900 block font-bold">{formatPersonName(selectedRegistry)}</strong>
                   </div>
                   <span className="font-mono text-xs px-2 py-0.5 rounded bg-white border border-slate-200 font-bold text-slate-700">
                     {selectedRegistry.registrationNo}
@@ -1723,7 +1809,7 @@ export function BeneficiaryRegistryView({
       <RegistryEditHistoryModal
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
-        beneficiaryName={historyTarget.name || selectedRegistry?.fullName || ''}
+        beneficiaryName={historyTarget.name || (selectedRegistry ? formatPersonName(selectedRegistry) : '')}
         registrationNo={historyTarget.regNo || selectedRegistry?.registrationNo || ''}
         historyList={historyList}
         isLoading={isLoadingHistory}
@@ -1733,9 +1819,53 @@ export function BeneficiaryRegistryView({
         isOpen={Boolean(selectedAidForReceipt)}
         onClose={() => setSelectedAidForReceipt(null)}
         application={selectedAidForReceipt}
-        beneficiaryName={selectedRegistry?.fullName}
+        beneficiaryName={selectedRegistry ? formatPersonName(selectedRegistry) : ''}
         registrationNo={selectedRegistry?.registrationNo}
       />
+
+      {savePreview && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center p-3 bg-slate-950/60">
+            <div role="dialog" aria-modal="true" className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden">
+              <div className="p-4 bg-[#0b2545] text-white">
+                <h3 className="font-bold">ยืนยันการบันทึกการแก้ไข</h3>
+                <p className="text-xs text-slate-200 mt-1">ตรวจรายการที่เปลี่ยนก่อนบันทึกลงฐานข้อมูล</p>
+              </div>
+              <div className="p-4 overflow-y-auto text-xs space-y-2">
+                {savePreview.reviewed && savePreview.material && (
+                  <p className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                    ข้อมูลนี้มีผลต่อคุณสมบัติ หลังบันทึกทะเบียนจะอยู่ในสถานะรอตรวจสอบใหม่ ประวัติการช่วยเหลือและการเงินเดิมจะไม่ถูกแก้ไข
+                  </p>
+                )}
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-slate-500">
+                      <th className="text-left py-1">รายการ</th>
+                      <th className="text-left py-1">ค่าเดิม</th>
+                      <th className="text-left py-1">ค่าใหม่</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savePreview.changes.map((change) => (
+                      <tr key={change.field} className="border-t border-slate-100">
+                        <td className="py-1.5 pr-2 font-semibold">{change.fieldLabel}</td>
+                        <td className="py-1.5 pr-2 text-rose-800">{change.oldValue || 'ไม่มีข้อมูล'}</td>
+                        <td className="py-1.5 text-emerald-800 font-semibold">{change.newValue || 'ไม่มีข้อมูล'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="p-3 border-t border-slate-200 flex justify-end gap-2">
+                <button type="button" onClick={() => setSavePreview(null)} disabled={isSaving} className="px-3 py-2 border border-slate-300 rounded-xl">ยกเลิก</button>
+                <button type="button" onClick={handleConfirmSave} disabled={isSaving} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl disabled:opacity-50">
+                  {isSaving ? 'กำลังบันทึก...' : 'ยืนยันบันทึก'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
       {/* 9. In-app Unsaved Changes Confirmation Modal (Replaces browser confirm) */}
       <ConfirmModal

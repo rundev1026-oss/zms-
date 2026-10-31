@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   StreamableFile,
   UploadedFile,
   UseInterceptors,
@@ -50,6 +51,7 @@ export class DocumentsController {
         : { buffer: file.buffer, originalname: file.originalname, mimetype: file.mimetype },
       dto.documentType,
       user,
+      dto.replacesDocumentId,
     );
   }
 
@@ -76,12 +78,14 @@ export class DocumentsController {
   @ApiOperation({ summary: 'ดาวน์โหลดเอกสารหลังตรวจสิทธิ์' })
   async content(
     @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Query('inline') inline: string | undefined,
     @CurrentUser() user: AuthUser,
   ) {
     const file = await this.documents.readContent(documentId, user);
+    const kind = inline === '1' ? 'inline' : 'attachment';
     return new StreamableFile(file.bytes, {
       type: file.mimeType,
-      disposition: `attachment; filename="${encodeURIComponent(file.fileName)}"`,
+      disposition: `${kind}; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
     });
   }
 }

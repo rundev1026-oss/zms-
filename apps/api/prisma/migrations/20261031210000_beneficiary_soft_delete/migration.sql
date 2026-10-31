@@ -16,3 +16,4 @@ BEGIN
         ALTER TABLE "beneficiaries" ADD CONSTRAINT "beneficiaries_deleted_by_id_fkey" FOREIGN KEY ("deleted_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
     END IF;
 END $$;
+

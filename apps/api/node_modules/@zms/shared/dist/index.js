@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.REGISTRY_STATUSES = exports.MODULE_PERMISSION_CATALOG = exports.PERMISSION_CODES = exports.API_SERVICE_NAME = exports.APP_VERSION = exports.APP_NAME = void 0;
+exports.splitPersonName = exports.normalizePersonPrefix = exports.formatPersonName = exports.PERSON_TITLE_OPTIONS = exports.REGISTRY_STATUSES = exports.MODULE_PERMISSION_CATALOG = exports.PERMISSION_CODES = exports.API_SERVICE_NAME = exports.APP_VERSION = exports.APP_NAME = void 0;
 exports.APP_NAME = 'ระบบจัดการซะกาต (ZMS)';
 exports.APP_VERSION = '0.1.0';
 exports.API_SERVICE_NAME = 'zms-api';
@@ -336,3 +336,8 @@ exports.REGISTRY_STATUSES = [
     'SUSPENDED',
     'ARCHIVED',
 ];
+var person_name_1 = require("./person-name");
+Object.defineProperty(exports, "PERSON_TITLE_OPTIONS", { enumerable: true, get: function () { return person_name_1.PERSON_TITLE_OPTIONS; } });
+Object.defineProperty(exports, "formatPersonName", { enumerable: true, get: function () { return person_name_1.formatPersonName; } });
+Object.defineProperty(exports, "normalizePersonPrefix", { enumerable: true, get: function () { return person_name_1.normalizePersonPrefix; } });
+Object.defineProperty(exports, "splitPersonName", { enumerable: true, get: function () { return person_name_1.splitPersonName; } });

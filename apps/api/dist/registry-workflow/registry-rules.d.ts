@@ -24,5 +24,7 @@ export declare function planReject(status: RegistryStatusCode): TransitionPlan |
 export declare function planSuspend(status: RegistryStatusCode): TransitionPlan | TransitionError;
 export declare function planArchive(status: RegistryStatusCode): TransitionPlan | TransitionError;
 export declare function canEditRegistry(status: RegistryStatusCode): boolean;
+export declare function canReviseRegistry(status: RegistryStatusCode): boolean;
+export declare function revisionRequiresReview(status: RegistryStatusCode): boolean;
 export declare function isRegistryStatus(status: string): status is RegistryStatusCode;
 export {};

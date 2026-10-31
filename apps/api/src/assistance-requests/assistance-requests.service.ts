@@ -1,4 +1,5 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
+import { formatPersonName } from '@zms/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -80,7 +81,11 @@ export class AssistanceRequestsService {
       );
     }
 
-    const fullName = [beneficiary.title, beneficiary.firstName, beneficiary.lastName].filter(Boolean).join(' ');
+    const fullName = formatPersonName({
+      prefix: beneficiary.title,
+      firstName: beneficiary.firstName,
+      lastName: beneficiary.lastName,
+    });
     const idNum = beneficiary.identityNumberNormalized || beneficiary.identityNumber || '';
     const canSeeSensitive = user?.permissions?.includes('beneficiaries.read.sensitive') ?? true;
     const currentAddr = beneficiary.addresses?.find((a) => a.addressType === 'CURRENT') || beneficiary.addresses?.[0];
@@ -276,6 +281,10 @@ export class AssistanceRequestsService {
       where.branchId = query.branchId.trim();
     }
 
+    if (query.beneficiaryId) {
+      where.beneficiaryId = query.beneficiaryId;
+    }
+
     if (query.search && query.search.trim()) {
       const q = query.search.trim();
       const cleanQ = q.replace(/[^0-9]/g, '');
@@ -335,7 +344,7 @@ export class AssistanceRequestsService {
 
     const formattedItems = items.map((app) => {
       const ben = app.beneficiary;
-      const fullName = ben ? [ben.title, ben.firstName, ben.lastName].filter(Boolean).join(' ') : '';
+      const fullName = ben ? formatPersonName({ prefix: ben.title, firstName: ben.firstName, lastName: ben.lastName }) : '';
       const idNum = ben?.identityNumberNormalized || ben?.identityNumber || '';
 
       return {
@@ -410,7 +419,7 @@ export class AssistanceRequestsService {
 
     const canSeeSensitive = user?.permissions?.includes('beneficiaries.read.sensitive') ?? true;
     const ben = app.beneficiary;
-    const fullName = ben ? [ben.title, ben.firstName, ben.lastName].filter(Boolean).join(' ') : '';
+    const fullName = ben ? formatPersonName({ prefix: ben.title, firstName: ben.firstName, lastName: ben.lastName }) : '';
     const idNum = ben?.identityNumberNormalized || ben?.identityNumber || '';
 
     return {

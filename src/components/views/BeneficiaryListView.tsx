@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll } from '@/components/common/Modal';
 import {
@@ -331,7 +332,7 @@ export function BeneficiaryListView({ onNavigate, selectedAppId, onEditApplicati
 
     const rows = filteredApps.map((a) => [
       `"${a.applicationNo}"`,
-      `"${a.titlePrefix || ''} ${a.fullName}"`,
+      `"${formatPersonName(a)}"`,
       `"${a.nationalIdMasked}"`,
       `"${a.phone}"`,
       `"${a.province}"`,
@@ -571,7 +572,7 @@ export function BeneficiaryListView({ onNavigate, selectedAppId, onEditApplicati
                     {/* ชื่อ–นามสกุล & โทร */}
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                        <span>{app.titlePrefix} {app.fullName}</span>
+                        <span>{formatPersonName(app)}</span>
                       </div>
                       <div className="text-[11px] text-slate-500 font-mono flex items-center gap-2 mt-0.5">
                         <span className="text-slate-400">ปชช:</span> {app.nationalIdMasked}
@@ -722,7 +723,7 @@ export function BeneficiaryListView({ onNavigate, selectedAppId, onEditApplicati
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-base font-bold text-slate-900">
-                      {activeModalApp.titlePrefix} {activeModalApp.fullName}
+                      {formatPersonName(activeModalApp)}
                     </h2>
                     <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                       {activeModalApp.applicationNo}
@@ -821,7 +822,7 @@ export function BeneficiaryListView({ onNavigate, selectedAppId, onEditApplicati
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-slate-700">
                       <div>
                         <span className="text-slate-400 block text-[10px]">ชื่อ–นามสกุล:</span>
-                        <span className="font-semibold text-slate-900">{activeModalApp.titlePrefix} {activeModalApp.fullName}</span>
+                        <span className="font-semibold text-slate-900">{formatPersonName(activeModalApp)}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[10px]">เลขบัตรประชาชน (PDPA):</span>
@@ -1615,7 +1616,7 @@ export function BeneficiaryListView({ onNavigate, selectedAppId, onEditApplicati
             >
             <h3 className="font-bold text-slate-900 text-base">พิจารณาอนุมัติคำร้องขอรับซะกาต</h3>
             <p className="text-xs text-slate-500">
-              ผู้ขอรับ: {activeModalApp.titlePrefix} {activeModalApp.fullName} (ขอรับ ฿{activeModalApp.requestedAmount.toLocaleString()} บาท)
+              ผู้ขอรับ: {formatPersonName(activeModalApp)} (ขอรับ ฿{activeModalApp.requestedAmount.toLocaleString()} บาท)
             </p>
 
             <div className="space-y-3 text-xs">

@@ -18,6 +18,7 @@ export declare class QueryAssistanceRequestsDto {
     status?: string;
     asnafCategory?: string;
     branchId?: string;
+    beneficiaryId?: string;
     page?: number;
     limit?: number;
 }

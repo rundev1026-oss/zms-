@@ -6,6 +6,8 @@ export declare class DocumentsController {
     private readonly documents;
     constructor(documents: DocumentsService);
     list(beneficiaryId: string): Promise<{
+        fileAvailable: boolean;
+        uploadedByName: string | null;
         id: string;
         beneficiaryId: string;
         documentType: string;
@@ -21,6 +23,8 @@ export declare class DocumentsController {
         originalname: string;
         mimetype: string;
     } | undefined, user: AuthUser): Promise<{
+        fileAvailable: boolean;
+        uploadedByName: string;
         id: string;
         beneficiaryId: string;
         documentType: string;
@@ -46,5 +50,5 @@ export declare class DocumentsController {
         id: string;
         deleted: boolean;
     }>;
-    content(documentId: string, user: AuthUser): Promise<StreamableFile>;
+    content(documentId: string, inline: string | undefined, user: AuthUser): Promise<StreamableFile>;
 }

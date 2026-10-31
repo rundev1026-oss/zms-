@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { PERSON_TITLE_OPTIONS, formatPersonName, splitPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
 import {
   AsnafCategory,
@@ -40,6 +41,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { DocumentUploader, UploadedDocumentItem } from '@/components/common/DocumentUploader';
+import { uploadPendingRegistryDocuments, type PendingRegistryFile } from '@/lib/registryDocuments';
 import { GoogleMapsLocationPicker } from '@/components/common/GoogleMapsLocationPicker';
 import { calculateAge, getTodayISODate, normalizeBirthDateToCE } from '@/utils/ageCalculator';
 import { ThaiAddressFields } from '@/components/common/ThaiAddressFields';
@@ -51,18 +53,23 @@ interface MultiStepRegistrationViewProps {
 }
 
 export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRegistrationViewProps) {
-  const { registerBeneficiaryProfile, updateBeneficiaryRegistry, createApplication, showToast, currentUser, funds } = useApp();
+  const { registerBeneficiaryProfile, updateBeneficiaryRegistry, createApplication, showToast, currentUser, funds, authToken } = useApp();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const submitLockRef = useRef(false);
+  const [createdBeneficiaryId, setCreatedBeneficiaryId] = useState<string>(editAppId || '');
   const [formMode, setFormMode] = useState<'registry_only' | 'application'>('registry_only');
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDocumentItem[]>([]);
+  const pendingFilesRef = useRef<PendingRegistryFile[]>([]);
   const [savedDraftNotice, setSavedDraftNotice] = useState<{ savedAt: string; data: any } | null>(null);
 
   // ========================================================
   // ส่วน A: ข้อมูลส่วนบุคคลและที่อยู่อาศัย
   // ========================================================
   const [titlePrefix, setTitlePrefix] = useState<string>('นาย');
-  const [fullName, setFullName] = useState<string>('');
+  const [firstName, setFirstName] = useState<string>('');
+  const [lastName, setLastName] = useState<string>('');
+  const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
   const [nationalId, setNationalId] = useState<string>('');
   const [birthDate, setBirthDate] = useState<string>('1972-05-12');
   const [age, setAge] = useState<number>(54);
@@ -275,12 +282,12 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
   // ========================================================
   // ส่วน I: เอกสารแนบ
   // ========================================================
-  const [hasIdCardDoc, setHasIdCardDoc] = useState<boolean>(true);
-  const [hasHouseRegDoc, setHasHouseRegDoc] = useState<boolean>(true);
-  const [hasFamilyPhotoDoc, setHasFamilyPhotoDoc] = useState<boolean>(true);
-  const [hasHousingPhotoDoc, setHasHousingPhotoDoc] = useState<boolean>(true);
+  const [hasIdCardDoc, setHasIdCardDoc] = useState<boolean>(false);
+  const [hasHouseRegDoc, setHasHouseRegDoc] = useState<boolean>(false);
+  const [hasFamilyPhotoDoc, setHasFamilyPhotoDoc] = useState<boolean>(false);
+  const [hasHousingPhotoDoc, setHasHousingPhotoDoc] = useState<boolean>(false);
   const [hasLandDoc, setHasLandDoc] = useState<boolean>(false);
-  const [hasMedicalCertDoc, setHasMedicalCertDoc] = useState<boolean>(true);
+  const [hasMedicalCertDoc, setHasMedicalCertDoc] = useState<boolean>(false);
 
   // Auto-sync age integer with birthDate calculation
   useEffect(() => {
@@ -321,8 +328,10 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
   }, [editAppId]);
 
   const applyBeneficiaryData = (b: any) => {
-    if (b.titlePrefix) setTitlePrefix(b.titlePrefix);
-    if (b.fullName) setFullName(b.fullName);
+    const loadedName = splitPersonName(b);
+    setTitlePrefix(loadedName.prefix);
+    setFirstName(loadedName.firstName);
+    setLastName(loadedName.lastName);
     if (b.nationalId) setNationalId(b.nationalId);
     if (b.birthDate) setBirthDate(b.birthDate);
     if (b.age) setAge(b.age);
@@ -352,11 +361,26 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
     if (b.asnafCategory) setAsnafCategory(b.asnafCategory);
     if (b.incomeBreakdown) setIncomeBreakdown(b.incomeBreakdown);
     if (b.expenseBreakdown) setExpenseBreakdown(b.expenseBreakdown);
-    if (b.debtAmount !== undefined) {
+    if (b.debtAmount !== undefined && b.debtAmount !== null) {
       setDebtAmount(Number(b.debtAmount));
       setHasDebt(Number(b.debtAmount) > 0);
     }
-    if (b.debtPurpose) setDebtType(b.debtPurpose);
+    if (b.debtType) setDebtType(b.debtType);
+    else if (b.debtPurpose) setDebtType(b.debtPurpose);
+    if (b.id || b.registryNumber || b.disabilityNotes !== undefined || b.hardshipReasons) {
+      setHasDisability(Boolean(b.disabilityNotes || b.hardshipReasons?.disability));
+      setDisabilityDetails(b.disabilityNotes || b.hardshipReasons?.disabilityDetails || '');
+      setHasIllness(Boolean(b.illnessNotes || b.hardshipReasons?.illness));
+      setIllnessDetails(b.illnessNotes || b.hardshipReasons?.illnessDetails || '');
+      setOtherHardship(Boolean(b.livingLimitations || b.hardshipReasons?.other));
+      setOtherHardshipDetails(b.livingLimitations || b.hardshipReasons?.otherDetails || '');
+      if (b.hardshipReasons) {
+        if (typeof b.hardshipReasons.poverty === 'boolean') setPoverty(b.hardshipReasons.poverty);
+        if (typeof b.hardshipReasons.unemployed === 'boolean') setUnemployed(b.hardshipReasons.unemployed);
+        if (typeof b.hardshipReasons.familyIssue === 'boolean') setFamilyIssue(b.hardshipReasons.familyIssue);
+        setFamilyIssueDetails(b.hardshipReasons.familyIssueDetails || '');
+      }
+    }
     if (b.householdMembers && Array.isArray(b.householdMembers) && b.householdMembers.length > 0) {
       setMembers(b.householdMembers);
     }
@@ -410,7 +434,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
     if (typeof window === 'undefined' || editAppId) return;
     try {
       const draftData = {
-        titlePrefix, fullName, nationalId, birthDate, age, phone, email, occupation, maritalStatus,
+        titlePrefix, firstName, lastName, fullName, nationalId, birthDate, age, phone, email, occupation, maritalStatus,
         employmentStatus, nationality, religion, gender,
         address, province, district, subdistrict, postcode, community, branchId, branchName,
         housingType, housingCondition, housingNotes, landTitleType, landTitleNotes,
@@ -485,15 +509,24 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
 
   // Submit Handler
   const handleSubmit = async (submitStatus: 'draft' | 'submitted') => {
-    if (!fullName || !fullName.trim()) {
-      showToast('กรุณาระบุชื่อ-นามสกุลผู้ขอรับความช่วยเหลือ', 'error');
+    if (submitLockRef.current || isSubmitting) {
+      return;
+    }
+
+    if (!firstName.trim() || !lastName.trim()) {
+      showToast('กรุณาระบุชื่อและนามสกุลผู้ขอรับความช่วยเหลือ', 'error');
       setCurrentStep(1);
       return;
     }
 
     const cleanNationalId = (nationalId || '').replace(/[^0-9]/g, '');
-    if (cleanNationalId && cleanNationalId.length !== 13) {
+    if (!cleanNationalId || cleanNationalId.length !== 13) {
       showToast('หมายเลขบัตรประชาชนต้องมี 13 หลัก', 'error');
+      setCurrentStep(1);
+      return;
+    }
+    if (!isValidThaiNationalId(cleanNationalId)) {
+      showToast('หมายเลขบัตรประชาชนไม่ถูกต้อง กรุณาตรวจสอบเลข 13 หลัก', 'error');
       setCurrentStep(1);
       return;
     }
@@ -541,49 +574,16 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
       return;
     }
 
+    submitLockRef.current = true;
     setIsSubmitting(true);
 
     try {
-      // Build documents list
-      const documents = [];
-      if (hasIdCardDoc) {
-        documents.push({ name: 'สำเนาบัตรประชาชนผู้ขอรับ', category: 'id_card', fileUrl: '/docs/id-card.pdf' });
-      }
-      if (hasHouseRegDoc) {
-        documents.push({ name: 'สำเนาทะเบียนบ้าน', category: 'house_reg', fileUrl: '/docs/house-reg.pdf' });
-      }
-      if (hasFamilyPhotoDoc) {
-        documents.push({ name: 'ภาพถ่ายครอบครัว', category: 'family_photo', fileUrl: '/images/family.jpg' });
-      }
-      if (hasHousingPhotoDoc) {
-        documents.push({ name: 'ภาพถ่ายสภาพที่อยู่อาศัย', category: 'housing_exterior', fileUrl: '/images/housing.jpg' });
-      }
-      if (hasLandDoc) {
-        documents.push({ name: 'เอกสารสิทธิ์ที่ดิน', category: 'land_doc', fileUrl: '/docs/land-title.pdf' });
-      }
-      if (hasMedicalCertDoc) {
-        documents.push({ name: 'ใบรับรองแพทย์ / ประวัติการรักษา', category: 'medical_cert', fileUrl: '/docs/medical.pdf' });
-      }
-
-      // Add Cloud Storage uploaded files
-      if (uploadedDocs.length > 0) {
-        uploadedDocs.forEach((d) => {
-          documents.push({
-            name: d.name,
-            category: d.category as any,
-            fileUrl: d.fileUrl,
-            fileSize: d.fileSize,
-            mimeType: d.mimeType,
-            storageProvider: d.storageProvider,
-            storagePath: d.storagePath,
-          });
-        });
-      }
-
       const payload: any = {
         titlePrefix,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         fullName,
-        nationalId: cleanNationalId || `1100200${Date.now().toString().slice(-6)}`,
+        nationalId: cleanNationalId,
         birthDate,
         age,
         phone,
@@ -660,20 +660,35 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
               comments: certifierComments,
             }
           : undefined,
-        documents,
         registrationStatus: submitStatus === 'draft' ? 'draft' : 'pending_verification',
       };
 
+      const attachPendingDocuments = async (beneficiaryId: string) => {
+        const pending = pendingFilesRef.current;
+        if (pending.length === 0) return;
+        const result = await uploadPendingRegistryDocuments(beneficiaryId, pending, authToken || null);
+        pendingFilesRef.current = [];
+        if (result.failed.length > 0) {
+          showToast(`บันทึกทะเบียนแล้ว แต่แนบเอกสารไม่สำเร็จ: ${result.failed.join(', ')}`, 'error');
+        } else {
+          showToast('บันทึกเอกสารแนบเรียบร้อยแล้ว', 'success');
+        }
+      };
+
       if (formMode === 'registry_only') {
-        if (editAppId) {
-          const ok = await updateBeneficiaryRegistry(editAppId, payload, 'แก้ไขข้อมูลจากการขึ้นทะเบียน');
+        const existingId = editAppId || createdBeneficiaryId;
+        if (existingId) {
+          const ok = await updateBeneficiaryRegistry(existingId, payload, 'แก้ไขข้อมูลจากการขึ้นทะเบียน');
           if (ok) {
+            await attachPendingDocuments(existingId);
             if (typeof window !== 'undefined') localStorage.removeItem('zms_draft_beneficiary');
             onNavigate('beneficiaries');
           }
         } else {
           const benId = await registerBeneficiaryProfile(payload);
           if (benId) {
+            setCreatedBeneficiaryId(benId);
+            await attachPendingDocuments(benId);
             if (typeof window !== 'undefined') localStorage.removeItem('zms_draft_beneficiary');
             onNavigate('beneficiaries');
           }
@@ -681,8 +696,10 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
       } else {
         const appId = await createApplication({
           titlePrefix,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           fullName,
-          nationalId: cleanNationalId || `1100200${Date.now().toString().slice(-6)}`,
+          nationalId: cleanNationalId,
           birthDate,
           age,
           phone,
@@ -768,8 +785,6 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
             }
             : undefined,
 
-          // ส่วน I
-          documents,
           status: submitStatus,
         });
 
@@ -778,19 +793,24 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
         }
       }
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   const handleNextStep = () => {
     if (currentStep === 1) {
-      if (!fullName || !fullName.trim()) {
-        showToast('กรุณาระบุชื่อ-นามสกุลผู้ขอรับความช่วยเหลือ', 'error');
+      if (!firstName.trim() || !lastName.trim()) {
+        showToast('กรุณาระบุชื่อและนามสกุลผู้ขอรับความช่วยเหลือ', 'error');
         return;
       }
       const cleanNationalId = (nationalId || '').replace(/[^0-9]/g, '');
-      if (cleanNationalId && cleanNationalId.length !== 13) {
+      if (!cleanNationalId || cleanNationalId.length !== 13) {
         showToast('หมายเลขบัตรประชาชนต้องมี 13 หลัก', 'error');
+        return;
+      }
+      if (!isValidThaiNationalId(cleanNationalId)) {
+        showToast('หมายเลขบัตรประชาชนไม่ถูกต้อง กรุณาตรวจสอบเลข 13 หลัก', 'error');
         return;
       }
       if (!phone || !phone.trim()) {
@@ -873,7 +893,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
             <div>
               <p className="font-bold text-sm text-amber-950">พบข้อมูลฉบับร่างที่ยังกรอกไม่เสร็จในเครื่องนี้</p>
               <p className="text-[11px] text-amber-700 mt-0.5">
-                ชื่อผู้มีสิทธิ์: <strong className="text-slate-800">{savedDraftNotice.data.fullName || 'ไม่ระบุชื่อ'}</strong> • เลขบัตร: {savedDraftNotice.data.nationalId || '-'} • บันทึกเมื่อ: {savedDraftNotice.savedAt ? new Date(savedDraftNotice.savedAt).toLocaleString('th-TH') : 'ไม่ระบุ'}
+                ชื่อผู้มีสิทธิ์: <strong className="text-slate-800">{formatPersonName(savedDraftNotice.data) || 'ไม่ระบุชื่อ'}</strong> • เลขบัตร: {savedDraftNotice.data.nationalId || '-'} • บันทึกเมื่อ: {savedDraftNotice.savedAt ? new Date(savedDraftNotice.savedAt).toLocaleString('th-TH') : 'ไม่ระบุ'}
               </p>
             </div>
           </div>
@@ -945,31 +965,40 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              {/* คำนำหน้า */}
               <div>
-                <label className="font-bold text-slate-700 block mb-1">คำนำหน้า <span className="text-rose-500">*</span></label>
+                <label className="font-bold text-slate-700 block mb-1">คำนำหน้า</label>
                 <select
                   value={titlePrefix}
                   onChange={(e) => setTitlePrefix(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 >
-                  <option value="นาย">นาย</option>
-                  <option value="นาง">นาง</option>
-                  <option value="นางสาว">นางสาว</option>
-                  <option value="อิหม่าม">อิหม่าม</option>
-                  <option value="อื่นๆ">อื่นๆ</option>
+                  <option value="">ไม่ระบุ</option>
+                  {PERSON_TITLE_OPTIONS.map((title) => (
+                    <option key={title} value={title}>{title}</option>
+                  ))}
                 </select>
               </div>
 
-              {/* ชื่อ-นามสกุล */}
-              <div className="md:col-span-2">
-                <label className="font-bold text-slate-700 block mb-1">ชื่อ - นามสกุล <span className="text-rose-500">*</span></label>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">ชื่อ <span className="text-rose-500">*</span></label>
                 <input
                   type="text"
                   required
-                  placeholder="เช่น มะมูด สันติสุข"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="เช่น มารีแย"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">นามสกุล <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="เช่น ลาเต๊ะ"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
                 />
               </div>
@@ -1232,7 +1261,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
                     longitude={longitude}
                     residenceAddress={residenceAddress || address}
                     placeName={placeName}
-                    beneficiaryName={fullName}
+                    beneficiaryName={formatPersonName({ prefix: titlePrefix, firstName, lastName })}
                     onLocationChange={(loc) => {
                       setLatitude(loc.latitude);
                       setLongitude(loc.longitude);
@@ -1895,6 +1924,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
                 <FileText className="w-5 h-5 text-emerald-700" />  เอกสารแนบประกอบคำร้อง (PDPA Compliant)
               </h2>
 
+              <p className="text-xs text-slate-500">การติ๊กชื่อประเภทเอกสารไม่ใช่การแนบไฟล์ ให้เลือกไฟล์จริงในส่วนอัปโหลดด้านล่าง</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
                   <div className="flex items-center gap-2.5">
@@ -1932,7 +1962,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
                     />
                     <span className="font-semibold text-slate-800">ภาพถ่ายครอบครัว</span>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">แนบแล้ว</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">ถ้ามี</span>
                 </label>
 
                 <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
@@ -1945,7 +1975,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
                     />
                     <span className="font-semibold text-slate-800">ภาพถ่ายที่อยู่อาศัย (ใน/นอก)</span>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">แนบแล้ว</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">ถ้ามี</span>
                 </label>
 
                 <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
@@ -1958,7 +1988,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
                     />
                     <span className="font-semibold text-slate-800">ใบรับรองแพทย์ / ประวัติการรักษา</span>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">แนบแล้ว</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">ถ้ามี</span>
                 </label>
 
                 <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
@@ -1979,9 +2009,12 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
               <div className="pt-2">
                 <DocumentUploader
                   entityType="beneficiary"
-                  entityId={nationalId ? nationalId.replace(/[^0-9]/g, '') : 'new_beneficiary'}
+                  entityId={editAppId || createdBeneficiaryId || ''}
                   existingDocuments={uploadedDocs}
                   onDocumentsChange={setUploadedDocs}
+                  onPendingFilesChange={(files) => {
+                    pendingFilesRef.current = files;
+                  }}
                 />
               </div>
 

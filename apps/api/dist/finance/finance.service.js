@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinanceService = void 0;
 const common_1 = require("@nestjs/common");
+const shared_1 = require("@zms/shared");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const audit_service_1 = require("../audit/audit.service");
@@ -94,7 +95,11 @@ let FinanceService = class FinanceService {
         const nowIso = new Date().toISOString();
         const disbursementDateStr = new Date().toLocaleDateString('th-TH');
         const benFullName = app.beneficiary
-            ? [app.beneficiary.title, app.beneficiary.firstName, app.beneficiary.lastName].filter(Boolean).join(' ')
+            ? (0, shared_1.formatPersonName)({
+                prefix: app.beneficiary.title,
+                firstName: app.beneficiary.firstName,
+                lastName: app.beneficiary.lastName,
+            })
             : 'ผู้รับซะกาต';
         return await this.prisma.$transaction(async (tx) => {
             await tx.fundAccount.update({

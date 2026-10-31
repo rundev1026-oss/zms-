@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
 import { AssistanceApplication, BeneficiaryAssessment, FaqirMiskinSubFund } from '@/types';
 import { 
@@ -180,7 +181,7 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                       {app.status}
                     </span>
                   </div>
-                  <div className="font-semibold text-slate-900">{app.fullName}</div>
+                  <div className="font-semibold text-slate-900">{formatPersonName(app)}</div>
                   <div className="text-[11px] text-slate-500 mt-1">
                     {app.community}, {app.province}
                   </div>
@@ -201,7 +202,7 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                 <div className="flex items-center justify-between border-b pb-3">
                   <div>
                     <h2 className="text-base font-bold text-slate-900">
-                      {selectedApp.fullName}
+                      {formatPersonName(selectedApp)}
                     </h2>
                     <div className="text-xs text-slate-500 font-mono mt-0.5">
                       {selectedApp.applicationNo} • ปชช: {selectedApp.nationalIdMasked}

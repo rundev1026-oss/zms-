@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
 import { AssistanceApplication, FaqirMiskinSubFund } from '@/types';
 import { 
@@ -202,7 +203,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                       {app.urgencyLevel === 'urgent' ? 'เร่งด่วนฉุกเฉิน' : 'รอบปกติ'}
                     </span>
                   </div>
-                  <div className="font-semibold text-slate-900">{app.fullName}</div>
+                  <div className="font-semibold text-slate-900">{formatPersonName(app)}</div>
                   <div className="text-[11px] text-slate-500 mt-1">
                     คะแนนประเมิน: <span className="font-bold text-emerald-700">{app.assessment?.livingScore || '-'} / 100</span>
                   </div>
@@ -223,7 +224,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                 <div className="flex items-center justify-between border-b pb-3">
                   <div>
                     <h2 className="text-base font-bold text-slate-900">
-                      {selectedApp.fullName}
+                      {formatPersonName(selectedApp)}
                     </h2>
                     <div className="text-xs text-slate-500 font-mono mt-0.5">
                       {selectedApp.applicationNo} • พื้นที่: {selectedApp.community}, {selectedApp.province}
@@ -491,7 +492,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                    confirmAction === 'reject' ? 'ยืนยันการปฏิเสธคำร้อง' : 'ส่งกลับให้เจ้าหน้าที่แก้ไข'}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {selectedApp.fullName} ({selectedApp.applicationNo})
+                  {formatPersonName(selectedApp)} ({selectedApp.applicationNo})
                 </p>
               </div>
             </div>

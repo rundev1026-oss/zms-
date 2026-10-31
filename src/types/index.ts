@@ -1258,6 +1258,8 @@ export interface BeneficiaryRegistryItem {
   memberId?: string; // รหัสสมาชิกเจ้าของทะเบียน
   fullName: string;
   titlePrefix?: string;
+  firstName?: string;
+  lastName?: string;
   birthDate?: string;
   age?: number;
   nationalId: string;
@@ -1288,6 +1290,7 @@ export interface BeneficiaryRegistryItem {
   creditorName?: string;
   debtPurpose?: string;
   debtType?: string;
+  debtNotes?: string;
   hardshipReasons?: HardshipReasons;
   disabilityNotes?: string;
   illnessNotes?: string;

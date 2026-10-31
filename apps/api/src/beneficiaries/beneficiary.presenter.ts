@@ -13,13 +13,19 @@ export const beneficiaryInclude = {
   documents: {
     where: { deletedAt: null },
     orderBy: { createdAt: 'desc' },
+    include: { uploadedBy: { select: { displayName: true, email: true } } },
   },
   assessments: {
     where: { decision: 'CONFIRMED' as const },
     orderBy: { assessedAt: 'desc' as const },
     take: 1,
-    include: { category: true },
+    include: {
+      category: true,
+      recordedBy: { select: { displayName: true, email: true } },
+      reviewedBy: { select: { displayName: true, email: true } },
+    },
   },
+  createdBy: { select: { displayName: true, email: true } },
   deletedBy: {
     select: { id: true, displayName: true, email: true },
   },
@@ -46,7 +52,16 @@ export interface BeneficiaryView {
   registrationNote: string | null;
   province: string | null;
   community: string | null;
-  asnaf: { id: string; code: string; nameTh: string } | null;
+  asnaf: {
+    id: string;
+    code: string;
+    nameTh: string;
+    rationale: string;
+    assessedAt: string;
+    recordedByName: string | null;
+    reviewedByName: string | null;
+  } | null;
+  createdByName: string | null;
   requestCount: number;
   aidTotal?: string;
   addresses?: any[];
@@ -98,7 +113,12 @@ export function presentBeneficiary(
             id: confirmed.category.id,
             code: confirmed.category.code,
             nameTh: confirmed.category.nameTh,
+            rationale: confirmed.rationale,
+            assessedAt: confirmed.assessedAt.toISOString(),
+            recordedByName: confirmed.recordedBy?.displayName || confirmed.recordedBy?.email || null,
+            reviewedByName: confirmed.reviewedBy?.displayName || confirmed.reviewedBy?.email || null,
           },
+    createdByName: row.createdBy?.displayName || row.createdBy?.email || null,
     requestCount: 0,
     addresses: row.addresses,
     household: row.household
@@ -112,6 +132,7 @@ export function presentBeneficiary(
           members: (row.household.members || []).map((m) => ({
             ...m,
             dateOfBirth: m.dateOfBirth === null ? null : m.dateOfBirth.toISOString().slice(0, 10),
+            monthlyIncome: m.monthlyIncome == null ? null : m.monthlyIncome.toFixed(2),
           })),
         }
       : null,
@@ -132,7 +153,9 @@ export function presentBeneficiary(
       fileSize: d.sizeBytes,
       mimeType: d.mimeType,
       status: d.status,
-      fileUrl: `/api/documents/${d.id}/download`,
+      createdAt: d.createdAt.toISOString(),
+      uploadedByName: d.uploadedBy?.displayName || d.uploadedBy?.email || null,
+      fileUrl: `/api/documents/${d.id}/content`,
     })),
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     deletedById: row.deletedById ?? null,

@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UpdateBeneficiaryDto = exports.CreateConsentDto = exports.BeneficiarySummaryQueryDto = exports.BeneficiaryListQueryDto = exports.CreateBeneficiaryDto = void 0;
+exports.RecordRevisionDto = exports.RegistryFieldChangeDto = exports.UpdateBeneficiaryDto = exports.CreateConsentDto = exports.BeneficiarySummaryQueryDto = exports.BeneficiaryListQueryDto = exports.CreateBeneficiaryDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const class_transformer_1 = require("class-transformer");
@@ -221,4 +221,77 @@ __decorate([
 class UpdateBeneficiaryDto extends (0, swagger_1.PartialType)(CreateBeneficiaryDto) {
 }
 exports.UpdateBeneficiaryDto = UpdateBeneficiaryDto;
+class RegistryFieldChangeDto {
+    field;
+    fieldLabel;
+    oldValue;
+    newValue;
+    material;
+}
+exports.RegistryFieldChangeDto = RegistryFieldChangeDto;
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(80),
+    __metadata("design:type", String)
+], RegistryFieldChangeDto.prototype, "field", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(120),
+    __metadata("design:type", String)
+], RegistryFieldChangeDto.prototype, "fieldLabel", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(500),
+    __metadata("design:type", String)
+], RegistryFieldChangeDto.prototype, "oldValue", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(500),
+    __metadata("design:type", String)
+], RegistryFieldChangeDto.prototype, "newValue", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], RegistryFieldChangeDto.prototype, "material", void 0);
+class RecordRevisionDto {
+    expectedUpdatedAt;
+    reason;
+    ipAddress;
+    changes;
+}
+exports.RecordRevisionDto = RecordRevisionDto;
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], RecordRevisionDto.prototype, "expectedUpdatedAt", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(1000),
+    __metadata("design:type", String)
+], RecordRevisionDto.prototype, "reason", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(80),
+    __metadata("design:type", String)
+], RecordRevisionDto.prototype, "ipAddress", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ type: [RegistryFieldChangeDto] }),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => RegistryFieldChangeDto),
+    __metadata("design:type", Array)
+], RecordRevisionDto.prototype, "changes", void 0);
 //# sourceMappingURL=beneficiary.dto.js.map

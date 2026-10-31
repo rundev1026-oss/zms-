@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RegistryStatus } from '@prisma/client';
-import type { RegistryStatusCode } from '@zms/shared';
+import { formatPersonName, type RegistryStatusCode } from '@zms/shared';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -377,7 +377,7 @@ function sheetRows(views: BeneficiaryView[], revealAid: boolean): string[][] {
     ...views.map((view) => {
       const values = [
         view.registryNumber,
-        [view.title, view.firstName, view.lastName].filter(Boolean).join(' '),
+        formatPersonName({ prefix: view.title, firstName: view.firstName, lastName: view.lastName }),
         view.identityNumber ?? '',
         statusLabel(view.status as RegistryStatusCode),
         view.asnaf?.nameTh ?? '',

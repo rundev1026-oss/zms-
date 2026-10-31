@@ -18,6 +18,14 @@ export declare const beneficiaryInclude: {
         orderBy: {
             createdAt: "desc";
         };
+        include: {
+            uploadedBy: {
+                select: {
+                    displayName: true;
+                    email: true;
+                };
+            };
+        };
     };
     assessments: {
         where: {
@@ -29,6 +37,24 @@ export declare const beneficiaryInclude: {
         take: number;
         include: {
             category: true;
+            recordedBy: {
+                select: {
+                    displayName: true;
+                    email: true;
+                };
+            };
+            reviewedBy: {
+                select: {
+                    displayName: true;
+                    email: true;
+                };
+            };
+        };
+    };
+    createdBy: {
+        select: {
+            displayName: true;
+            email: true;
         };
     };
     deletedBy: {
@@ -63,7 +89,12 @@ export interface BeneficiaryView {
         id: string;
         code: string;
         nameTh: string;
+        rationale: string;
+        assessedAt: string;
+        recordedByName: string | null;
+        reviewedByName: string | null;
     } | null;
+    createdByName: string | null;
     requestCount: number;
     aidTotal?: string;
     addresses?: any[];

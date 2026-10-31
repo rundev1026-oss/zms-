@@ -380,7 +380,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         credentials: 'include',
         body: JSON.stringify({
           input: {
-            titlePrefix: appData.titlePrefix || 'นาย',
+            titlePrefix: appData.titlePrefix ?? 'นาย',
+            firstName: appData.firstName,
+            lastName: appData.lastName,
             fullName: appData.fullName,
             nationalId: appData.nationalId || '1100200334455',
             birthDate: appData.birthDate,
@@ -894,6 +896,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    */
   const registerBeneficiaryProfile = async (profileData: any): Promise<string | null> => {
     try {
+      const cleanId = String(profileData.nationalId || '').replace(/[^0-9]/g, '');
+      if (cleanId.length === 13) {
+        const existingRes = await fetch(
+          `/api/registry?search=${encodeURIComponent(cleanId)}&limit=5`,
+          { headers: getAuthHeaders(), credentials: 'include' },
+        );
+        const existingJson = await existingRes.json().catch(() => ({}));
+        const existingHit = Array.isArray(existingJson.data) ? existingJson.data[0] : null;
+        if (existingRes.ok && existingJson.success && existingHit) {
+          const existingNo = existingHit.registrationNo || existingHit.registryNumber || existingHit.id;
+          showToast(
+            `เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว (รหัส ${existingNo}) กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ`,
+            'error',
+          );
+          return null;
+        }
+      }
+
       const res = await fetch('/api/registry', {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -908,9 +928,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
-        showToast(json.error || 'เกิดข้อผิดพลาดในการขึ้นทะเบียน', 'error');
+        const conflictHint =
+          res.status === 409
+            ? json.error || 'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ'
+            : json.error || 'เกิดข้อผิดพลาดในการขึ้นทะเบียน';
+        showToast(conflictHint, 'error');
         return null;
       }
 
@@ -955,7 +979,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      showToast('บันทึกการเปลี่ยนแปลงข้อมูลทะเบียนลงฐานข้อมูลสำเร็จ', 'success');
+      showToast(json.message || 'บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว', 'success');
       await refreshData();
       return true;
     } catch (err: any) {
@@ -969,7 +993,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    */
   const getRegistryEditHistory = async (beneficiaryId: string): Promise<RegistryEditHistoryItem[]> => {
     try {
-      const res = await fetch(`/api/registry/${beneficiaryId}/history`);
+      const res = await fetch(`/api/registry/${beneficiaryId}/history`, {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (res.ok && json.success) {
         return json.data || [];

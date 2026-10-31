@@ -31,7 +31,7 @@ let DocumentsController = class DocumentsController {
     upload(beneficiaryId, dto, file, user) {
         return this.documents.upload(beneficiaryId, file === undefined
             ? undefined
-            : { buffer: file.buffer, originalname: file.originalname, mimetype: file.mimetype }, dto.documentType, user);
+            : { buffer: file.buffer, originalname: file.originalname, mimetype: file.mimetype }, dto.documentType, user, dto.replacesDocumentId);
     }
     review(documentId, dto, user) {
         return this.documents.review(documentId, dto, user);
@@ -39,11 +39,12 @@ let DocumentsController = class DocumentsController {
     remove(documentId, user) {
         return this.documents.remove(documentId, user);
     }
-    async content(documentId, user) {
+    async content(documentId, inline, user) {
         const file = await this.documents.readContent(documentId, user);
+        const kind = inline === '1' ? 'inline' : 'attachment';
         return new common_1.StreamableFile(file.bytes, {
             type: file.mimeType,
-            disposition: `attachment; filename="${encodeURIComponent(file.fileName)}"`,
+            disposition: `${kind}; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
         });
     }
 };
@@ -97,9 +98,10 @@ __decorate([
     (0, permissions_decorator_1.RequirePermissions)('documents.read'),
     (0, swagger_1.ApiOperation)({ summary: 'ดาวน์โหลดเอกสารหลังตรวจสิทธิ์' }),
     __param(0, (0, common_1.Param)('documentId', common_1.ParseUUIDPipe)),
-    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Query)('inline')),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], DocumentsController.prototype, "content", null);
 exports.DocumentsController = DocumentsController = __decorate([

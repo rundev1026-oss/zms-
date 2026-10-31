@@ -10,6 +10,11 @@ export interface HouseholdMemberInput {
     occupation?: string;
     isDependent: boolean;
     sortOrder?: number;
+    monthlyIncome?: number;
+    educationStatus?: string;
+    healthStatus?: string;
+    healthNotes?: string;
+    notes?: string;
 }
 export interface HouseholdInput {
     memberCount?: number;
@@ -43,7 +48,7 @@ export interface HouseholdInput {
     residenceAddress?: string;
     placeName?: string;
     locationVerificationStatus?: string;
-    members: HouseholdMemberInput[];
+    members?: HouseholdMemberInput[];
 }
 export declare class HouseholdService {
     private readonly prisma;

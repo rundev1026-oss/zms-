@@ -114,6 +114,7 @@ class QueryAssistanceRequestsDto {
     status;
     asnafCategory;
     branchId;
+    beneficiaryId;
     page = 1;
     limit = 20;
 }
@@ -142,6 +143,12 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], QueryAssistanceRequestsDto.prototype, "branchId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Filter by beneficiary UUID' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsUUID)('4'),
+    __metadata("design:type", String)
+], QueryAssistanceRequestsDto.prototype, "beneficiaryId", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: 'Page number', default: 1 }),
     (0, class_validator_1.IsOptional)(),

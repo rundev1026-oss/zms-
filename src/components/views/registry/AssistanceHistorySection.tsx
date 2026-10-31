@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { 
   DollarSign, 
   FileText, 
@@ -572,7 +573,7 @@ export function AssistanceHistorySection({
             setSelectedAidForHistory(null);
           }}
           planId={selectedPlanForHistory.id}
-          beneficiaryName={registry.fullName}
+          beneficiaryName={formatPersonName(registry)}
           registrationNo={registry.registrationNo}
           assistanceNo={selectedAidForHistory.applicationNo}
           assistanceType={selectedAidForHistory.assistanceType || selectedPlanForHistory.assistanceTypeName || 'ความช่วยเหลือทั่วไป'}

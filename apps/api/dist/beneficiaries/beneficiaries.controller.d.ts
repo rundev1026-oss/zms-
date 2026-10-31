@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import type { AuthUser } from '../common/auth-user';
 import { BeneficiariesService } from './beneficiaries.service';
-import { BeneficiaryListQueryDto, CreateBeneficiaryDto, CreateConsentDto, UpdateBeneficiaryDto, BeneficiarySummaryQueryDto } from './beneficiary.dto';
+import { BeneficiaryListQueryDto, CreateBeneficiaryDto, CreateConsentDto, RecordRevisionDto, UpdateBeneficiaryDto, BeneficiarySummaryQueryDto } from './beneficiary.dto';
 import { SoftDeleteBeneficiaryDto, RestoreBeneficiaryDto, QueryDeletedBeneficiariesDto } from './dto/soft-delete.dto';
 export declare class BeneficiariesController {
     private readonly beneficiaries;
@@ -45,7 +45,12 @@ export declare class BeneficiariesController {
                 id: string;
                 code: string;
                 nameTh: string;
+                rationale: string;
+                assessedAt: string;
+                recordedByName: string | null;
+                reviewedByName: string | null;
             } | null;
+            createdByName: string | null;
             requestCount: number;
             aidTotal?: string;
             addresses?: any[];
@@ -90,6 +95,23 @@ export declare class BeneficiariesController {
     }>;
     softDelete(id: string, dto: SoftDeleteBeneficiaryDto, user: AuthUser, req: Request): Promise<import("./beneficiary.presenter").BeneficiaryView>;
     restore(id: string, dto: RestoreBeneficiaryDto, user: AuthUser, req: Request): Promise<import("./beneficiary.presenter").BeneficiaryView>;
+    listRevisions(id: string, user: AuthUser): Promise<{
+        id: string;
+        beneficiaryId: string;
+        editedById: string;
+        editedByName: string;
+        editedByRole: string;
+        timestamp: string;
+        changesSummary: string | null;
+        changesDetail: any[];
+        notes: string | null;
+        createdAt: string;
+    }[]>;
+    recordRevision(id: string, dto: RecordRevisionDto, user: AuthUser, req: Request): Promise<{
+        reReview: boolean;
+        status: import(".prisma/client").$Enums.RegistryStatus;
+        updatedAt: string;
+    }>;
     getAuditHistory(id: string, user: AuthUser): Promise<{
         id: string;
         action: string;
@@ -99,6 +121,10 @@ export declare class BeneficiariesController {
         metadata: import("@prisma/client/runtime/library").JsonValue;
         createdAt: string;
     }[]>;
+    recordSurveyPrint(id: string, user: AuthUser): Promise<{
+        recorded: boolean;
+        registryNumber: string;
+    }>;
     get(id: string, user: AuthUser): Promise<import("./beneficiary.presenter").BeneficiaryView>;
     update(id: string, dto: UpdateBeneficiaryDto, user: AuthUser): Promise<import("./beneficiary.presenter").BeneficiaryView>;
     latestConsent(id: string, user: AuthUser): Promise<{

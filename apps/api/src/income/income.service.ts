@@ -50,21 +50,24 @@ export class IncomeService {
   }
 
   private fields(input: UpsertIncomeProfileDto) {
-    return {
-      personalIncome: this.money(input.personalIncome),
-      regularExpense: this.money(input.regularExpense),
-      debtBurden: this.money(input.debtBurden),
-      housingCondition: input.housingCondition ?? null,
-      livingConstraints: input.livingConstraints ?? null,
-      assistanceNeeds: input.assistanceNeeds ?? null,
-      otherAgencyAssistance: input.otherAgencyAssistance ?? null,
-      priorAssistanceHistory: input.priorAssistanceHistory ?? null,
-      officerNote: input.officerNote ?? null,
+    const data: Record<string, unknown> = {};
+    const assign = (key: string, value: unknown) => {
+      if (value !== undefined) data[key] = value;
     };
+    assign('personalIncome', this.money(input.personalIncome));
+    assign('regularExpense', this.money(input.regularExpense));
+    assign('debtBurden', this.money(input.debtBurden));
+    assign('housingCondition', input.housingCondition);
+    assign('livingConstraints', input.livingConstraints);
+    assign('assistanceNeeds', input.assistanceNeeds);
+    assign('otherAgencyAssistance', input.otherAgencyAssistance);
+    assign('priorAssistanceHistory', input.priorAssistanceHistory);
+    assign('officerNote', input.officerNote);
+    return data;
   }
 
-  private money(value: string | undefined): Prisma.Decimal | null {
-    return value === undefined ? null : new Prisma.Decimal(value);
+  private money(value: string | undefined): Prisma.Decimal | undefined {
+    return value === undefined ? undefined : new Prisma.Decimal(value);
   }
 
   private toView(row: {

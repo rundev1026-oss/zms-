@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReportsService = void 0;
 const common_1 = require("@nestjs/common");
+const shared_1 = require("@zms/shared");
 const audit_service_1 = require("../audit/audit.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const beneficiary_query_1 = require("../beneficiaries/beneficiary-query");
@@ -345,7 +346,7 @@ function sheetRows(views, revealAid) {
         ...views.map((view) => {
             const values = [
                 view.registryNumber,
-                [view.title, view.firstName, view.lastName].filter(Boolean).join(' '),
+                (0, shared_1.formatPersonName)({ prefix: view.title, firstName: view.firstName, lastName: view.lastName }),
                 view.identityNumber ?? '',
                 statusLabel(view.status),
                 view.asnaf?.nameTh ?? '',

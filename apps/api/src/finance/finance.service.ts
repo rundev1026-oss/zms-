@@ -1,4 +1,5 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
+import { formatPersonName } from '@zms/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -124,7 +125,11 @@ export class FinanceService {
     const nowIso = new Date().toISOString();
     const disbursementDateStr = new Date().toLocaleDateString('th-TH');
     const benFullName = app.beneficiary
-      ? [app.beneficiary.title, app.beneficiary.firstName, app.beneficiary.lastName].filter(Boolean).join(' ')
+      ? formatPersonName({
+          prefix: app.beneficiary.title,
+          firstName: app.beneficiary.firstName,
+          lastName: app.beneficiary.lastName,
+        })
       : 'ผู้รับซะกาต';
 
     return await this.prisma.$transaction(async (tx) => {

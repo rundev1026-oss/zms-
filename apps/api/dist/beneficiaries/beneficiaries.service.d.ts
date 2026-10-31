@@ -1,5 +1,5 @@
 import type { Prisma, RegistryStatus } from '@prisma/client';
-import type { RegistryStatusCode } from '@zms/shared';
+import { type RegistryStatusCode } from '@zms/shared';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -60,6 +60,10 @@ export declare class BeneficiariesService {
         privacyNoticeVersion: string;
         recordedAt: string;
     } | null>;
+    recordSurveyPrint(id: string, actor: AuthUser): Promise<{
+        recorded: boolean;
+        registryNumber: string;
+    }>;
     requireRecord(id: string): Promise<{
         household: ({
             members: {
@@ -160,7 +164,12 @@ export declare class BeneficiariesService {
             priorAssistanceHistory: string | null;
             officerNote: string | null;
         } | null;
-        documents: {
+        documents: ({
+            uploadedBy: {
+                email: string;
+                displayName: string;
+            } | null;
+        } & {
             id: string;
             createdAt: Date;
             updatedAt: Date;
@@ -176,7 +185,7 @@ export declare class BeneficiariesService {
             uploadedById: string | null;
             reviewedAt: Date | null;
             reviewNote: string | null;
-        }[];
+        })[];
         assessments: ({
             category: {
                 code: string;
@@ -187,6 +196,14 @@ export declare class BeneficiariesService {
                 sortOrder: number;
                 nameTh: string;
             };
+            recordedBy: {
+                email: string;
+                displayName: string;
+            } | null;
+            reviewedBy: {
+                email: string;
+                displayName: string;
+            } | null;
         } & {
             id: string;
             createdAt: Date;
@@ -201,6 +218,10 @@ export declare class BeneficiariesService {
             reviewedById: string | null;
             reviewerNote: string | null;
         })[];
+        createdBy: {
+            email: string;
+            displayName: string;
+        } | null;
         deletedBy: {
             id: string;
             email: string;
@@ -285,7 +306,12 @@ export declare class BeneficiariesService {
                 id: string;
                 code: string;
                 nameTh: string;
+                rationale: string;
+                assessedAt: string;
+                recordedByName: string | null;
+                reviewedByName: string | null;
             } | null;
+            createdByName: string | null;
             requestCount: number;
             aidTotal?: string;
             addresses?: any[];
@@ -306,6 +332,34 @@ export declare class BeneficiariesService {
         total: number;
     }>;
     restore(id: string, dto: RestoreBeneficiaryDto, actor: AuthUser, ip?: string): Promise<BeneficiaryView>;
+    recordRevision(id: string, input: {
+        expectedUpdatedAt: string;
+        reason?: string;
+        ipAddress?: string;
+        changes: {
+            field: string;
+            fieldLabel: string;
+            oldValue?: string;
+            newValue?: string;
+            material?: boolean;
+        }[];
+    }, actor: AuthUser): Promise<{
+        reReview: boolean;
+        status: import(".prisma/client").$Enums.RegistryStatus;
+        updatedAt: string;
+    }>;
+    listRevisions(id: string, _actor: AuthUser): Promise<{
+        id: string;
+        beneficiaryId: string;
+        editedById: string;
+        editedByName: string;
+        editedByRole: string;
+        timestamp: string;
+        changesSummary: string | null;
+        changesDetail: any[];
+        notes: string | null;
+        createdAt: string;
+    }[]>;
     getAuditHistory(id: string, _actor: AuthUser): Promise<{
         id: string;
         action: string;
@@ -315,6 +369,7 @@ export declare class BeneficiariesService {
         metadata: Prisma.JsonValue;
         createdAt: string;
     }[]>;
+    private duplicateIdentityConflict;
     private viewOptions;
 }
 export type BeneficiaryTransaction = Prisma.TransactionClient;

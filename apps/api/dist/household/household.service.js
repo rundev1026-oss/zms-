@@ -53,29 +53,39 @@ let HouseholdService = class HouseholdService {
                 },
                 update: { ...this.amounts(input), updatedById: actor.id },
             });
-            await tx.householdMember.deleteMany({ where: { householdId: household.id } });
-            if (input.members.length > 0) {
-                await tx.householdMember.createMany({
-                    data: input.members.map((member, index) => ({
-                        householdId: household.id,
-                        fullName: member.fullName,
-                        relationship: member.relationship,
-                        dateOfBirth: member.dateOfBirth === undefined ? null : new Date(member.dateOfBirth),
-                        ageYears: member.ageYears ?? null,
-                        occupation: member.occupation ?? null,
-                        isDependent: member.isDependent,
-                        sortOrder: member.sortOrder ?? index,
-                        createdById: actor.id,
-                        updatedById: actor.id,
-                    })),
-                });
+            if (input.members !== undefined) {
+                await tx.householdMember.deleteMany({ where: { householdId: household.id } });
+                if (input.members.length > 0) {
+                    await tx.householdMember.createMany({
+                        data: input.members.map((member, index) => ({
+                            householdId: household.id,
+                            fullName: member.fullName,
+                            relationship: member.relationship,
+                            dateOfBirth: member.dateOfBirth === undefined ? null : new Date(member.dateOfBirth),
+                            ageYears: member.ageYears ?? null,
+                            occupation: member.occupation ?? null,
+                            isDependent: member.isDependent,
+                            monthlyIncome: member.monthlyIncome ?? null,
+                            educationStatus: member.educationStatus ?? null,
+                            healthStatus: member.healthStatus ?? null,
+                            healthNotes: member.healthNotes ?? null,
+                            notes: member.notes ?? null,
+                            sortOrder: member.sortOrder ?? index,
+                            createdById: actor.id,
+                            updatedById: actor.id,
+                        })),
+                    });
+                }
             }
             await this.audit.record(tx, {
                 actorId: actor.id,
                 action: 'HOUSEHOLD_UPDATE',
                 resourceType: 'beneficiary',
                 resourceId: beneficiaryId,
-                metadata: { memberRows: input.members.length },
+                metadata: {
+                    memberRows: input.members?.length ?? null,
+                    membersReplaced: input.members !== undefined,
+                },
             });
             return tx.household.findUniqueOrThrow({
                 where: { id: household.id },
@@ -85,42 +95,46 @@ let HouseholdService = class HouseholdService {
         return this.toView(saved);
     }
     amounts(input) {
-        return {
-            memberCount: input.memberCount ?? null,
-            householdIncome: this.money(input.householdIncome),
-            householdExpense: this.money(input.householdExpense),
-            debtAmount: this.money(input.debtAmount),
-            debtPurpose: input.debtPurpose ?? null,
-            dependentCount: input.dependentCount ?? null,
-            additionalNotes: input.additionalNotes ?? null,
-            address: input.address ?? null,
-            province: input.province ?? null,
-            district: input.district ?? null,
-            subdistrict: input.subdistrict ?? null,
-            community: input.community ?? null,
-            housingCondition: input.housingCondition ?? null,
-            housingNotes: input.housingNotes ?? null,
-            housingType: input.housingType ?? null,
-            landTitleType: input.landTitleType ?? null,
-            landTitleNotes: input.landTitleNotes ?? null,
-            livingScore: input.livingScore ?? null,
-            incomeBreakdown: input.incomeBreakdown ?? null,
-            expenseBreakdown: input.expenseBreakdown ?? null,
-            pastAssistance: input.pastAssistance ?? null,
-            familySituationSummary: input.familySituationSummary ?? null,
-            urgentNeeds: input.urgentNeeds ?? null,
-            dependentBurdens: input.dependentBurdens ?? null,
-            coordinatorInfo: input.coordinatorInfo ?? null,
-            certifierInfo: input.certifierInfo ?? null,
-            latitude: input.latitude !== undefined && input.latitude !== null ? new client_1.Prisma.Decimal(input.latitude) : null,
-            longitude: input.longitude !== undefined && input.longitude !== null ? new client_1.Prisma.Decimal(input.longitude) : null,
-            residenceAddress: input.residenceAddress ?? null,
-            placeName: input.placeName ?? null,
-            locationVerificationStatus: input.locationVerificationStatus ?? null,
+        const data = {};
+        const assign = (key, value) => {
+            if (value !== undefined)
+                data[key] = value;
         };
+        assign('memberCount', input.memberCount);
+        assign('householdIncome', this.money(input.householdIncome));
+        assign('householdExpense', this.money(input.householdExpense));
+        assign('debtAmount', this.money(input.debtAmount));
+        assign('debtPurpose', input.debtPurpose);
+        assign('dependentCount', input.dependentCount);
+        assign('additionalNotes', input.additionalNotes);
+        assign('address', input.address);
+        assign('province', input.province);
+        assign('district', input.district);
+        assign('subdistrict', input.subdistrict);
+        assign('community', input.community);
+        assign('housingCondition', input.housingCondition);
+        assign('housingNotes', input.housingNotes);
+        assign('housingType', input.housingType);
+        assign('landTitleType', input.landTitleType);
+        assign('landTitleNotes', input.landTitleNotes);
+        assign('livingScore', input.livingScore);
+        assign('incomeBreakdown', input.incomeBreakdown);
+        assign('expenseBreakdown', input.expenseBreakdown);
+        assign('pastAssistance', input.pastAssistance);
+        assign('familySituationSummary', input.familySituationSummary);
+        assign('urgentNeeds', input.urgentNeeds);
+        assign('dependentBurdens', input.dependentBurdens);
+        assign('coordinatorInfo', input.coordinatorInfo);
+        assign('certifierInfo', input.certifierInfo);
+        assign('latitude', input.latitude === undefined ? undefined : input.latitude === null ? null : new client_1.Prisma.Decimal(input.latitude));
+        assign('longitude', input.longitude === undefined ? undefined : input.longitude === null ? null : new client_1.Prisma.Decimal(input.longitude));
+        assign('residenceAddress', input.residenceAddress);
+        assign('placeName', input.placeName);
+        assign('locationVerificationStatus', input.locationVerificationStatus);
+        return data;
     }
     money(value) {
-        return value === undefined ? null : new client_1.Prisma.Decimal(value);
+        return value === undefined ? undefined : new client_1.Prisma.Decimal(value);
     }
     toView(household) {
         return {
@@ -159,6 +173,7 @@ let HouseholdService = class HouseholdService {
             locationVerificationStatus: household.locationVerificationStatus ?? null,
             members: (household.members || []).map((member) => ({
                 ...member,
+                monthlyIncome: member.monthlyIncome == null ? null : Number(member.monthlyIncome).toFixed(2),
                 dateOfBirth: member.dateOfBirth === null || member.dateOfBirth === undefined
                     ? null
                     : (member.dateOfBirth instanceof Date ? member.dateOfBirth.toISOString().slice(0, 10) : String(member.dateOfBirth).slice(0, 10)),

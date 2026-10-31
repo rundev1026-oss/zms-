@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { 
   Search, 
   Trash2, 
@@ -177,7 +178,11 @@ export const DeletedBeneficiariesTable: React.FC<DeletedBeneficiariesTableProps>
                 </tr>
               ) : (
                 items.map((item) => {
-                  const fullName = `${item.title ? item.title + ' ' : ''}${item.firstName} ${item.lastName}`.trim();
+                  const fullName = formatPersonName({
+                    prefix: item.title,
+                    firstName: item.firstName,
+                    lastName: item.lastName,
+                  });
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">

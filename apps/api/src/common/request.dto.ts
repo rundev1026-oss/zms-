@@ -98,6 +98,37 @@ export class HouseholdMemberDto {
   @IsInt()
   @Min(0)
   sortOrder?: number;
+
+  @ApiPropertyOptional({ description: 'รายได้ต่อเดือนของสมาชิก' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  monthlyIncome?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  educationStatus?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  healthStatus?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  healthNotes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
 }
 
 export class UpsertHouseholdDto {
@@ -261,11 +292,12 @@ export class UpsertHouseholdDto {
   @IsString()
   locationVerificationStatus?: string;
 
-  @ApiProperty({ type: [HouseholdMemberDto] })
+  @ApiPropertyOptional({ type: [HouseholdMemberDto] })
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => HouseholdMemberDto)
-  members!: HouseholdMemberDto[];
+  members?: HouseholdMemberDto[];
 }
 
 export class AddressItemDto {
@@ -393,6 +425,11 @@ export class UploadDocumentDto {
   @MinLength(1, { message: 'กรุณาระบุประเภทเอกสาร' })
   @MaxLength(80)
   documentType!: string;
+
+  @ApiPropertyOptional({ description: 'รหัสเอกสารเดิมที่ถูกแทนที่' })
+  @IsOptional()
+  @IsUUID('4', { message: 'รหัสเอกสารเดิมไม่ถูกต้อง' })
+  replacesDocumentId?: string;
 }
 
 

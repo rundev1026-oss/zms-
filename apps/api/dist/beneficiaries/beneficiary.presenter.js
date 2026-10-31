@@ -15,13 +15,19 @@ exports.beneficiaryInclude = {
     documents: {
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
+        include: { uploadedBy: { select: { displayName: true, email: true } } },
     },
     assessments: {
         where: { decision: 'CONFIRMED' },
         orderBy: { assessedAt: 'desc' },
         take: 1,
-        include: { category: true },
+        include: {
+            category: true,
+            recordedBy: { select: { displayName: true, email: true } },
+            reviewedBy: { select: { displayName: true, email: true } },
+        },
     },
+    createdBy: { select: { displayName: true, email: true } },
     deletedBy: {
         select: { id: true, displayName: true, email: true },
     },
@@ -57,7 +63,12 @@ function presentBeneficiary(row, options) {
                 id: confirmed.category.id,
                 code: confirmed.category.code,
                 nameTh: confirmed.category.nameTh,
+                rationale: confirmed.rationale,
+                assessedAt: confirmed.assessedAt.toISOString(),
+                recordedByName: confirmed.recordedBy?.displayName || confirmed.recordedBy?.email || null,
+                reviewedByName: confirmed.reviewedBy?.displayName || confirmed.reviewedBy?.email || null,
             },
+        createdByName: row.createdBy?.displayName || row.createdBy?.email || null,
         requestCount: 0,
         addresses: row.addresses,
         household: row.household
@@ -71,6 +82,7 @@ function presentBeneficiary(row, options) {
                 members: (row.household.members || []).map((m) => ({
                     ...m,
                     dateOfBirth: m.dateOfBirth === null ? null : m.dateOfBirth.toISOString().slice(0, 10),
+                    monthlyIncome: m.monthlyIncome == null ? null : m.monthlyIncome.toFixed(2),
                 })),
             }
             : null,
@@ -91,7 +103,9 @@ function presentBeneficiary(row, options) {
             fileSize: d.sizeBytes,
             mimeType: d.mimeType,
             status: d.status,
-            fileUrl: `/api/documents/${d.id}/download`,
+            createdAt: d.createdAt.toISOString(),
+            uploadedByName: d.uploadedBy?.displayName || d.uploadedBy?.email || null,
+            fileUrl: `/api/documents/${d.id}/content`,
         })),
         deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
         deletedById: row.deletedById ?? null,

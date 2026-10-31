@@ -11,6 +11,8 @@ import {
   REGISTRY_WORKFLOW,
   WORKFLOW_ACTIONS,
   canEditRegistry,
+  canReviseRegistry,
+  revisionRequiresReview,
   planTransition,
 } from './registry-rules';
 import { RegistryWorkflowService } from './registry-workflow.service';
@@ -90,6 +92,10 @@ describe('registry transition matrix', () => {
     });
     expect(canEditRegistry('SUSPENDED')).toBe(false);
     expect(canEditRegistry('ARCHIVED')).toBe(false);
+    expect(canReviseRegistry('ELIGIBLE')).toBe(true);
+    expect(canReviseRegistry('ARCHIVED')).toBe(false);
+    expect(revisionRequiresReview('ELIGIBLE')).toBe(true);
+    expect(revisionRequiresReview('DRAFT')).toBe(false);
     expect(REGISTRY_WORKFLOW.approve.edges).not.toHaveProperty('DRAFT');
   });
 

@@ -34,4 +34,17 @@ export declare class CreateConsentDto {
 declare const UpdateBeneficiaryDto_base: import("@nestjs/common").Type<Partial<CreateBeneficiaryDto>>;
 export declare class UpdateBeneficiaryDto extends UpdateBeneficiaryDto_base {
 }
+export declare class RegistryFieldChangeDto {
+    field: string;
+    fieldLabel: string;
+    oldValue?: string;
+    newValue?: string;
+    material?: boolean;
+}
+export declare class RecordRevisionDto {
+    expectedUpdatedAt: string;
+    reason?: string;
+    ipAddress?: string;
+    changes: RegistryFieldChangeDto[];
+}
 export {};

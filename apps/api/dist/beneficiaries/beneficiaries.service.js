@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BeneficiariesService = void 0;
 const common_1 = require("@nestjs/common");
+const shared_1 = require("@zms/shared");
 const audit_service_1 = require("../audit/audit.service");
 const app_exception_1 = require("../common/app.exception");
 const pagination_1 = require("../common/pagination");
@@ -94,7 +95,7 @@ let BeneficiariesService = class BeneficiariesService {
             if (target.includes('registry')) {
                 throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'CONFLICT', 'ไม่สามารถออกเลขทะเบียนได้ กรุณาลองอีกครั้ง');
             }
-            throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'DUPLICATE_IDENTITY', 'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว');
+            throw await this.duplicateIdentityConflict(identity.identityNumberNormalized);
         }
     }
     async list(query, actor) {
@@ -176,7 +177,7 @@ let BeneficiariesService = class BeneficiariesService {
         }
         catch (error) {
             if ((0, prisma_error_1.isUniqueConflict)(error) !== null) {
-                throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'DUPLICATE_IDENTITY', 'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว');
+                throw await this.duplicateIdentityConflict(identity?.identityNumberNormalized ?? existing.identityNumberNormalized);
             }
             throw error;
         }
@@ -230,6 +231,17 @@ let BeneficiariesService = class BeneficiariesService {
             recordedAt: row.recordedAt.toISOString(),
         };
     }
+    async recordSurveyPrint(id, actor) {
+        const row = await this.requireRecord(id);
+        await this.audit.write({
+            actorId: actor.id,
+            action: 'REGISTRY_SURVEY_PRINT',
+            resourceType: 'beneficiary',
+            resourceId: row.id,
+            metadata: { registryNumber: row.registryNumber },
+        });
+        return { recorded: true, registryNumber: row.registryNumber };
+    }
     async requireRecord(id) {
         const row = await this.prisma.beneficiary.findFirst({
             where: { id, deletedAt: null },
@@ -241,8 +253,8 @@ let BeneficiariesService = class BeneficiariesService {
         return row;
     }
     assertEditable(status) {
-        if (!(0, registry_rules_1.canEditRegistry)(status)) {
-            throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'INVALID_STATE', 'แก้ไขได้เฉพาะทะเบียนที่เป็นร่างหรือรอแก้ไข');
+        if (!(0, registry_rules_1.canReviseRegistry)(status)) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'INVALID_STATE', 'ทะเบียนที่เก็บถาวรแล้วแก้ไขไม่ได้');
         }
     }
     async getDeletePreview(id, _actor) {
@@ -280,7 +292,7 @@ let BeneficiariesService = class BeneficiariesService {
             summary: {
                 id: row.id,
                 registryNumber: row.registryNumber,
-                fullName: `${row.title ? row.title + ' ' : ''}${row.firstName} ${row.lastName}`.trim(),
+                fullName: (0, shared_1.formatPersonName)({ prefix: row.title, firstName: row.firstName, lastName: row.lastName }),
                 identityType: row.identityType,
                 identityNumberMasked: (0, mask_identity_1.maskIdentityNumber)(row.identityNumber),
                 status: row.status,
@@ -447,6 +459,119 @@ let BeneficiariesService = class BeneficiariesService {
         });
         return (0, beneficiary_presenter_1.presentBeneficiary)(restored, this.viewOptions(actor));
     }
+    async recordRevision(id, input, actor) {
+        const existing = await this.requireRecord(id);
+        this.assertEditable(existing.status);
+        const baseline = existing.updatedAt.toISOString();
+        if (input.expectedUpdatedAt && input.expectedUpdatedAt !== baseline) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'VERSION_CONFLICT', 'มีผู้อื่นบันทึกทะเบียนนี้ไปแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนแก้ไขอีกครั้ง');
+        }
+        const materialFields = new Set([
+            'address',
+            'province',
+            'district',
+            'monthlyIncome',
+            'monthlyExpense',
+            'debtAmount',
+            'debtType',
+            'creditorName',
+            'disabilityNotes',
+            'illnessNotes',
+            'livingLimitations',
+            'nationalId',
+            'householdMembers',
+            'householdMemberNames',
+            'incomeBreakdown',
+            'expenseBreakdown',
+        ]);
+        const material = input.changes.some((change) => materialFields.has(change.field));
+        const sendBack = (0, registry_rules_1.revisionRequiresReview)(existing.status) && material;
+        if (sendBack && (input.reason ?? '').trim().length < 5) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', 'การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร');
+        }
+        const changes = input.changes.map((change) => ({
+            field: change.field,
+            fieldLabel: change.fieldLabel,
+            oldValue: change.field === 'nationalId' ? maskHistoryValue(change.oldValue) : change.oldValue ?? '',
+            newValue: change.field === 'nationalId' ? maskHistoryValue(change.newValue) : change.newValue ?? '',
+        }));
+        await this.prisma.$transaction(async (tx) => {
+            if (sendBack) {
+                await tx.beneficiary.update({
+                    where: { id },
+                    data: { status: 'NEEDS_CORRECTION', updatedById: actor.id },
+                });
+                await tx.registryStatusHistory.create({
+                    data: {
+                        beneficiaryId: id,
+                        fromStatus: existing.status,
+                        toStatus: 'NEEDS_CORRECTION',
+                        reason: input.reason?.trim() || 'แก้ไขข้อมูลที่มีผลต่อคุณสมบัติ',
+                        actedById: actor.id,
+                    },
+                });
+            }
+            else if (changes.length > 0) {
+                await tx.beneficiary.update({
+                    where: { id },
+                    data: { updatedById: actor.id },
+                });
+            }
+            if (changes.length > 0) {
+                await tx.beneficiaryEditHistory.create({
+                    data: {
+                        beneficiaryId: id,
+                        editedById: actor.id,
+                        editedByName: actor.displayName || actor.email,
+                        editedByRole: actor.roles[0]?.name || actor.roles[0]?.code || 'เจ้าหน้าที่',
+                        timestamp: new Date().toISOString(),
+                        changesSummary: changes.map((change) => change.fieldLabel).join(', ').slice(0, 500),
+                        changesDetail: JSON.stringify(changes),
+                        notes: [input.reason?.trim(), input.ipAddress ? `อุปกรณ์: ${input.ipAddress}` : '']
+                            .filter(Boolean)
+                            .join(' | ')
+                            .slice(0, 2000),
+                    },
+                });
+                await this.audit.record(tx, {
+                    actorId: actor.id,
+                    action: 'BENEFICIARY_REVISED',
+                    resourceType: 'beneficiary',
+                    resourceId: id,
+                    metadata: {
+                        fields: changes.map((change) => change.field).join(','),
+                        reReview: sendBack,
+                    },
+                });
+            }
+        });
+        const fresh = await this.requireRecord(id);
+        return {
+            reReview: sendBack,
+            status: fresh.status,
+            updatedAt: fresh.updatedAt.toISOString(),
+        };
+    }
+    async listRevisions(id, _actor) {
+        await this.requireRecord(id);
+        const rows = await this.prisma.beneficiaryEditHistory.findMany({
+            where: { beneficiaryId: id },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+        });
+        return rows.map((row) => ({
+            id: row.id,
+            beneficiaryId: row.beneficiaryId,
+            editedById: row.editedById,
+            editedByName: row.editedByName,
+            editedByRole: row.editedByRole,
+            timestamp: row.timestamp,
+            changesSummary: row.changesSummary,
+            changesDetail: parseHistoryDetail(row.changesDetail),
+            notes: row.notes,
+            createdAt: row.createdAt.toISOString(),
+        }));
+    }
     async getAuditHistory(id, _actor) {
         const logs = await this.prisma.auditLog.findMany({
             where: {
@@ -474,6 +599,23 @@ let BeneficiariesService = class BeneficiariesService {
             createdAt: log.createdAt.toISOString(),
         }));
     }
+    async duplicateIdentityConflict(identityNumberNormalized) {
+        let registryNumber;
+        if (identityNumberNormalized) {
+            const existing = await this.prisma.beneficiary.findFirst({
+                where: {
+                    identityType: 'THAI_NATIONAL_ID',
+                    identityNumberNormalized,
+                    deletedAt: null,
+                },
+                select: { registryNumber: true },
+            });
+            registryNumber = existing?.registryNumber;
+        }
+        return new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'DUPLICATE_IDENTITY', registryNumber
+            ? `เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว (รหัส ${registryNumber}) กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ`
+            : 'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ');
+    }
     viewOptions(actor) {
         return {
             revealIdentity: actor.permissions.includes('beneficiaries.read.sensitive'),
@@ -487,4 +629,21 @@ exports.BeneficiariesService = BeneficiariesService = __decorate([
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         audit_service_1.AuditService])
 ], BeneficiariesService);
+function maskHistoryValue(value) {
+    const digits = String(value ?? '').replace(/\D/g, '');
+    if (digits.length !== 13)
+        return value ? 'ปกปิด' : '';
+    return `${digits[0]}-••••-•••••-••-${digits[12]}`;
+}
+function parseHistoryDetail(raw) {
+    if (!raw)
+        return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    }
+    catch {
+        return [];
+    }
+}
 //# sourceMappingURL=beneficiaries.service.js.map

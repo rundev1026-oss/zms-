@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   UploadCloud,
   FileText,
@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { BeneficiaryDocument } from '@/types';
+import { isBeneficiaryId, uploadRegistryDocument, type PendingRegistryFile } from '@/lib/registryDocuments';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
 
 export interface UploadedDocumentItem {
@@ -31,6 +32,7 @@ export interface UploadedDocumentItem {
   storagePath?: string;
   uploadDate: string;
   status: 'pending' | 'verified' | 'rejected';
+  localOnly?: boolean;
 }
 
 interface DocumentUploaderProps {
@@ -38,6 +40,7 @@ interface DocumentUploaderProps {
   entityId?: string;
   existingDocuments?: UploadedDocumentItem[];
   onDocumentsChange?: (docs: UploadedDocumentItem[]) => void;
+  onPendingFilesChange?: (files: PendingRegistryFile[]) => void;
   readOnly?: boolean;
   requiredCategories?: string[];
   maxFiles?: number;
@@ -61,6 +64,7 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
   entityId = 'draft',
   existingDocuments = [],
   onDocumentsChange,
+  onPendingFilesChange,
   readOnly = false,
   requiredCategories = [],
   maxFiles = 10,
@@ -78,6 +82,26 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingFilesRef = useRef<Map<string, { file: File; category: string }>>(new Map());
+
+  const existingDocumentKey = existingDocuments.map((doc) => doc.id).join('|');
+  useEffect(() => {
+    setDocuments(existingDocuments);
+    // Sync when the saved document ids change, not on every new array instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingDocumentKey]);
+
+  const publishPending = () => {
+    if (!onPendingFilesChange) return;
+    onPendingFilesChange(
+      Array.from(pendingFilesRef.current.entries()).map(([id, item]) => ({
+        id,
+        file: item.file,
+        category: item.category,
+        name: item.file.name,
+      })),
+    );
+  };
 
   const formatFileSize = (bytes: number): string => {
     if (!bytes || bytes === 0) return '0 B';
@@ -91,8 +115,11 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
     if (!fileList || fileList.length === 0) return;
     setGeneralError(null);
 
-    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-    const maxSizeBytes = 25 * 1024 * 1024; // 25 MB
+    const beneficiaryUpload = entityType === 'beneficiary';
+    const allowedTypes = beneficiaryUpload
+      ? ['application/pdf', 'image/jpeg', 'image/png']
+      : ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    const maxSizeBytes = beneficiaryUpload ? 10 * 1024 * 1024 : 25 * 1024 * 1024;
 
     const filesToUpload: File[] = Array.from(fileList);
 
@@ -107,7 +134,66 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
       }
     }
 
+    let nextDocuments = documents;
     for (const file of filesToUpload) {
+      if (beneficiaryUpload) {
+        const uploadItem = { name: file.name, progress: 40 };
+        setUploadingFiles((prev) => [...prev, uploadItem]);
+        try {
+          const categoryObj = DOCUMENT_CATEGORIES.find((c) => c.value === selectedCategory);
+          if (!isBeneficiaryId(entityId)) {
+            const pendingId = `pending-${crypto.randomUUID()}`;
+            pendingFilesRef.current.set(pendingId, { file, category: selectedCategory });
+            const pendingDoc: UploadedDocumentItem = {
+              id: pendingId,
+              name: file.name,
+              category: selectedCategory,
+              categoryLabel: categoryObj?.label || selectedCategory,
+              fileUrl: '',
+              fileSize: file.size,
+              mimeType: file.type,
+              storageProvider: 'local',
+              uploadDate: new Date().toISOString(),
+              status: 'pending',
+              localOnly: true,
+            };
+            nextDocuments = [...nextDocuments, pendingDoc];
+            setDocuments(nextDocuments);
+            onDocumentsChange?.(nextDocuments);
+            publishPending();
+          } else {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null;
+            const result = await uploadRegistryDocument(entityId, file, selectedCategory, token);
+            if (!result.ok || !result.document) throw new Error(result.error || 'อัปโหลดเอกสารไม่สำเร็จ');
+            const saved = result.document;
+            const storedDoc: UploadedDocumentItem = {
+              id: saved.id,
+              name: saved.name || file.name,
+              category: saved.category || selectedCategory,
+              categoryLabel: categoryObj?.label || selectedCategory,
+              fileUrl: saved.fileUrl,
+              fileSize: saved.fileSize || file.size,
+              mimeType: saved.mimeType || file.type,
+              storageProvider: 'local',
+              uploadDate: saved.uploadDate || new Date().toISOString(),
+              status: saved.status || 'pending',
+              localOnly: false,
+            };
+            nextDocuments = [...nextDocuments, storedDoc];
+            setDocuments(nextDocuments);
+            onDocumentsChange?.(nextDocuments);
+          }
+          setUploadingFiles((prev) => prev.filter((item) => item.name !== file.name));
+        } catch (err: any) {
+          setUploadingFiles((prev) =>
+            prev.map((item) =>
+              item.name === file.name ? { ...item, error: err.message || 'อัปโหลดไม่สำเร็จ' } : item
+            )
+          );
+        }
+        continue;
+      }
+
       const uploadItem = { name: file.name, progress: 10 };
       setUploadingFiles((prev) => [...prev, uploadItem]);
 
@@ -273,6 +359,8 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
   };
 
   const handleRemoveDocument = (id: string) => {
+    pendingFilesRef.current.delete(id);
+    publishPending();
     const updated = documents.filter((d) => d.id !== id);
     setDocuments(updated);
     if (onDocumentsChange) {
@@ -444,16 +532,16 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
           <span>เอกสารแนบในระบบ ({documents.length} รายการ)</span>
-          {documents.length > 0 && (
+          {documents.length > 0 && documents.every((doc) => !doc.localOnly) && (
             <span className="text-emerald-600 font-medium flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> บันทึกและสำรองข้อมูลแล้ว
+              <CheckCircle2 className="w-3.5 h-3.5" /> บันทึกเอกสารแล้ว
             </span>
           )}
         </div>
 
         {documents.length === 0 ? (
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-400">
-            ยังไม่มีเอกสารแนบในรายการนี้
+            ยังไม่มีเอกสารแนบ
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -501,9 +589,14 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
                             <Cloud className="w-2.5 h-2.5" /> Cloudinary
                           </span>
                         )}
-                        {(!doc.storageProvider || doc.storageProvider === 'local') && (
+                        {doc.localOnly && (
+                          <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded font-medium">
+                            รอแนบเมื่อบันทึกทะเบียน
+                          </span>
+                        )}
+                        {!doc.localOnly && (!doc.storageProvider || doc.storageProvider === 'local') && (
                           <span className="inline-flex items-center gap-1 text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-medium">
-                            <HardDrive className="w-2.5 h-2.5" /> Local Secure
+                            <HardDrive className="w-2.5 h-2.5" /> จัดเก็บแล้ว
                           </span>
                         )}
                         <span className="text-slate-400">• {doc.uploadDate}</span>

@@ -21,6 +21,7 @@ import {
   BeneficiaryListQueryDto,
   CreateBeneficiaryDto,
   CreateConsentDto,
+  RecordRevisionDto,
   UpdateBeneficiaryDto,
   BeneficiarySummaryQueryDto,
 } from './beneficiary.dto';
@@ -112,6 +113,27 @@ export class BeneficiariesController {
     return this.beneficiaries.restore(id, dto, user, ip);
   }
 
+  @Get(':id/revisions')
+  @RequirePermissions('beneficiaries.read')
+  @ApiOperation({ summary: 'ประวัติการแก้ไขรายฟิลด์ อ่านอย่างเดียว' })
+  listRevisions(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.beneficiaries.listRevisions(id, user);
+  }
+
+  @Post(':id/revisions')
+  @RequirePermissions('beneficiaries.write')
+  @ApiOperation({ summary: 'บันทึกประวัติการแก้ไข และส่งกลับรอตรวจสอบเมื่อข้อมูลมีผลต่อคุณสมบัติ' })
+  recordRevision(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecordRevisionDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = dto.ipAddress || (Array.isArray(forwarded) ? forwarded[0] : forwarded) || req.ip;
+    return this.beneficiaries.recordRevision(id, { ...dto, ipAddress: ip }, user);
+  }
+
   @Get(':id/audit-history')
   @Roles('SUPER_ADMIN')
   @RequirePermissions('beneficiaries.delete')
@@ -121,6 +143,13 @@ export class BeneficiariesController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.beneficiaries.getAuditHistory(id, user);
+  }
+
+  @Post(':id/survey-print')
+  @RequirePermissions('beneficiaries.read')
+  @ApiOperation({ summary: 'บันทึกประวัติการพิมพ์แบบสำรวจ โดยไม่แก้ไขข้อมูลทะเบียน' })
+  recordSurveyPrint(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.beneficiaries.recordSurveyPrint(id, user);
   }
 
   @Get(':id')

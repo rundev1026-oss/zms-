@@ -61,3 +61,4 @@ export function generateSystemToken(userId: string = SYSTEM_ADMIN_ID): string {
 
   return `${header}.${payload}.${signature}`;
 }
+

@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
-export default function BeneficiarySurveyPrintPage() {
+function BeneficiarySurveyPrintContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params?.id || '';
@@ -137,5 +137,32 @@ export default function BeneficiarySurveyPrintPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+function PrintShellFallback() {
+  return (
+    <div className="min-h-screen bg-slate-200 text-slate-900">
+      <div className="print:hidden sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-300 bg-white px-4 py-3">
+        <div>
+          <div className="text-sm font-bold text-slate-900">ตัวอย่างเอกสารก่อนพิมพ์</div>
+          <div className="text-xs text-slate-600">แบบสำรวจเพื่อพิจารณาความช่วยเหลือ</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <div className="h-9 w-28 rounded-lg bg-slate-100 animate-pulse" />
+          <div className="h-9 w-32 rounded-lg bg-slate-100 animate-pulse" />
+          <div className="h-9 w-28 rounded-lg bg-slate-100 animate-pulse" />
+        </div>
+      </div>
+      <p className="px-4 py-6 text-sm">กำลังดึงข้อมูลทะเบียนเพื่อจัดเรียงเอกสาร...</p>
+    </div>
+  );
+}
+
+export default function BeneficiarySurveyPrintPage() {
+  return (
+    <Suspense fallback={<PrintShellFallback />}>
+      <BeneficiarySurveyPrintContent />
+    </Suspense>
   );
 }

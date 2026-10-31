@@ -1,7 +1,7 @@
 import { writeFileSync } from 'fs';
 import path from 'path';
-import { fillSurveyPdf } from '../../src/lib/surveyPrint/stamp.ts';
-import type { SurveyPrintModel } from '../../src/lib/surveyPrint/model.ts';
+import { fillSurveyPdf } from '../../src/lib/surveyPrint/stamp';
+import type { SurveyPrintModel } from '../../src/lib/surveyPrint/model';
 
 const model: SurveyPrintModel = {
   registryNumber: 'ZMS-2026-000012',

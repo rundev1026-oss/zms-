@@ -12,7 +12,7 @@
     "build": "next build",
     "build:api": "npm --prefix apps/api run build",
     "start": "next start",
-    "test": "tsc --noEmit"
+    "test": "npm run test -w @zms/shared"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

@@ -325,6 +325,7 @@ function personBits(source: any): Record<string, string | null> {
     age: source.age === undefined || source.age === null || source.age === '' ? null : String(source.age),
     nationalId: formatNationalId(source.nationalId || source.identityNumber),
     address: text(source.address),
+    organization: text(source.organization),
   };
 }
 
@@ -449,7 +450,9 @@ export function buildSurveyPrintModel(input: {
     birthDay: born.day,
     birthMonth: born.month,
     birthYear: born.year,
-    age: mapped.age === null || mapped.age === undefined || mapped.age === '' ? null : String(mapped.age),
+    age: mapped.age !== null && mapped.age !== undefined && mapped.age !== ''
+      ? String(mapped.age)
+      : (born.year && Number(born.year) > 2400 ? String(new Date().getFullYear() + 543 - Number(born.year)) : null),
     phone: text(mapped.phone),
     occupation: text(mapped.occupation),
     maritalStatus: labelOf(MARITAL, mapped.maritalStatus),

@@ -100,7 +100,11 @@ const model: SurveyPrintModel = {
   registrationNote: null,
 };
 
-const bytes = await fillSurveyPdf(model);
+async function main() {
+  const bytes = await fillSurveyPdf(model);
 const out = path.join(process.cwd(), 'tmp', 'form-pages', 'filled-fixture.pdf');
 writeFileSync(out, bytes);
 console.log(JSON.stringify({ bytes: bytes.length, out }));
+
+}
+main();

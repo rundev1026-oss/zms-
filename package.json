@@ -11,7 +11,8 @@
     "dev:api": "npm --prefix apps/api run start:dev",
     "build": "next build",
     "build:api": "npm --prefix apps/api run build",
-    "start": "next start"
+    "start": "next start",
+    "test": "tsc --noEmit"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

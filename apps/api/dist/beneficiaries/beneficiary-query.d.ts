@@ -8,6 +8,12 @@ export interface BeneficiaryFilters {
     sort?: string;
 }
 export declare function buildBeneficiaryWhere(filters: BeneficiaryFilters): Prisma.BeneficiaryWhereInput;
+export interface DeletedBeneficiaryFilters {
+    q?: string;
+    dateFrom?: string;
+    dateTo?: string;
+}
+export declare function buildDeletedBeneficiaryWhere(filters: DeletedBeneficiaryFilters): Prisma.BeneficiaryWhereInput;
 export declare function summaryFilters(filters: BeneficiaryFilters): BeneficiaryFilters;
 export declare function toStatusSummary(groups: ReadonlyArray<{
     status: RegistryStatusCode;

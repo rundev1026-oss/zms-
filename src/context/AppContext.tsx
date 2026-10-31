@@ -163,7 +163,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [applications, setApplications] = useState<AssistanceApplication[]>([]);
   const [registries, setRegistries] = useState<BeneficiaryRegistryItem[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardSeparatedStats | null>(null);
-  const [funds, setFunds] = useState<FundAccount[]>([]);
+  const [funds, setFunds] = useState<FundAccount[]>(MOCK_FUNDS);
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [followUpStats, setFollowUpStats] = useState<FollowUpSummaryStats | null>(null);
@@ -294,7 +294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const fundsRes = await fetch('/api/finance/funds');
       if (fundsRes.ok) {
         const fundsJson = await fundsRes.json();
-        if (fundsJson.success && Array.isArray(fundsJson.data)) {
+        if (fundsJson.success && Array.isArray(fundsJson.data) && fundsJson.data.length > 0) {
           setFunds(fundsJson.data);
         }
       }

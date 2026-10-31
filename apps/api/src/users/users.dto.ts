@@ -87,6 +87,11 @@ export class CreateUserDto {
 export class UpdateUserDto {
   @ApiPropertyOptional()
   @IsOptional()
+  @IsEmail({}, { message: 'กรุณากรอกอีเมลให้ถูกต้อง' })
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   displayName?: string;
 

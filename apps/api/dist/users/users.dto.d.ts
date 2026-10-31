@@ -15,6 +15,7 @@ export declare class CreateUserDto {
     approvalLimit?: number | null;
 }
 export declare class UpdateUserDto {
+    email?: string;
     displayName?: string;
     phone?: string;
     position?: string;

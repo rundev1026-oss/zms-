@@ -1,6 +1,24 @@
 import type { Prisma } from '@prisma/client';
 export declare const beneficiaryInclude: {
     addresses: true;
+    household: {
+        include: {
+            members: {
+                orderBy: {
+                    sortOrder: "asc";
+                };
+            };
+        };
+    };
+    incomeProfile: true;
+    documents: {
+        where: {
+            deletedAt: null;
+        };
+        orderBy: {
+            createdAt: "desc";
+        };
+    };
     assessments: {
         where: {
             decision: "CONFIRMED";
@@ -11,6 +29,13 @@ export declare const beneficiaryInclude: {
         take: number;
         include: {
             category: true;
+        };
+    };
+    deletedBy: {
+        select: {
+            id: true;
+            displayName: true;
+            email: true;
         };
     };
 };
@@ -41,6 +66,16 @@ export interface BeneficiaryView {
     } | null;
     requestCount: number;
     aidTotal?: string;
+    addresses?: any[];
+    household?: any;
+    incomeProfile?: any;
+    documents?: any[];
+    deletedAt?: string | null;
+    deletedById?: string | null;
+    deletedByName?: string | null;
+    deletionReason?: string | null;
+    deletionReference?: string | null;
+    deletionStatus?: boolean;
     createdAt: string;
     updatedAt: string;
 }

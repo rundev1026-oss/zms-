@@ -1,15 +1,8 @@
 import { NextResponse } from 'next/server';
 import { AuthService } from '@/services/authService';
+import { resolveServerToken } from '@/lib/server-auth';
 
-function extractToken(req: Request): string {
-  const authHeader = req.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.replace('Bearer ', '').trim();
-  }
-  const cookieHeader = req.headers.get('cookie') || '';
-  const match = cookieHeader.match(/zms_session=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 export async function POST(
   req: Request,
@@ -19,7 +12,36 @@ export async function POST(
     const resolvedParams = await Promise.resolve(params);
     const userId = resolvedParams.id;
 
-    const token = extractToken(req);
+    const token = resolveServerToken(req);
+
+    // 1. First attempt enterprise NestJS backend
+    if (token) {
+      try {
+        const nestRes = await fetch(`${API_BASE_URL}/users/${userId}/reset-password`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'x-zms-csrf': '1',
+          },
+          body: JSON.stringify({ newPassword: 'ZmsEnterprise2026!' }),
+        });
+
+        const data = await nestRes.json();
+        if (nestRes.ok) {
+          return NextResponse.json({
+            success: true,
+            message: 'ส่งคำเชิญและตั้งรหัสผ่านเริ่มต้นเรียบร้อยแล้ว',
+            setupUrl: `/reset-password?userId=${userId}&tempPassword=ZmsEnterprise2026!`,
+            rawToken: 'ZmsEnterprise2026!',
+          });
+        }
+      } catch (err) {
+        console.error('NestJS invite proxy error:', err);
+      }
+    }
+
+    // 2. Fallback to local AuthService
     if (!token) {
       return NextResponse.json({ success: false, error: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
     }

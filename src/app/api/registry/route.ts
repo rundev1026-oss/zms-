@@ -225,33 +225,106 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 4. Save Household
-    if (input.members && Array.isArray(input.members)) {
-      const mappedMembers = input.members.map((m: any, idx: number) => ({
-        fullName: m.fullName || `สมาชิก ${idx + 1}`,
-        relationship: m.relation || 'สมาชิกในครอบครัว',
-        ageYears: m.age ? Number(m.age) : undefined,
-        occupation: m.occupation || undefined,
-        isDependent: m.relation === 'บุตร' || m.relation === 'คู่สมรส' || m.healthStatus === 'disabled' || m.healthStatus === 'chronically_ill',
-        sortOrder: idx + 1,
-      }));
+    // 4. Save Household (Members & Comprehensive Survey Details)
+    const rawMembers = input.householdMembers || input.members || [];
+    const mappedMembers = Array.isArray(rawMembers)
+      ? rawMembers
+          .filter((m: any) => (m.fullName || '').trim() !== '')
+          .map((m: any, idx: number) => ({
+            fullName: m.fullName || `สมาชิก ${idx + 1}`,
+            relationship: m.relationship || m.relation || 'สมาชิกในครอบครัว',
+            ageYears: m.ageYears ?? (m.age ? Number(m.age) : undefined),
+            dateOfBirth: m.dateOfBirth || undefined,
+            occupation: m.occupation || undefined,
+            isDependent:
+              m.isDependent ??
+              (m.relation === 'บุตร' ||
+                m.relation === 'คู่สมรส' ||
+                m.relationship === 'บุตร' ||
+                m.relationship === 'คู่สมรส' ||
+                m.healthStatus === 'disabled' ||
+                m.healthStatus === 'chronically_ill'),
+            sortOrder: idx + 1,
+          }))
+      : [];
 
-      await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/household`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          memberCount: mappedMembers.length + 1,
-          householdIncome: Number(input.totalIncome || 0).toFixed(2),
-          householdExpense: Number(input.totalExpense || 0).toFixed(2),
-          debtAmount: Number(input.debtAmount || 0).toFixed(2),
-          dependentCount: mappedMembers.filter((m: any) => m.isDependent).length,
-          additionalNotes: input.familySituationSummary || undefined,
-          members: mappedMembers,
-        }),
-      });
+    const householdPayload: any = {
+      memberCount: mappedMembers.length + 1,
+      householdIncome: Number(input.monthlyIncome ?? input.totalIncome ?? 0).toFixed(2),
+      householdExpense: Number(input.monthlyExpense ?? input.totalExpense ?? 0).toFixed(2),
+      debtAmount: Number(input.debtAmount ?? 0).toFixed(2),
+      debtPurpose: input.debtPurpose || input.debtType || undefined,
+      dependentCount: mappedMembers.filter((m: any) => m.isDependent).length,
+      additionalNotes: input.familySituationSummary || input.livingLimitations || undefined,
+      address: input.address || undefined,
+      province: input.province || undefined,
+      district: input.district || undefined,
+      subdistrict: input.subdistrict || undefined,
+      community: input.community || undefined,
+      housingType: input.housingType || undefined,
+      housingCondition: input.housingCondition || undefined,
+      housingNotes: input.housingNotes || undefined,
+      landTitleType: input.landTitleType || undefined,
+      landTitleNotes: input.landTitleNotes || undefined,
+      incomeBreakdown: input.incomeBreakdown ? JSON.stringify(input.incomeBreakdown) : undefined,
+      expenseBreakdown: input.expenseBreakdown ? JSON.stringify(input.expenseBreakdown) : undefined,
+      pastAssistance: input.pastAssistance ? JSON.stringify(input.pastAssistance) : undefined,
+      familySituationSummary: input.familySituationSummary || undefined,
+      urgentNeeds: input.urgentNeeds || undefined,
+      dependentBurdens: input.dependentBurdens || undefined,
+      coordinatorInfo: input.coordinator ? JSON.stringify(input.coordinator) : undefined,
+      certifierInfo: input.certifier ? JSON.stringify(input.certifier) : undefined,
+      latitude:
+        input.latitude !== undefined && input.latitude !== null && input.latitude !== ''
+          ? Number(input.latitude)
+          : undefined,
+      longitude:
+        input.longitude !== undefined && input.longitude !== null && input.longitude !== ''
+          ? Number(input.longitude)
+          : undefined,
+      residenceAddress: input.residenceAddress || input.address || undefined,
+      placeName: input.placeName || undefined,
+      locationVerificationStatus: input.locationVerificationStatus || 'not_specified',
+      members: mappedMembers,
+    };
+
+    await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/household`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(householdPayload),
+    });
+
+    // 5. Asnaf Category Proposal
+    if (input.asnafCategory) {
+      try {
+        const catRes = await fetch(`${API_BASE_URL}/asnaf/categories`, { headers });
+        if (catRes.ok) {
+          const catList = await catRes.json();
+          const targetKey = String(input.asnafCategory).trim().toUpperCase();
+          const match = (catList || []).find(
+            (c: any) =>
+              c.code?.toUpperCase() === targetKey ||
+              c.nameTh?.includes(input.asnafCategory) ||
+              (targetKey === 'MISKIN' && c.code === 'MISKIN') ||
+              (targetKey === 'FAQIR' && c.code === 'FAKIR')
+          );
+          if (match?.id) {
+            await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/asnaf-proposal`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                categoryId: match.id,
+                rationale: `การจัดหมวดอัสนัฟเบื้องต้นจากการขึ้นทะเบียน: ${match.nameTh || input.asnafCategory}`,
+              }),
+            });
+          }
+        }
+      } catch (asnafErr) {
+        console.error('Failed to propose Asnaf category:', asnafErr);
+      }
     }
 
-    // 5. Save PDPA Consent
+    // 6. Save PDPA Consent
     await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/consents`, {
       method: 'POST',
       headers,
@@ -263,8 +336,8 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    // 6. If submitted, call submit endpoint
-    if (input.status === 'submitted' || body.submitStatus === 'submitted') {
+    // 7. If submitted, call submit endpoint
+    if (input.registrationStatus === 'pending_verification' || input.status === 'submitted' || body.submitStatus === 'submitted') {
       const submitRes = await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/submit`, {
         method: 'POST',
         headers,
@@ -278,6 +351,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         beneficiaryId,
+        id: beneficiaryId,
         registrationNo: createData.registryNumber,
         status: createData.status,
       },

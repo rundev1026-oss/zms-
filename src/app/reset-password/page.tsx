@@ -70,7 +70,14 @@ function ResetPasswordContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: token.trim(),
+          token: (() => {
+            let val = token.trim();
+            if (val.includes('token=')) {
+              const match = val.match(/token=([a-zA-Z0-9_\-]+)/);
+              if (match && match[1]) val = match[1];
+            }
+            return val;
+          })(),
           newPassword,
           confirmPassword,
         }),
@@ -147,7 +154,14 @@ function ResetPasswordContent() {
                 type="text"
                 required
                 value={token}
-                onChange={(e) => setToken(e.target.value)}
+                onChange={(e) => {
+                  let val = e.target.value.trim();
+                  if (val.includes('token=')) {
+                    const match = val.match(/token=([a-zA-Z0-9_\-]+)/);
+                    if (match && match[1]) val = match[1];
+                  }
+                  setToken(val);
+                }}
                 placeholder="วางโทเคน 64 ตัวอักษรที่ได้รับ"
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-[11px] text-slate-900"
               />

@@ -114,6 +114,7 @@ __decorate([
     __metadata("design:type", Object)
 ], CreateUserDto.prototype, "approvalLimit", void 0);
 class UpdateUserDto {
+    email;
     displayName;
     phone;
     position;
@@ -122,6 +123,12 @@ class UpdateUserDto {
     roleCode;
 }
 exports.UpdateUserDto = UpdateUserDto;
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEmail)({}, { message: 'กรุณากรอกอีเมลให้ถูกต้อง' }),
+    __metadata("design:type", String)
+], UpdateUserDto.prototype, "email", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)(),
     (0, class_validator_1.IsOptional)(),

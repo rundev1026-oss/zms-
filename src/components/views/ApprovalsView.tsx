@@ -88,7 +88,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
     if (!selectedApp || isSubmitting) return;
 
     if (!isFundSufficient) {
-      showToast(`ยอดเงินจัดสรรได้ในกองทุน ${selectedFund.name} ไม่เพียงพอ! (คงเหลือ: ฿${selectedFund.availableAmount.toLocaleString()})`, 'error');
+      showToast(`ยอดเงินจัดสรรได้ในกองทุน ${selectedFund?.name || 'ที่เลือก'} ไม่เพียงพอ! (คงเหลือ: ฿${(selectedFund?.availableAmount ?? 0).toLocaleString()})`, 'error');
       return;
     }
 
@@ -332,7 +332,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                       onChange={(e) => setSelectedFundId(e.target.value)}
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                     >
-                      {funds.map((f) => (
+                      {funds.length === 0 ? <option value="">ไม่มีข้อมูลกองทุน</option> : funds.map((f) => (
                         <option key={f.id} value={f.id}>
                           {f.name} (คงเหลือ: ฿{f.availableAmount.toLocaleString()})
                         </option>
@@ -405,7 +405,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                 )}
 
                 <div className="p-3 rounded-xl bg-slate-50 text-[11px] text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <span>คงเหลือกองทุนหลัก: <strong className="text-slate-800">฿{selectedFund.availableAmount.toLocaleString()}</strong> (หลังอนุมัติ: ฿{(selectedFund.availableAmount - approvalAmount).toLocaleString()})</span>
+                  <span>คงเหลือกองทุนหลัก: <strong className="text-slate-800">฿{(selectedFund?.availableAmount ?? 0).toLocaleString()}</strong> (หลังอนุมัติ: ฿{((selectedFund?.availableAmount ?? 0) - approvalAmount).toLocaleString()})</span>
                   <span>คงเหลือกองทุนเฉพาะ: <strong className="text-slate-800">฿{(selectedSpecificFund?.remainingAmount ?? 0).toLocaleString()}</strong> (หลังอนุมัติ: ฿{((selectedSpecificFund?.remainingAmount ?? 0) - approvalAmount).toLocaleString()})</span>
                 </div>
               </div>
@@ -500,7 +500,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
               {confirmAction === 'approve' ? (
                 <>
                   <div>วงเงินอนุมัติ: <strong className="text-emerald-700">฿{approvalAmount.toLocaleString()}</strong></div>
-                  <div>ตัดจากกองทุน: <strong>{selectedFund.name}</strong></div>
+                  <div>ตัดจากกองทุน: <strong>{selectedFund?.name || 'ไม่ระบุกองทุน'}</strong></div>
                   <div className="text-[11px] text-slate-500">
                     * สถานะจะเปลี่ยนเป็น "รอจ่ายเงิน" (wait_disbursement) และกันยอดผูกพันทันที
                   </div>

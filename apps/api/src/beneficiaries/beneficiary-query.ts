@@ -1,7 +1,7 @@
 import type { Prisma, RegistryStatus } from '@prisma/client';
 import { REGISTRY_STATUSES, type RegistryStatusCode } from '@zms/shared';
 
-const SORT_FIELDS = ['createdAt', 'registryNumber', 'lastName', 'status'] as const;
+const SORT_FIELDS = ['createdAt', 'registryNumber', 'lastName', 'status', 'deletedAt'] as const;
 type SortField = (typeof SORT_FIELDS)[number];
 
 export interface BeneficiaryFilters {
@@ -39,6 +39,47 @@ export function buildBeneficiaryWhere(filters: BeneficiaryFilters): Prisma.Benef
     }
     where.OR = or;
   }
+  return where;
+}
+
+export interface DeletedBeneficiaryFilters {
+  q?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function buildDeletedBeneficiaryWhere(filters: DeletedBeneficiaryFilters): Prisma.BeneficiaryWhereInput {
+  const where: Prisma.BeneficiaryWhereInput = {
+    deletedAt: { not: null },
+  };
+
+  if (filters.dateFrom || filters.dateTo) {
+    const dateFilter: Prisma.DateTimeNullableFilter = { not: null };
+    if (filters.dateFrom) {
+      dateFilter.gte = new Date(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      dateFilter.lte = new Date(`${filters.dateTo}T23:59:59.999Z`);
+    }
+    where.deletedAt = dateFilter;
+  }
+
+  if (filters.q !== undefined && filters.q.trim().length > 0) {
+    const q = filters.q.trim();
+    const or: Prisma.BeneficiaryWhereInput[] = [
+      { registryNumber: { contains: q, mode: 'insensitive' } },
+      { firstName: { contains: q, mode: 'insensitive' } },
+      { lastName: { contains: q, mode: 'insensitive' } },
+      { phone: { contains: q } },
+      { deletionReason: { contains: q, mode: 'insensitive' } },
+      { deletionReference: { contains: q, mode: 'insensitive' } },
+    ];
+    if (/^\d{13}$/.test(q)) {
+      or.push({ identityNumberNormalized: q });
+    }
+    where.OR = or;
+  }
+
   return where;
 }
 

@@ -17,9 +17,11 @@ const pagination_1 = require("../common/pagination");
 const prisma_error_1 = require("../common/prisma-error");
 const prisma_service_1 = require("../prisma/prisma.service");
 const registry_rules_1 = require("../registry-workflow/registry-rules");
+const password_hash_1 = require("../security/password-hash");
 const beneficiary_query_1 = require("./beneficiary-query");
 const beneficiary_fields_1 = require("./beneficiary-fields");
 const beneficiary_presenter_1 = require("./beneficiary.presenter");
+const mask_identity_1 = require("./mask-identity");
 let BeneficiariesService = class BeneficiariesService {
     prisma;
     audit;
@@ -242,6 +244,235 @@ let BeneficiariesService = class BeneficiariesService {
         if (!(0, registry_rules_1.canEditRegistry)(status)) {
             throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'INVALID_STATE', 'แก้ไขได้เฉพาะทะเบียนที่เป็นร่างหรือรอแก้ไข');
         }
+    }
+    async getDeletePreview(id, _actor) {
+        const row = await this.prisma.beneficiary.findUnique({
+            where: { id },
+            include: {
+                household: { include: { members: true } },
+                applications: true,
+                disbursementItems: true,
+                documents: { where: { deletedAt: null } },
+                followUpRecords: true,
+            },
+        });
+        if (!row) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบทะเบียนผู้มีสิทธิ์รับซะกาต');
+        }
+        if (row.deletedAt !== null) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'ALREADY_DELETED', 'ทะเบียนนี้อยู่ในสถานะถูกจำหน่าย/ลบแล้ว');
+        }
+        const blockers = [];
+        const activeAppStatuses = ['draft', 'submitted', 'under_review', 'pending_approval', 'approved', 'pending_disbursement'];
+        const activeApps = row.applications.filter((a) => activeAppStatuses.includes((a.status || '').toLowerCase()));
+        if (activeApps.length > 0) {
+            const statuses = [...new Set(activeApps.map((a) => a.status))].join(', ');
+            blockers.push(`มีคำขอความช่วยเหลือที่อยู่ระหว่างดำเนินการ ${activeApps.length} รายการ (สถานะ: ${statuses})`);
+        }
+        const activeDisbursements = row.disbursementItems.filter((d) => ['draft', 'pending'].includes((d.status || '').toLowerCase()));
+        if (activeDisbursements.length > 0) {
+            blockers.push(`มีรายการเบิกจ่ายเงินสดที่อยู่ระหว่างดำเนินการ ${activeDisbursements.length} รายการ`);
+        }
+        const completedAidCount = row.applications.filter((a) => ['completed', 'disbursed'].includes((a.status || '').toLowerCase())).length;
+        return {
+            canDelete: blockers.length === 0,
+            blockers,
+            summary: {
+                id: row.id,
+                registryNumber: row.registryNumber,
+                fullName: `${row.title ? row.title + ' ' : ''}${row.firstName} ${row.lastName}`.trim(),
+                identityType: row.identityType,
+                identityNumberMasked: (0, mask_identity_1.maskIdentityNumber)(row.identityNumber),
+                status: row.status,
+                phone: row.phone,
+                createdAt: row.createdAt.toISOString(),
+                counts: {
+                    applications: row.applications.length,
+                    activeApplications: activeApps.length,
+                    completedAid: completedAidCount,
+                    disbursements: row.disbursementItems.length,
+                    followups: row.followUpRecords.length,
+                    documents: row.documents.length,
+                    householdMembers: row.household?.members?.length ?? 0,
+                },
+            },
+        };
+    }
+    async softDelete(id, dto, actor, ip) {
+        const preview = await this.getDeletePreview(id, actor);
+        if (!preview.canDelete) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'ACTIVE_WORKFLOW_EXISTS', `ไม่สามารถลบทะเบียนได้เนื่องจากมีกระบวนการค้างอยู่: ${preview.blockers.join('; ')}`);
+        }
+        if (dto.passwordConfirm) {
+            const user = await this.prisma.user.findUnique({ where: { id: actor.id } });
+            if (!user || !(0, password_hash_1.verifyPassword)(dto.passwordConfirm, user.passwordHash)) {
+                throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'INVALID_PASSWORD', 'รหัสผ่านยืนยันไม่ถูกต้อง');
+            }
+        }
+        const deleted = await this.prisma.$transaction(async (tx) => {
+            const row = await tx.beneficiary.update({
+                where: { id },
+                data: {
+                    deletedAt: new Date(),
+                    deletedById: actor.id,
+                    deletionReason: dto.reason,
+                    deletionReference: dto.reference ?? null,
+                    deletionStatus: true,
+                    updatedById: actor.id,
+                },
+                include: beneficiary_presenter_1.beneficiaryInclude,
+            });
+            await tx.registryStatusHistory.create({
+                data: {
+                    beneficiaryId: id,
+                    fromStatus: row.status,
+                    toStatus: row.status,
+                    reason: `[จำหน่าย/ลบข้อมูลทะเบียน] ${dto.reason}${dto.reference ? ` (อ้างอิง: ${dto.reference})` : ''}`,
+                    actedById: actor.id,
+                },
+            });
+            await this.audit.record(tx, {
+                actorId: actor.id,
+                action: 'BENEFICIARY_SOFT_DELETE',
+                resourceType: 'beneficiary',
+                resourceId: id,
+                metadata: {
+                    registryNumber: row.registryNumber,
+                    reason: dto.reason,
+                    reference: dto.reference ?? null,
+                    status: row.status,
+                    deletedBy: actor.displayName,
+                    ipAddress: ip ?? null,
+                },
+            });
+            return row;
+        });
+        return (0, beneficiary_presenter_1.presentBeneficiary)(deleted, this.viewOptions(actor));
+    }
+    async listDeleted(query, actor) {
+        const where = (0, beneficiary_query_1.buildDeletedBeneficiaryWhere)(query);
+        const page = Math.max(1, Number(query.page) || 1);
+        const pageSize = Math.max(1, Math.min(100, Number(query.pageSize) || 20));
+        const { skip, take } = (0, pagination_1.pageWindow)(page, pageSize);
+        const [rows, total] = await Promise.all([
+            this.prisma.beneficiary.findMany({
+                where,
+                orderBy: { deletedAt: 'desc' },
+                skip,
+                take,
+                include: {
+                    ...beneficiary_presenter_1.beneficiaryInclude,
+                    _count: {
+                        select: {
+                            applications: true,
+                            disbursementItems: true,
+                            followUpRecords: true,
+                            documents: true,
+                        },
+                    },
+                },
+            }),
+            this.prisma.beneficiary.count({ where }),
+        ]);
+        return {
+            items: rows.map((row) => ({
+                ...(0, beneficiary_presenter_1.presentBeneficiary)(row, this.viewOptions(actor)),
+                counts: row._count,
+            })),
+            page,
+            pageSize,
+            total,
+        };
+    }
+    async restore(id, dto, actor, ip) {
+        const existing = await this.prisma.beneficiary.findUnique({
+            where: { id },
+        });
+        if (!existing) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบทะเบียน');
+        }
+        if (existing.deletedAt === null) {
+            throw new app_exception_1.AppException(common_1.HttpStatus.BAD_REQUEST, 'NOT_DELETED', 'ทะเบียนนี้ไม่ได้อยู่ในสถานะถูกจำหน่าย/ลบ');
+        }
+        if (existing.identityType === 'THAI_NATIONAL_ID' && existing.identityNumberNormalized) {
+            const activeCollision = await this.prisma.beneficiary.findFirst({
+                where: {
+                    identityType: 'THAI_NATIONAL_ID',
+                    identityNumberNormalized: existing.identityNumberNormalized,
+                    deletedAt: null,
+                    id: { not: id },
+                },
+            });
+            if (activeCollision) {
+                throw new app_exception_1.AppException(common_1.HttpStatus.CONFLICT, 'DUPLICATE_IDENTITY', `ไม่สามารถกู้คืนได้ เนื่องจากมีทะเบียน ${activeCollision.registryNumber} ใช้งานเลขประจำตัวประชาชนนี้อยู่แล้ว`);
+            }
+        }
+        const restored = await this.prisma.$transaction(async (tx) => {
+            const row = await tx.beneficiary.update({
+                where: { id },
+                data: {
+                    deletedAt: null,
+                    deletedById: null,
+                    deletionReason: null,
+                    deletionReference: null,
+                    deletionStatus: false,
+                    updatedById: actor.id,
+                },
+                include: beneficiary_presenter_1.beneficiaryInclude,
+            });
+            await tx.registryStatusHistory.create({
+                data: {
+                    beneficiaryId: id,
+                    fromStatus: row.status,
+                    toStatus: row.status,
+                    reason: `[กู้คืนทะเบียน] ${dto.reason}${dto.reference ? ` (อ้างอิง: ${dto.reference})` : ''}`,
+                    actedById: actor.id,
+                },
+            });
+            await this.audit.record(tx, {
+                actorId: actor.id,
+                action: 'BENEFICIARY_RESTORE',
+                resourceType: 'beneficiary',
+                resourceId: id,
+                metadata: {
+                    registryNumber: row.registryNumber,
+                    reason: dto.reason,
+                    reference: dto.reference ?? null,
+                    status: row.status,
+                    restoredBy: actor.displayName,
+                    ipAddress: ip ?? null,
+                },
+            });
+            return row;
+        });
+        return (0, beneficiary_presenter_1.presentBeneficiary)(restored, this.viewOptions(actor));
+    }
+    async getAuditHistory(id, _actor) {
+        const logs = await this.prisma.auditLog.findMany({
+            where: {
+                resourceType: 'beneficiary',
+                resourceId: id,
+            },
+            orderBy: { createdAt: 'desc' },
+            include: {
+                actor: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                        email: true,
+                    },
+                },
+            },
+        });
+        return logs.map((log) => ({
+            id: log.id,
+            action: log.action,
+            actorId: log.actorId,
+            actorName: log.actor?.displayName ?? 'ระบบ',
+            actorEmail: log.actor?.email ?? null,
+            metadata: log.metadata,
+            createdAt: log.createdAt.toISOString(),
+        }));
     }
     viewOptions(actor) {
         return {

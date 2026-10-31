@@ -51,11 +51,12 @@ interface MultiStepRegistrationViewProps {
 }
 
 export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRegistrationViewProps) {
-  const { registerBeneficiaryProfile, createApplication, showToast, currentUser, funds } = useApp();
+  const { registerBeneficiaryProfile, updateBeneficiaryRegistry, createApplication, showToast, currentUser, funds } = useApp();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [formMode, setFormMode] = useState<'registry_only' | 'application'>('registry_only');
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDocumentItem[]>([]);
+  const [savedDraftNotice, setSavedDraftNotice] = useState<{ savedAt: string; data: any } | null>(null);
 
   // ========================================================
   // ส่วน A: ข้อมูลส่วนบุคคลและที่อยู่อาศัย
@@ -70,6 +71,10 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
   const [addressValidationStatus, setAddressValidationStatus] = useState<{ isValid: boolean; message?: string }>({ isValid: true });
   const [phone, setPhone] = useState<string>('');
   const [email, setEmail] = useState<string>('');
+  const [gender, setGender] = useState<'male' | 'female'>('male');
+  const [nationality, setNationality] = useState<string>('ไทย');
+  const [religion, setReligion] = useState<string>('อิสลาม');
+  const [employmentStatus, setEmploymentStatus] = useState<string>('employed');
   const [occupation, setOccupation] = useState<string>('รับจ้างทั่วไป');
   const [maritalStatus, setMaritalStatus] = useState<MaritalStatus>('married');
   const [address, setAddress] = useState<string>('');
@@ -284,6 +289,148 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
     }
   }, [ageCalculation]);
 
+  // Load existing beneficiary if editAppId is provided, or check local draft
+  useEffect(() => {
+    if (!editAppId) {
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('zms_draft_beneficiary');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && (parsed.fullName || parsed.nationalId)) {
+              setSavedDraftNotice({ savedAt: parsed.savedAt || '', data: parsed });
+            }
+          }
+        } catch {}
+      }
+      return;
+    }
+
+    const loadData = async () => {
+      try {
+        const res = await fetch(`/api/registry/${editAppId}`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          applyBeneficiaryData(json.data);
+        }
+      } catch (err) {
+        console.error('Failed to load beneficiary for editing:', err);
+      }
+    };
+    loadData();
+  }, [editAppId]);
+
+  const applyBeneficiaryData = (b: any) => {
+    if (b.titlePrefix) setTitlePrefix(b.titlePrefix);
+    if (b.fullName) setFullName(b.fullName);
+    if (b.nationalId) setNationalId(b.nationalId);
+    if (b.birthDate) setBirthDate(b.birthDate);
+    if (b.age) setAge(b.age);
+    if (b.phone) setPhone(b.phone);
+    if (b.email) setEmail(b.email);
+    if (b.occupation) setOccupation(b.occupation);
+    if (b.maritalStatus) setMaritalStatus(b.maritalStatus);
+    if (b.employmentStatus) setEmploymentStatus(b.employmentStatus);
+    if (b.nationality) setNationality(b.nationality);
+    if (b.religion) setReligion(b.religion);
+    if (b.gender) setGender(b.gender);
+    if (b.address) setAddress(b.address);
+    if (b.province) setProvince(b.province);
+    if (b.district) setDistrict(b.district);
+    if (b.subdistrict) setSubdistrict(b.subdistrict);
+    if (b.postcode) setPostcode(b.postcode);
+    if (b.community) setCommunity(b.community);
+    if (b.latitude) setLatitude(Number(b.latitude));
+    if (b.longitude) setLongitude(Number(b.longitude));
+    if (b.residenceAddress) setResidenceAddress(b.residenceAddress);
+    if (b.placeName) setPlaceName(b.placeName);
+    if (b.housingType) setHousingType(b.housingType);
+    if (b.housingCondition) setHousingCondition(b.housingCondition);
+    if (b.housingNotes) setHousingNotes(b.housingNotes);
+    if (b.landTitleType) setLandTitleType(b.landTitleType);
+    if (b.landTitleNotes) setLandTitleNotes(b.landTitleNotes);
+    if (b.asnafCategory) setAsnafCategory(b.asnafCategory);
+    if (b.incomeBreakdown) setIncomeBreakdown(b.incomeBreakdown);
+    if (b.expenseBreakdown) setExpenseBreakdown(b.expenseBreakdown);
+    if (b.debtAmount !== undefined) {
+      setDebtAmount(Number(b.debtAmount));
+      setHasDebt(Number(b.debtAmount) > 0);
+    }
+    if (b.debtPurpose) setDebtType(b.debtPurpose);
+    if (b.householdMembers && Array.isArray(b.householdMembers) && b.householdMembers.length > 0) {
+      setMembers(b.householdMembers);
+    }
+    if (b.pastAssistance && Array.isArray(b.pastAssistance) && b.pastAssistance.length > 0) {
+      setPastAssistanceList(b.pastAssistance);
+      setHasPastAssistance(true);
+    }
+    if (b.familySituationSummary) setFamilySituationSummary(b.familySituationSummary);
+    if (b.urgentNeeds) setUrgentNeeds(b.urgentNeeds);
+    if (b.dependentBurdens) setDependentBurdens(b.dependentBurdens);
+    if (b.coordinator) {
+      setCoordName(b.coordinator.fullName || b.coordinator.coordName || '');
+      setCoordPhone(b.coordinator.phone || b.coordinator.coordPhone || '');
+      setCoordOccupation(b.coordinator.occupation || b.coordinator.coordOccupation || '');
+      setCoordAge(b.coordinator.age || b.coordinator.coordAge || 45);
+      setCoordAddress(b.coordinator.address || b.coordinator.coordAddress || '');
+    }
+    if (b.certifier) {
+      setCertifierType(b.certifier.certifierType || 'imam');
+      setCertifierName(b.certifier.fullName || b.certifier.certifierName || '');
+      setCertifierRole(b.certifier.roleTitle || b.certifier.certifierRole || '');
+      setCertifierPhone(b.certifier.phone || b.certifier.certifierPhone || '');
+      setCertifierOrg(b.certifier.organization || b.certifier.certifierOrg || '');
+      setCertifierComments(b.certifier.comments || b.certifier.certifierComments || '');
+    }
+    if (b.documents && Array.isArray(b.documents)) {
+      setUploadedDocs(b.documents);
+    }
+  };
+
+  const handleRestoreDraft = () => {
+    if (savedDraftNotice?.data) {
+      applyBeneficiaryData(savedDraftNotice.data);
+      if (savedDraftNotice.data.currentStep) {
+        setCurrentStep(savedDraftNotice.data.currentStep);
+      }
+      setSavedDraftNotice(null);
+      showToast('กู้คืนข้อมูลแบบฟอร์มร่างสำเร็จ', 'success');
+    }
+  };
+
+  const handleDismissDraft = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('zms_draft_beneficiary');
+    }
+    setSavedDraftNotice(null);
+    showToast('ลบข้อมูลร่างเดิมแล้ว', 'info');
+  };
+
+  const saveDraftToStorage = () => {
+    if (typeof window === 'undefined' || editAppId) return;
+    try {
+      const draftData = {
+        titlePrefix, fullName, nationalId, birthDate, age, phone, email, occupation, maritalStatus,
+        employmentStatus, nationality, religion, gender,
+        address, province, district, subdistrict, postcode, community, branchId, branchName,
+        housingType, housingCondition, housingNotes, landTitleType, landTitleNotes,
+        latitude, longitude, residenceAddress, placeName,
+        poverty, hasDebt, debtType, debtAmount, unemployed, familyIssue, familyIssueDetails,
+        hasDisability, disabilityDetails, hasIllness, illnessDetails, otherHardship, otherHardshipDetails,
+        asnafCategory, urgencyLevel,
+        assistanceType, assistanceTypeDetails, requestedAmount, necessityDetails,
+        hasPastAssistance, pastAssistanceList,
+        incomeBreakdown, expenseBreakdown,
+        members, familySituationSummary, urgentNeeds, dependentBurdens,
+        coordName, coordPhone, coordOccupation, coordAge, coordAddress,
+        certifierType, certifierName, certifierRole, certifierPhone, certifierOrg, certifierComments,
+        uploadedDocs, currentStep,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem('zms_draft_beneficiary', JSON.stringify(draftData));
+    } catch {}
+  };
+
   // Helpers for Dynamic Lists
   const addMember = () => {
     setMembers([
@@ -433,75 +580,78 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
         });
       }
 
-      if (formMode === 'registry_only') {
-        const benId = await registerBeneficiaryProfile({
-          titlePrefix,
-          fullName,
-          nationalId: cleanNationalId || `1100200${Date.now().toString().slice(-6)}`,
-          birthDate,
-          age,
-          phone,
-          email,
-          occupation,
-          maritalStatus,
-          address,
-          province,
-          district,
-          subdistrict,
-          postcode,
-          community,
-          branchId,
-          branchName,
-          housingType,
-          housingCondition,
-          housingNotes,
-          landTitleType,
-          landTitleNotes,
-          latitude,
-          longitude,
-          residenceAddress: residenceAddress || address,
-          placeName,
-          asnafCategory,
-          monthlyIncome: totalIncome,
-          monthlyExpense: totalExpense,
-          incomeBreakdown,
-          expenseBreakdown,
-          householdMembers: members.filter((m) => (m.fullName || '').trim() !== ''),
+      const payload: any = {
+        titlePrefix,
+        fullName,
+        nationalId: cleanNationalId || `1100200${Date.now().toString().slice(-6)}`,
+        birthDate,
+        age,
+        phone,
+        email,
+        gender,
+        nationality,
+        religion,
+        employmentStatus,
+        occupation,
+        maritalStatus,
+        address,
+        province,
+        district,
+        subdistrict,
+        postcode,
+        community,
+        branchId,
+        branchName,
+        housingType,
+        housingCondition,
+        housingNotes,
+        landTitleType,
+        landTitleNotes,
+        latitude,
+        longitude,
+        residenceAddress: residenceAddress || address,
+        placeName,
+        asnafCategory,
+        monthlyIncome: totalIncome,
+        monthlyExpense: totalExpense,
+        incomeBreakdown,
+        expenseBreakdown,
+        householdMembers: members.filter((m) => (m.fullName || '').trim() !== ''),
+        debtAmount: hasDebt ? debtAmount : 0,
+        debtPurpose: hasDebt ? debtType : '',
+        hardshipReasons: {
+          poverty,
+          debt: hasDebt,
+          debtType: hasDebt ? debtType : undefined,
           debtAmount: hasDebt ? debtAmount : 0,
-          debtPurpose: hasDebt ? debtType : '',
-          hardshipReasons: {
-            poverty,
-            debt: hasDebt,
-            debtType: hasDebt ? debtType : undefined,
-            debtAmount: hasDebt ? debtAmount : 0,
-            unemployed,
-            familyIssue,
-            familyIssueDetails: familyIssue ? familyIssueDetails : undefined,
-            disability: hasDisability,
-            disabilityDetails: hasDisability ? disabilityDetails : undefined,
-            illness: hasIllness,
-            illnessDetails: hasIllness ? illnessDetails : undefined,
-            other: otherHardship,
-            otherDetails: otherHardship ? otherHardshipDetails : undefined,
-          },
-          disabilityNotes: hasDisability ? disabilityDetails : undefined,
-          illnessNotes: hasIllness ? illnessDetails : undefined,
-          livingLimitations: otherHardship ? otherHardshipDetails : undefined,
-          pastAssistance: hasPastAssistance ? pastAssistanceList : [],
-          familySituationSummary,
-          urgentNeeds,
-          dependentBurdens,
-          coordinator: (coordName || '').trim()
-            ? {
+          unemployed,
+          familyIssue,
+          familyIssueDetails: familyIssue ? familyIssueDetails : undefined,
+          disability: hasDisability,
+          disabilityDetails: hasDisability ? disabilityDetails : undefined,
+          illness: hasIllness,
+          illnessDetails: hasIllness ? illnessDetails : undefined,
+          other: otherHardship,
+          otherDetails: otherHardship ? otherHardshipDetails : undefined,
+        },
+        disabilityNotes: hasDisability ? disabilityDetails : undefined,
+        illnessNotes: hasIllness ? illnessDetails : undefined,
+        livingLimitations: otherHardship ? otherHardshipDetails : undefined,
+        pastAssistance: hasPastAssistance ? pastAssistanceList : [],
+        familySituationSummary,
+        urgentNeeds,
+        dependentBurdens,
+        coordinator: (coordName || '').trim()
+          ? {
               fullName: coordName,
               phone: coordPhone,
               occupation: coordOccupation,
               age: coordAge,
               address: coordAddress,
             }
-            : undefined,
-          certifier: (certifierName || '').trim()
-            ? {
+          : undefined,
+        certifier: (certifierName || '').trim()
+          ? {
               certifierType,
               fullName: certifierName,
               roleTitle: certifierRole,
@@ -509,13 +659,24 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
               organization: certifierOrg,
               comments: certifierComments,
             }
-            : undefined,
-          documents,
-          registrationStatus: submitStatus === 'draft' ? 'draft' : 'pending_verification',
-        });
+          : undefined,
+        documents,
+        registrationStatus: submitStatus === 'draft' ? 'draft' : 'pending_verification',
+      };
 
-        if (benId) {
-          onNavigate('beneficiaries');
+      if (formMode === 'registry_only') {
+        if (editAppId) {
+          const ok = await updateBeneficiaryRegistry(editAppId, payload, 'แก้ไขข้อมูลจากการขึ้นทะเบียน');
+          if (ok) {
+            if (typeof window !== 'undefined') localStorage.removeItem('zms_draft_beneficiary');
+            onNavigate('beneficiaries');
+          }
+        } else {
+          const benId = await registerBeneficiaryProfile(payload);
+          if (benId) {
+            if (typeof window !== 'undefined') localStorage.removeItem('zms_draft_beneficiary');
+            onNavigate('beneficiaries');
+          }
         }
       } else {
         const appId = await createApplication({
@@ -662,6 +823,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
         return;
       }
     }
+    saveDraftToStorage();
     setCurrentStep((s) => s + 1);
   };
 
@@ -684,7 +846,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
             </span>
             <div>
               <h1 className="text-lg font-bold text-slate-900">
-                แบบสำรวจขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต
+                แบบสำรวจขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต {editAppId ? '(โหมดแก้ไขข้อมูลทะเบียน)' : ''}
               </h1>
               <p className="text-xs text-slate-500">
                 มูลนิธิซะกาตและสาธารณกุศล • บันทึกข้อมูลคำร้องขอรับความช่วยเหลือตามหลักชะรีอะฮ์
@@ -700,6 +862,39 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
           ← กลับหน้ารายการ
         </button>
       </div>
+
+      {/* Draft restoration banner */}
+      {savedDraftNotice && !editAppId && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-900 animate-fadeIn shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 rounded-2xl bg-amber-100 text-amber-800 shrink-0">
+              <Save className="w-5 h-5" />
+            </span>
+            <div>
+              <p className="font-bold text-sm text-amber-950">พบข้อมูลฉบับร่างที่ยังกรอกไม่เสร็จในเครื่องนี้</p>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                ชื่อผู้มีสิทธิ์: <strong className="text-slate-800">{savedDraftNotice.data.fullName || 'ไม่ระบุชื่อ'}</strong> • เลขบัตร: {savedDraftNotice.data.nationalId || '-'} • บันทึกเมื่อ: {savedDraftNotice.savedAt ? new Date(savedDraftNotice.savedAt).toLocaleString('th-TH') : 'ไม่ระบุ'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={handleRestoreDraft}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold transition-colors shadow-xs"
+            >
+              กู้คืนข้อมูลร่าง
+            </button>
+            <button
+              type="button"
+              onClick={handleDismissDraft}
+              className="px-3.5 py-2 bg-white border border-amber-300 text-amber-800 hover:bg-amber-100/60 rounded-xl font-medium transition-colors"
+            >
+              ลบฉบับร่าง
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Steps Stepper Bar (Mobile Responsive for iPhone 15) */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs">
@@ -884,6 +1079,62 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
                   <option value="divorced">หย่าร้าง</option>
                   <option value="widowed">หม้าย</option>
                   <option value="separated">แยกกันอยู่</option>
+                </select>
+              </div>
+
+              {/* เพศ */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">เพศ</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value as any)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
+                >
+                  <option value="male">ชาย</option>
+                  <option value="female">หญิง</option>
+                </select>
+              </div>
+
+              {/* สถานะการทำงาน */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">สถานะการทำงาน</label>
+                <select
+                  value={employmentStatus}
+                  onChange={(e) => setEmploymentStatus(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
+                >
+                  <option value="employed">มีงานทำประจำ</option>
+                  <option value="freelance">รับจ้างทั่วไป / อาชีพอิสระ</option>
+                  <option value="unemployed">ว่างงาน / ตกงาน</option>
+                  <option value="elderly">ผู้สูงอายุ / เกษียณ</option>
+                  <option value="unable_to_work">ไม่สามารถทำงานได้ (ป่วย/พิการ)</option>
+                </select>
+              </div>
+
+              {/* สัญชาติ */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">สัญชาติ</label>
+                <input
+                  type="text"
+                  value={nationality}
+                  onChange={(e) => setNationality(e.target.value)}
+                  placeholder="เช่น ไทย"
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
+                />
+              </div>
+
+              {/* ศาสนา */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">ศาสนา</label>
+                <select
+                  value={religion}
+                  onChange={(e) => setReligion(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
+                >
+                  <option value="อิสลาม">อิสลาม</option>
+                  <option value="พุทธ">พุทธ</option>
+                  <option value="คริสต์">คริสต์</option>
+                  <option value="อื่นๆ">อื่นๆ</option>
                 </select>
               </div>
 

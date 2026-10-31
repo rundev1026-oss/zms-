@@ -122,6 +122,7 @@ export async function PUT(
           },
           body: JSON.stringify({
             displayName: body.name || `${body.firstName || ''} ${body.lastName || ''}`.trim() || undefined,
+            email: body.email?.trim().toLowerCase() || undefined,
             phone: body.phone,
             position: body.position,
             branchId: body.branchId,

@@ -20,9 +20,9 @@ export declare class AssistanceService {
         assistanceTypeId: string | null;
         assistanceOutcome: string;
         specificFundId: string | null;
-        applicationId: string;
         withdrawalId: string | null;
         workflowId: string | null;
+        applicationId: string;
         installmentNo: number;
         totalInstallments: number;
         executionDate: string;
@@ -57,9 +57,9 @@ export declare class AssistanceService {
         assistanceTypeId: string | null;
         assistanceOutcome: string;
         specificFundId: string | null;
-        applicationId: string;
         withdrawalId: string | null;
         workflowId: string | null;
+        applicationId: string;
         installmentNo: number;
         totalInstallments: number;
         executionDate: string;
@@ -94,9 +94,9 @@ export declare class AssistanceService {
         assistanceTypeId: string | null;
         assistanceOutcome: string;
         specificFundId: string | null;
-        applicationId: string;
         withdrawalId: string | null;
         workflowId: string | null;
+        applicationId: string;
         installmentNo: number;
         totalInstallments: number;
         executionDate: string;

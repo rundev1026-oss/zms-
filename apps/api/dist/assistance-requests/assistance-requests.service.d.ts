@@ -103,8 +103,8 @@ export declare class AssistanceRequestsService {
             assessment: {
                 recommendedAmount: number;
                 id: string;
-                livingScore: number;
                 housingCondition: string;
+                livingScore: number;
                 officerRecommendation: string;
                 assessedDate: string;
             } | null;
@@ -117,8 +117,8 @@ export declare class AssistanceRequestsService {
             }[];
             legacyAssessment: {
                 id: string;
-                livingScore: number;
                 housingCondition: string;
+                livingScore: number;
                 officerRecommendation: string;
                 recommendedAmount: Prisma.Decimal;
                 assessedDate: string;
@@ -198,20 +198,20 @@ export declare class AssistanceRequestsService {
                     createdAt: Date;
                     updatedAt: Date;
                     dateOfBirth: Date | null;
+                    sortOrder: number;
                     occupation: string | null;
                     createdById: string | null;
                     updatedById: string | null;
-                    sortOrder: number;
+                    householdId: string;
                     fullName: string;
                     relationship: string;
                     ageYears: number | null;
                     isDependent: boolean;
-                    notes: string | null;
-                    householdId: string;
                     monthlyIncome: Prisma.Decimal | null;
                     healthStatus: string | null;
                     healthNotes: string | null;
                     educationStatus: string | null;
+                    notes: string | null;
                 }[];
             } & {
                 id: string;
@@ -227,21 +227,21 @@ export declare class AssistanceRequestsService {
                 district: string | null;
                 latitude: Prisma.Decimal | null;
                 longitude: Prisma.Decimal | null;
+                householdNo: string | null;
                 memberCount: number | null;
                 householdIncome: Prisma.Decimal | null;
                 householdExpense: Prisma.Decimal | null;
                 debtAmount: Prisma.Decimal | null;
+                debtPurpose: string | null;
                 dependentCount: number | null;
                 additionalNotes: string | null;
-                livingScore: number | null;
+                address: string | null;
                 housingCondition: string | null;
                 housingNotes: string | null;
-                householdNo: string | null;
-                debtPurpose: string | null;
-                address: string | null;
                 housingType: string | null;
                 landTitleType: string | null;
                 landTitleNotes: string | null;
+                livingScore: number | null;
                 incomeBreakdown: string | null;
                 expenseBreakdown: string | null;
                 pastAssistance: string | null;
@@ -282,14 +282,18 @@ export declare class AssistanceRequestsService {
             registryNumber: string;
             lastName: string;
             status: import(".prisma/client").$Enums.RegistryStatus;
+            deletedAt: Date | null;
             firstName: string;
+            deletionReference: string | null;
+            deletionReason: string | null;
             dateOfBirth: Date | null;
             identityType: import(".prisma/client").$Enums.IdentityType;
             identityNumberNormalized: string | null;
             occupation: string | null;
             maritalStatus: string | null;
             registrationNote: string | null;
-            deletedAt: Date | null;
+            deletedById: string | null;
+            deletionStatus: boolean;
             createdById: string | null;
             updatedById: string | null;
         } | null;
@@ -298,16 +302,16 @@ export declare class AssistanceRequestsService {
             id: string;
             legacyId: string | null;
             createdAt: Date;
-            livingScore: number;
             housingCondition: string;
             housingNotes: string;
+            livingScore: number;
+            applicationId: string;
+            officerRecommendation: string;
             debtBurdenSummary: string;
             primaryHardship: string;
-            officerRecommendation: string;
             recommendedFundId: string;
             recommendedSpecificFundId: string | null;
             generalNotes: string;
-            applicationId: string;
             assessedById: string;
             assessedByName: string;
             assessedDate: string;
@@ -320,10 +324,11 @@ export declare class AssistanceRequestsService {
             status: string;
             category: string;
             beneficiaryId: string | null;
+            mimeType: string | null;
+            uploadedById: string | null;
             rejectionReason: string | null;
             applicationId: string;
             fileUrl: string;
-            mimeType: string | null;
             fileSize: number | null;
             isConfidential: boolean;
             uploadDate: string;
@@ -333,7 +338,6 @@ export declare class AssistanceRequestsService {
             storageProvider: string | null;
             storagePath: string | null;
             checksum: string | null;
-            uploadedById: string | null;
             uploadedByName: string | null;
         }[];
         history: {
@@ -341,11 +345,11 @@ export declare class AssistanceRequestsService {
             legacyId: string | null;
             createdAt: Date;
             status: string;
+            notes: string;
             applicationId: string;
             timestamp: string;
             changedById: string;
             changedByName: string;
-            notes: string;
         }[];
         executionRecords: {
             asnafCategory: string;
@@ -360,9 +364,9 @@ export declare class AssistanceRequestsService {
             assistanceOutcome: string;
             actualAssistanceValue: Prisma.Decimal;
             specificFundId: string | null;
-            applicationId: string;
             withdrawalId: string | null;
             workflowId: string | null;
+            applicationId: string;
             installmentNo: number;
             totalInstallments: number;
             executionDate: string;
@@ -502,10 +506,11 @@ export declare class AssistanceRequestsService {
         status: string;
         category: string;
         beneficiaryId: string | null;
+        mimeType: string | null;
+        uploadedById: string | null;
         rejectionReason: string | null;
         applicationId: string;
         fileUrl: string;
-        mimeType: string | null;
         fileSize: number | null;
         isConfidential: boolean;
         uploadDate: string;
@@ -515,7 +520,6 @@ export declare class AssistanceRequestsService {
         storageProvider: string | null;
         storagePath: string | null;
         checksum: string | null;
-        uploadedById: string | null;
         uploadedByName: string | null;
     }>;
 }

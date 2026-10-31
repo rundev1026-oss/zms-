@@ -25,6 +25,31 @@ export declare class UpsertHouseholdDto {
     debtAmount?: string;
     dependentCount?: number;
     additionalNotes?: string;
+    address?: string;
+    province?: string;
+    district?: string;
+    subdistrict?: string;
+    community?: string;
+    housingCondition?: string;
+    housingNotes?: string;
+    housingType?: string;
+    landTitleType?: string;
+    landTitleNotes?: string;
+    livingScore?: number;
+    debtPurpose?: string;
+    incomeBreakdown?: string;
+    expenseBreakdown?: string;
+    pastAssistance?: string;
+    familySituationSummary?: string;
+    urgentNeeds?: string;
+    dependentBurdens?: string;
+    coordinatorInfo?: string;
+    certifierInfo?: string;
+    latitude?: number;
+    longitude?: number;
+    residenceAddress?: string;
+    placeName?: string;
+    locationVerificationStatus?: string;
     members: HouseholdMemberDto[];
 }
 export declare class AddressItemDto {

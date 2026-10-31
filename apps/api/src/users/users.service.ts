@@ -435,8 +435,18 @@ export class UsersService {
       throw new NotFoundException('ไม่พบผู้ใช้งานนี้ในระบบ');
     }
 
+    if (dto.email && dto.email.toLowerCase().trim() !== existing.email.toLowerCase()) {
+      const emailTaken = await this.prisma.user.findUnique({
+        where: { email: dto.email.toLowerCase().trim() },
+      });
+      if (emailTaken) {
+        throw new ConflictException('อีเมลนี้ถูกใช้งานโดยผู้ใช้อื่นในระบบแล้ว');
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const updateData: any = {};
+      if (dto.email !== undefined) updateData.email = dto.email.toLowerCase().trim();
       if (dto.displayName !== undefined) updateData.displayName = dto.displayName;
       if (dto.phone !== undefined) updateData.phone = dto.phone;
       if (dto.position !== undefined) updateData.position = dto.position;

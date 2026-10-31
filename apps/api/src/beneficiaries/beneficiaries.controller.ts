@@ -1,9 +1,21 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { RegistryStatus } from '@prisma/client';
+import type { Request } from 'express';
 import type { AuthUser } from '../common/auth-user';
 import { CurrentUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/permissions.decorator';
+import { Roles } from '../common/roles.decorator';
 import { BeneficiariesService } from './beneficiaries.service';
 import {
   BeneficiaryListQueryDto,
@@ -12,6 +24,11 @@ import {
   UpdateBeneficiaryDto,
   BeneficiarySummaryQueryDto,
 } from './beneficiary.dto';
+import {
+  SoftDeleteBeneficiaryDto,
+  RestoreBeneficiaryDto,
+  QueryDeletedBeneficiariesDto,
+} from './dto/soft-delete.dto';
 
 @ApiTags('beneficiaries')
 @ApiBearerAuth()
@@ -43,6 +60,67 @@ export class BeneficiariesController {
   })
   summary(@Query() query: BeneficiarySummaryQueryDto) {
     return this.beneficiaries.summary(query);
+  }
+
+  @Get('deleted')
+  @Roles('SUPER_ADMIN')
+  @RequirePermissions('beneficiaries.delete')
+  @ApiOperation({ summary: 'รายการทะเบียนที่ถูกจำหน่าย/ลบ (เฉพาะ Super Admin)' })
+  listDeleted(
+    @Query() query: QueryDeletedBeneficiariesDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.beneficiaries.listDeleted(query, user);
+  }
+
+  @Get(':id/delete-preview')
+  @Roles('SUPER_ADMIN')
+  @RequirePermissions('beneficiaries.delete')
+  @ApiOperation({ summary: 'ตรวจสอบรายการผูกพันและเงื่อนไขก่อนลบทะเบียน' })
+  getDeletePreview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.beneficiaries.getDeletePreview(id, user);
+  }
+
+  @Post(':id/soft-delete')
+  @Roles('SUPER_ADMIN')
+  @RequirePermissions('beneficiaries.delete')
+  @ApiOperation({ summary: 'จำหน่าย/ลบข้อมูลทะเบียนแบบ Soft Delete (เฉพาะ Super Admin)' })
+  softDelete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SoftDeleteBeneficiaryDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    const ip = (req.headers['x-forwarded-for'] as string) || req.ip || undefined;
+    return this.beneficiaries.softDelete(id, dto, user, ip);
+  }
+
+  @Post(':id/restore')
+  @Roles('SUPER_ADMIN')
+  @RequirePermissions('beneficiaries.delete')
+  @ApiOperation({ summary: 'กู้คืนทะเบียนที่ถูกจำหน่าย/ลบ (เฉพาะ Super Admin)' })
+  restore(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RestoreBeneficiaryDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    const ip = (req.headers['x-forwarded-for'] as string) || req.ip || undefined;
+    return this.beneficiaries.restore(id, dto, user, ip);
+  }
+
+  @Get(':id/audit-history')
+  @Roles('SUPER_ADMIN')
+  @RequirePermissions('beneficiaries.delete')
+  @ApiOperation({ summary: 'ประวัติ Audit Log สำหรับทะเบียนนี้ (เฉพาะ Super Admin)' })
+  getAuditHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.beneficiaries.getAuditHistory(id, user);
   }
 
   @Get(':id')

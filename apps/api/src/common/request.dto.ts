@@ -134,6 +134,133 @@ export class UpsertHouseholdDto {
   @MaxLength(4000)
   additionalNotes?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  subdistrict?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  community?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  housingCondition?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  housingNotes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  housingType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  landTitleType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  landTitleNotes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  livingScore?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  debtPurpose?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  incomeBreakdown?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  expenseBreakdown?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  pastAssistance?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  familySituationSummary?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  urgentNeeds?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  dependentBurdens?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  coordinatorInfo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  certifierInfo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  residenceAddress?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  placeName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  locationVerificationStatus?: string;
+
   @ApiProperty({ type: [HouseholdMemberDto] })
   @IsArray()
   @ValidateNested({ each: true })

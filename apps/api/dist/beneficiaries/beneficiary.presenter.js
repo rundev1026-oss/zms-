@@ -6,11 +6,24 @@ const beneficiary_fields_1 = require("./beneficiary-fields");
 const mask_identity_1 = require("./mask-identity");
 exports.beneficiaryInclude = {
     addresses: true,
+    household: {
+        include: {
+            members: { orderBy: { sortOrder: 'asc' } },
+        },
+    },
+    incomeProfile: true,
+    documents: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+    },
     assessments: {
         where: { decision: 'CONFIRMED' },
         orderBy: { assessedAt: 'desc' },
         take: 1,
         include: { category: true },
+    },
+    deletedBy: {
+        select: { id: true, displayName: true, email: true },
     },
 };
 function presentBeneficiary(row, options) {
@@ -46,6 +59,46 @@ function presentBeneficiary(row, options) {
                 nameTh: confirmed.category.nameTh,
             },
         requestCount: 0,
+        addresses: row.addresses,
+        household: row.household
+            ? {
+                ...row.household,
+                householdIncome: row.household.householdIncome?.toFixed(2) ?? null,
+                householdExpense: row.household.householdExpense?.toFixed(2) ?? null,
+                debtAmount: row.household.debtAmount?.toFixed(2) ?? null,
+                latitude: row.household.latitude ? Number(row.household.latitude) : null,
+                longitude: row.household.longitude ? Number(row.household.longitude) : null,
+                members: (row.household.members || []).map((m) => ({
+                    ...m,
+                    dateOfBirth: m.dateOfBirth === null ? null : m.dateOfBirth.toISOString().slice(0, 10),
+                })),
+            }
+            : null,
+        incomeProfile: row.incomeProfile
+            ? {
+                ...row.incomeProfile,
+                personalIncome: row.incomeProfile.personalIncome?.toFixed(2) ?? null,
+                regularExpense: row.incomeProfile.regularExpense?.toFixed(2) ?? null,
+                debtBurden: row.incomeProfile.debtBurden?.toFixed(2) ?? null,
+            }
+            : null,
+        documents: (row.documents || []).map((d) => ({
+            id: d.id,
+            name: d.originalFileName,
+            fileName: d.originalFileName,
+            documentType: d.documentType,
+            category: d.documentType,
+            fileSize: d.sizeBytes,
+            mimeType: d.mimeType,
+            status: d.status,
+            fileUrl: `/api/documents/${d.id}/download`,
+        })),
+        deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
+        deletedById: row.deletedById ?? null,
+        deletedByName: row.deletedBy ? (row.deletedBy.displayName || row.deletedBy.email) : null,
+        deletionReason: row.deletionReason ?? null,
+        deletionReference: row.deletionReference ?? null,
+        deletionStatus: row.deletionStatus ?? false,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
     };

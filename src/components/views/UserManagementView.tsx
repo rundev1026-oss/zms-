@@ -349,8 +349,10 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
   // Open Edit Modal
   const openEditModal = (user: User) => {
     setSelectedUser(user);
-    setEditFirstName(user.firstName || user.name.split(' ')[0] || '');
-    setEditLastName(user.lastName || user.name.split(' ').slice(1).join(' ') || '');
+    const fullName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user.name || (user as any).displayName || '');
+    const nameParts = fullName.split(' ');
+    setEditFirstName(user.firstName || nameParts[0] || '');
+    setEditLastName(user.lastName || nameParts.slice(1).join(' ') || '');
     setEditEmail(user.email);
     setEditPhone(user.phone || '');
     setEditRole(user.role);

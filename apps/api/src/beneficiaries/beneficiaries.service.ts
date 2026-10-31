@@ -8,9 +8,11 @@ import { pageWindow } from '../common/pagination';
 import { isUniqueConflict } from '../common/prisma-error';
 import { PrismaService } from '../prisma/prisma.service';
 import { canEditRegistry } from '../registry-workflow/registry-rules';
+import { verifyPassword } from '../security/password-hash';
 import {
   buildBeneficiaryOrder,
   buildBeneficiaryWhere,
+  buildDeletedBeneficiaryWhere,
   summaryFilters,
   toStatusSummary,
 } from './beneficiary-query';
@@ -20,6 +22,12 @@ import {
   presentBeneficiary,
   type BeneficiaryView,
 } from './beneficiary.presenter';
+import { maskIdentityNumber } from './mask-identity';
+import type {
+  SoftDeleteBeneficiaryDto,
+  RestoreBeneficiaryDto,
+  QueryDeletedBeneficiariesDto,
+} from './dto/soft-delete.dto';
 
 export interface BeneficiaryWriteInput {
   title?: string | null;
@@ -313,6 +321,298 @@ export class BeneficiariesService {
         'แก้ไขได้เฉพาะทะเบียนที่เป็นร่างหรือรอแก้ไข',
       );
     }
+  }
+
+  /**
+   * Preview linked records and check active workflow blockers before soft deleting
+   */
+  async getDeletePreview(id: string, _actor: AuthUser) {
+    const row = await this.prisma.beneficiary.findUnique({
+      where: { id },
+      include: {
+        household: { include: { members: true } },
+        applications: true,
+        disbursementItems: true,
+        documents: { where: { deletedAt: null } },
+        followUpRecords: true,
+      },
+    });
+
+    if (!row) {
+      throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบทะเบียนผู้มีสิทธิ์รับซะกาต');
+    }
+
+    if (row.deletedAt !== null) {
+      throw new AppException(HttpStatus.BAD_REQUEST, 'ALREADY_DELETED', 'ทะเบียนนี้อยู่ในสถานะถูกจำหน่าย/ลบแล้ว');
+    }
+
+    const blockers: string[] = [];
+
+    // Check active assistance applications
+    const activeAppStatuses = ['draft', 'submitted', 'under_review', 'pending_approval', 'approved', 'pending_disbursement'];
+    const activeApps = row.applications.filter((a) =>
+      activeAppStatuses.includes((a.status || '').toLowerCase()),
+    );
+    if (activeApps.length > 0) {
+      const statuses = [...new Set(activeApps.map((a) => a.status))].join(', ');
+      blockers.push(`มีคำขอความช่วยเหลือที่อยู่ระหว่างดำเนินการ ${activeApps.length} รายการ (สถานะ: ${statuses})`);
+    }
+
+    // Check active disbursements
+    const activeDisbursements = row.disbursementItems.filter((d) =>
+      ['draft', 'pending'].includes((d.status || '').toLowerCase()),
+    );
+    if (activeDisbursements.length > 0) {
+      blockers.push(`มีรายการเบิกจ่ายเงินสดที่อยู่ระหว่างดำเนินการ ${activeDisbursements.length} รายการ`);
+    }
+
+    const completedAidCount = row.applications.filter((a) =>
+      ['completed', 'disbursed'].includes((a.status || '').toLowerCase()),
+    ).length;
+
+    return {
+      canDelete: blockers.length === 0,
+      blockers,
+      summary: {
+        id: row.id,
+        registryNumber: row.registryNumber,
+        fullName: `${row.title ? row.title + ' ' : ''}${row.firstName} ${row.lastName}`.trim(),
+        identityType: row.identityType,
+        identityNumberMasked: maskIdentityNumber(row.identityNumber),
+        status: row.status,
+        phone: row.phone,
+        createdAt: row.createdAt.toISOString(),
+        counts: {
+          applications: row.applications.length,
+          activeApplications: activeApps.length,
+          completedAid: completedAidCount,
+          disbursements: row.disbursementItems.length,
+          followups: row.followUpRecords.length,
+          documents: row.documents.length,
+          householdMembers: row.household?.members?.length ?? 0,
+        },
+      },
+    };
+  }
+
+  /**
+   * Super Admin Soft Delete Beneficiary
+   */
+  async softDelete(id: string, dto: SoftDeleteBeneficiaryDto, actor: AuthUser, ip?: string) {
+    const preview = await this.getDeletePreview(id, actor);
+    if (!preview.canDelete) {
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        'ACTIVE_WORKFLOW_EXISTS',
+        `ไม่สามารถลบทะเบียนได้เนื่องจากมีกระบวนการค้างอยู่: ${preview.blockers.join('; ')}`,
+      );
+    }
+
+    // If password confirmation is provided, verify it
+    if (dto.passwordConfirm) {
+      const user = await this.prisma.user.findUnique({ where: { id: actor.id } });
+      if (!user || !verifyPassword(dto.passwordConfirm, user.passwordHash)) {
+        throw new AppException(HttpStatus.BAD_REQUEST, 'INVALID_PASSWORD', 'รหัสผ่านยืนยันไม่ถูกต้อง');
+      }
+    }
+
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.beneficiary.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          deletedById: actor.id,
+          deletionReason: dto.reason,
+          deletionReference: dto.reference ?? null,
+          deletionStatus: true,
+          updatedById: actor.id,
+        },
+        include: beneficiaryInclude,
+      });
+
+      await tx.registryStatusHistory.create({
+        data: {
+          beneficiaryId: id,
+          fromStatus: row.status,
+          toStatus: row.status,
+          reason: `[จำหน่าย/ลบข้อมูลทะเบียน] ${dto.reason}${dto.reference ? ` (อ้างอิง: ${dto.reference})` : ''}`,
+          actedById: actor.id,
+        },
+      });
+
+      await this.audit.record(tx, {
+        actorId: actor.id,
+        action: 'BENEFICIARY_SOFT_DELETE',
+        resourceType: 'beneficiary',
+        resourceId: id,
+        metadata: {
+          registryNumber: row.registryNumber,
+          reason: dto.reason,
+          reference: dto.reference ?? null,
+          status: row.status,
+          deletedBy: actor.displayName,
+          ipAddress: ip ?? null,
+        },
+      });
+
+      return row;
+    });
+
+    return presentBeneficiary(deleted, this.viewOptions(actor));
+  }
+
+  /**
+   * List soft-deleted beneficiaries (Super Admin only)
+   */
+  async listDeleted(query: QueryDeletedBeneficiariesDto, actor: AuthUser) {
+    const where = buildDeletedBeneficiaryWhere(query);
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.max(1, Math.min(100, Number(query.pageSize) || 20));
+    const { skip, take } = pageWindow(page, pageSize);
+
+    const [rows, total] = await Promise.all([
+      this.prisma.beneficiary.findMany({
+        where,
+        orderBy: { deletedAt: 'desc' },
+        skip,
+        take,
+        include: {
+          ...beneficiaryInclude,
+          _count: {
+            select: {
+              applications: true,
+              disbursementItems: true,
+              followUpRecords: true,
+              documents: true,
+            },
+          },
+        },
+      }),
+      this.prisma.beneficiary.count({ where }),
+    ]);
+
+    return {
+      items: rows.map((row) => ({
+        ...presentBeneficiary(row, this.viewOptions(actor)),
+        counts: row._count,
+      })),
+      page,
+      pageSize,
+      total,
+    };
+  }
+
+  /**
+   * Super Admin Restore Beneficiary
+   */
+  async restore(id: string, dto: RestoreBeneficiaryDto, actor: AuthUser, ip?: string) {
+    const existing = await this.prisma.beneficiary.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบทะเบียน');
+    }
+
+    if (existing.deletedAt === null) {
+      throw new AppException(HttpStatus.BAD_REQUEST, 'NOT_DELETED', 'ทะเบียนนี้ไม่ได้อยู่ในสถานะถูกจำหน่าย/ลบ');
+    }
+
+    // Check unique conflict for Thai national ID among currently active records
+    if (existing.identityType === 'THAI_NATIONAL_ID' && existing.identityNumberNormalized) {
+      const activeCollision = await this.prisma.beneficiary.findFirst({
+        where: {
+          identityType: 'THAI_NATIONAL_ID',
+          identityNumberNormalized: existing.identityNumberNormalized,
+          deletedAt: null,
+          id: { not: id },
+        },
+      });
+
+      if (activeCollision) {
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          'DUPLICATE_IDENTITY',
+          `ไม่สามารถกู้คืนได้ เนื่องจากมีทะเบียน ${activeCollision.registryNumber} ใช้งานเลขประจำตัวประชาชนนี้อยู่แล้ว`,
+        );
+      }
+    }
+
+    const restored = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.beneficiary.update({
+        where: { id },
+        data: {
+          deletedAt: null,
+          deletedById: null,
+          deletionReason: null,
+          deletionReference: null,
+          deletionStatus: false,
+          updatedById: actor.id,
+        },
+        include: beneficiaryInclude,
+      });
+
+      await tx.registryStatusHistory.create({
+        data: {
+          beneficiaryId: id,
+          fromStatus: row.status,
+          toStatus: row.status,
+          reason: `[กู้คืนทะเบียน] ${dto.reason}${dto.reference ? ` (อ้างอิง: ${dto.reference})` : ''}`,
+          actedById: actor.id,
+        },
+      });
+
+      await this.audit.record(tx, {
+        actorId: actor.id,
+        action: 'BENEFICIARY_RESTORE',
+        resourceType: 'beneficiary',
+        resourceId: id,
+        metadata: {
+          registryNumber: row.registryNumber,
+          reason: dto.reason,
+          reference: dto.reference ?? null,
+          status: row.status,
+          restoredBy: actor.displayName,
+          ipAddress: ip ?? null,
+        },
+      });
+
+      return row;
+    });
+
+    return presentBeneficiary(restored, this.viewOptions(actor));
+  }
+
+  /**
+   * Audit log history for a specific beneficiary
+   */
+  async getAuditHistory(id: string, _actor: AuthUser) {
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        resourceType: 'beneficiary',
+        resourceId: id,
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        actor: {
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return logs.map((log) => ({
+      id: log.id,
+      action: log.action,
+      actorId: log.actorId,
+      actorName: log.actor?.displayName ?? 'ระบบ',
+      actorEmail: log.actor?.email ?? null,
+      metadata: log.metadata,
+      createdAt: log.createdAt.toISOString(),
+    }));
   }
 
   private viewOptions(actor: AuthUser): { revealIdentity: boolean; revealAid: boolean } {

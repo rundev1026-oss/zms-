@@ -2,9 +2,15 @@
   "name": "zms-app",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
+    "dev:api": "npm --prefix apps/api run start:dev",
     "build": "next build",
+    "build:api": "npm --prefix apps/api run build",
     "start": "next start"
   },
   "dependencies": {

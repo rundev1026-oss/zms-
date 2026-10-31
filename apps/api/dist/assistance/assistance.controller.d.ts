@@ -18,9 +18,9 @@ export declare class AssistanceController {
         assistanceTypeId: string | null;
         assistanceOutcome: string;
         specificFundId: string | null;
-        applicationId: string;
         withdrawalId: string | null;
         workflowId: string | null;
+        applicationId: string;
         installmentNo: number;
         totalInstallments: number;
         executionDate: string;
@@ -55,9 +55,9 @@ export declare class AssistanceController {
         assistanceTypeId: string | null;
         assistanceOutcome: string;
         specificFundId: string | null;
-        applicationId: string;
         withdrawalId: string | null;
         workflowId: string | null;
+        applicationId: string;
         installmentNo: number;
         totalInstallments: number;
         executionDate: string;
@@ -92,9 +92,9 @@ export declare class AssistanceController {
         assistanceTypeId: string | null;
         assistanceOutcome: string;
         specificFundId: string | null;
-        applicationId: string;
         withdrawalId: string | null;
         workflowId: string | null;
+        applicationId: string;
         installmentNo: number;
         totalInstallments: number;
         executionDate: string;

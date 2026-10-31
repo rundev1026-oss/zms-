@@ -17,8 +17,10 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const current_user_decorator_1 = require("../common/current-user.decorator");
 const permissions_decorator_1 = require("../common/permissions.decorator");
+const roles_decorator_1 = require("../common/roles.decorator");
 const beneficiaries_service_1 = require("./beneficiaries.service");
 const beneficiary_dto_1 = require("./beneficiary.dto");
+const soft_delete_dto_1 = require("./dto/soft-delete.dto");
 let BeneficiariesController = class BeneficiariesController {
     beneficiaries;
     constructor(beneficiaries) {
@@ -32,6 +34,23 @@ let BeneficiariesController = class BeneficiariesController {
     }
     summary(query) {
         return this.beneficiaries.summary(query);
+    }
+    listDeleted(query, user) {
+        return this.beneficiaries.listDeleted(query, user);
+    }
+    getDeletePreview(id, user) {
+        return this.beneficiaries.getDeletePreview(id, user);
+    }
+    softDelete(id, dto, user, req) {
+        const ip = req.headers['x-forwarded-for'] || req.ip || undefined;
+        return this.beneficiaries.softDelete(id, dto, user, ip);
+    }
+    restore(id, dto, user, req) {
+        const ip = req.headers['x-forwarded-for'] || req.ip || undefined;
+        return this.beneficiaries.restore(id, dto, user, ip);
+    }
+    getAuditHistory(id, user) {
+        return this.beneficiaries.getAuditHistory(id, user);
     }
     get(id, user) {
         return this.beneficiaries.getById(id, user);
@@ -78,6 +97,65 @@ __decorate([
     __metadata("design:paramtypes", [beneficiary_dto_1.BeneficiarySummaryQueryDto]),
     __metadata("design:returntype", void 0)
 ], BeneficiariesController.prototype, "summary", null);
+__decorate([
+    (0, common_1.Get)('deleted'),
+    (0, roles_decorator_1.Roles)('SUPER_ADMIN'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.delete'),
+    (0, swagger_1.ApiOperation)({ summary: 'รายการทะเบียนที่ถูกจำหน่าย/ลบ (เฉพาะ Super Admin)' }),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [soft_delete_dto_1.QueryDeletedBeneficiariesDto, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "listDeleted", null);
+__decorate([
+    (0, common_1.Get)(':id/delete-preview'),
+    (0, roles_decorator_1.Roles)('SUPER_ADMIN'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.delete'),
+    (0, swagger_1.ApiOperation)({ summary: 'ตรวจสอบรายการผูกพันและเงื่อนไขก่อนลบทะเบียน' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "getDeletePreview", null);
+__decorate([
+    (0, common_1.Post)(':id/soft-delete'),
+    (0, roles_decorator_1.Roles)('SUPER_ADMIN'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.delete'),
+    (0, swagger_1.ApiOperation)({ summary: 'จำหน่าย/ลบข้อมูลทะเบียนแบบ Soft Delete (เฉพาะ Super Admin)' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, soft_delete_dto_1.SoftDeleteBeneficiaryDto, Object, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "softDelete", null);
+__decorate([
+    (0, common_1.Post)(':id/restore'),
+    (0, roles_decorator_1.Roles)('SUPER_ADMIN'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.delete'),
+    (0, swagger_1.ApiOperation)({ summary: 'กู้คืนทะเบียนที่ถูกจำหน่าย/ลบ (เฉพาะ Super Admin)' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, soft_delete_dto_1.RestoreBeneficiaryDto, Object, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "restore", null);
+__decorate([
+    (0, common_1.Get)(':id/audit-history'),
+    (0, roles_decorator_1.Roles)('SUPER_ADMIN'),
+    (0, permissions_decorator_1.RequirePermissions)('beneficiaries.delete'),
+    (0, swagger_1.ApiOperation)({ summary: 'ประวัติ Audit Log สำหรับทะเบียนนี้ (เฉพาะ Super Admin)' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], BeneficiariesController.prototype, "getAuditHistory", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, permissions_decorator_1.RequirePermissions)('beneficiaries.read'),

@@ -20,8 +20,33 @@ export interface HouseholdInput {
   householdIncome?: string;
   householdExpense?: string;
   debtAmount?: string;
+  debtPurpose?: string;
   dependentCount?: number;
   additionalNotes?: string;
+  address?: string;
+  province?: string;
+  district?: string;
+  subdistrict?: string;
+  community?: string;
+  housingCondition?: string;
+  housingNotes?: string;
+  housingType?: string;
+  landTitleType?: string;
+  landTitleNotes?: string;
+  livingScore?: number;
+  incomeBreakdown?: string;
+  expenseBreakdown?: string;
+  pastAssistance?: string;
+  familySituationSummary?: string;
+  urgentNeeds?: string;
+  dependentBurdens?: string;
+  coordinatorInfo?: string;
+  certifierInfo?: string;
+  latitude?: number;
+  longitude?: number;
+  residenceAddress?: string;
+  placeName?: string;
+  locationVerificationStatus?: string;
   members: HouseholdMemberInput[];
 }
 
@@ -101,8 +126,33 @@ export class HouseholdService {
       householdIncome: this.money(input.householdIncome),
       householdExpense: this.money(input.householdExpense),
       debtAmount: this.money(input.debtAmount),
+      debtPurpose: input.debtPurpose ?? null,
       dependentCount: input.dependentCount ?? null,
       additionalNotes: input.additionalNotes ?? null,
+      address: input.address ?? null,
+      province: input.province ?? null,
+      district: input.district ?? null,
+      subdistrict: input.subdistrict ?? null,
+      community: input.community ?? null,
+      housingCondition: input.housingCondition ?? null,
+      housingNotes: input.housingNotes ?? null,
+      housingType: input.housingType ?? null,
+      landTitleType: input.landTitleType ?? null,
+      landTitleNotes: input.landTitleNotes ?? null,
+      livingScore: input.livingScore ?? null,
+      incomeBreakdown: input.incomeBreakdown ?? null,
+      expenseBreakdown: input.expenseBreakdown ?? null,
+      pastAssistance: input.pastAssistance ?? null,
+      familySituationSummary: input.familySituationSummary ?? null,
+      urgentNeeds: input.urgentNeeds ?? null,
+      dependentBurdens: input.dependentBurdens ?? null,
+      coordinatorInfo: input.coordinatorInfo ?? null,
+      certifierInfo: input.certifierInfo ?? null,
+      latitude: input.latitude !== undefined && input.latitude !== null ? new Prisma.Decimal(input.latitude) : null,
+      longitude: input.longitude !== undefined && input.longitude !== null ? new Prisma.Decimal(input.longitude) : null,
+      residenceAddress: input.residenceAddress ?? null,
+      placeName: input.placeName ?? null,
+      locationVerificationStatus: input.locationVerificationStatus ?? null,
     };
   }
 
@@ -110,37 +160,47 @@ export class HouseholdService {
     return value === undefined ? null : new Prisma.Decimal(value);
   }
 
-  private toView(household: {
-    id: string;
-    memberCount: number | null;
-    householdIncome: Prisma.Decimal | null;
-    householdExpense: Prisma.Decimal | null;
-    debtAmount: Prisma.Decimal | null;
-    dependentCount: number | null;
-    additionalNotes: string | null;
-    members: Array<{
-      id: string;
-      fullName: string;
-      relationship: string;
-      dateOfBirth: Date | null;
-      ageYears: number | null;
-      occupation: string | null;
-      isDependent: boolean;
-      sortOrder: number;
-    }>;
-  }) {
+  private toView(household: any) {
     return {
       id: household.id,
+      householdNo: household.householdNo ?? null,
       memberCount: household.memberCount,
       householdIncome: household.householdIncome?.toFixed(2) ?? null,
       householdExpense: household.householdExpense?.toFixed(2) ?? null,
       debtAmount: household.debtAmount?.toFixed(2) ?? null,
+      debtPurpose: household.debtPurpose ?? null,
       dependentCount: household.dependentCount,
       additionalNotes: household.additionalNotes,
-      members: household.members.map((member) => ({
+      address: household.address ?? null,
+      province: household.province ?? null,
+      district: household.district ?? null,
+      subdistrict: household.subdistrict ?? null,
+      community: household.community ?? null,
+      housingCondition: household.housingCondition ?? null,
+      housingNotes: household.housingNotes ?? null,
+      housingType: household.housingType ?? null,
+      landTitleType: household.landTitleType ?? null,
+      landTitleNotes: household.landTitleNotes ?? null,
+      livingScore: household.livingScore ?? null,
+      incomeBreakdown: household.incomeBreakdown ?? null,
+      expenseBreakdown: household.expenseBreakdown ?? null,
+      pastAssistance: household.pastAssistance ?? null,
+      familySituationSummary: household.familySituationSummary ?? null,
+      urgentNeeds: household.urgentNeeds ?? null,
+      dependentBurdens: household.dependentBurdens ?? null,
+      coordinatorInfo: household.coordinatorInfo ?? null,
+      certifierInfo: household.certifierInfo ?? null,
+      latitude: household.latitude ? Number(household.latitude) : null,
+      longitude: household.longitude ? Number(household.longitude) : null,
+      residenceAddress: household.residenceAddress ?? null,
+      placeName: household.placeName ?? null,
+      locationVerificationStatus: household.locationVerificationStatus ?? null,
+      members: (household.members || []).map((member: any) => ({
         ...member,
         dateOfBirth:
-          member.dateOfBirth === null ? null : member.dateOfBirth.toISOString().slice(0, 10),
+          member.dateOfBirth === null || member.dateOfBirth === undefined
+            ? null
+            : (member.dateOfBirth instanceof Date ? member.dateOfBirth.toISOString().slice(0, 10) : String(member.dateOfBirth).slice(0, 10)),
       })),
     };
   }

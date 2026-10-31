@@ -71,6 +71,10 @@ import { AssistanceHistorySection } from '@/components/views/registry/Assistance
 import { StatusSection } from '@/components/views/registry/StatusSection';
 import { ReceiptPreviewModal } from '@/components/views/registry/ReceiptPreviewModal';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll, ConfirmModal } from '@/components/common/Modal';
+import { SoftDeleteModal } from '@/components/views/registry/SoftDeleteModal';
+import { RestoreModal } from '@/components/views/registry/RestoreModal';
+import { BeneficiaryAuditModal } from '@/components/views/registry/BeneficiaryAuditModal';
+import { DeletedBeneficiariesTable } from '@/components/views/registry/DeletedBeneficiariesTable';
 
 export type RegistryMainSection = 
   | 'personal'           // 1. ส่วนข้อมูลส่วนบุคคล
@@ -143,6 +147,11 @@ export function BeneficiaryRegistryView({
   const [orgBranches, setOrgBranches] = useState<{ id: string; code: string; name: string; status: string }[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+  const [registryViewMode, setRegistryViewMode] = useState<'active' | 'deleted'>('active');
+  const [softDeleteTarget, setSoftDeleteTarget] = useState<{ id: string; registryNumber: string; fullName: string } | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<{ id: string; registryNumber: string; fullName: string } | null>(null);
+  const [auditTarget, setAuditTarget] = useState<{ id: string; registryNumber: string; fullName: string } | null>(null);
+  const [deletedRefreshTrigger, setDeletedRefreshTrigger] = useState<number>(0);
 
   useEffect(() => {
     fetch('/api/organization/structure')
@@ -722,6 +731,44 @@ export function BeneficiaryRegistryView({
         </div>
       </div>
 
+      {/* Super Admin View Mode Switcher: Active Registries vs Deleted Registries */}
+      {currentUser.role === 'super_admin' && (
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+          <button
+            type="button"
+            onClick={() => setRegistryViewMode('active')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              registryViewMode === 'active'
+                ? 'bg-[#0b2545] text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>ทะเบียนปกติ (${registries.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRegistryViewMode('deleted')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              registryViewMode === 'deleted'
+                ? 'bg-red-700 text-white shadow-xs'
+                : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+            }`}
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>ทะเบียนที่ถูกจำหน่าย/ลบ (Soft Deleted)</span>
+          </button>
+        </div>
+      )}
+
+      {registryViewMode === 'deleted' && currentUser.role === 'super_admin' ? (
+        <DeletedBeneficiariesTable
+          onRestore={(target) => setRestoreTarget(target)}
+          onViewAudit={(target) => setAuditTarget(target)}
+          refreshTrigger={deletedRefreshTrigger}
+        />
+      ) : (
+        <>
       {/* 2. Search, Status Tabs & Filters */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
         {/* Status Pill Tabs (8 Statuses required by Specification) */}
@@ -984,6 +1031,24 @@ export function BeneficiaryRegistryView({
                             <FilePlus2 className="w-3.5 h-3.5 text-emerald-700" />
                             <span className="hidden sm:inline">ยื่นคำร้อง</span>
                           </button>
+
+                          {/* 7. ลบ/จำหน่ายทะเบียน (เฉพาะ Super Admin) */}
+                          {currentUser.role === 'super_admin' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSoftDeleteTarget({
+                                  id: reg.id,
+                                  registryNumber: reg.registrationNo || (reg as any).registryNumber || reg.id,
+                                  fullName: `${reg.titlePrefix || ''} ${reg.fullName || ''}`.trim(),
+                                });
+                              }}
+                              className="p-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors ml-0.5"
+                              title="จำหน่าย/ลบทะเบียนผู้มีสิทธิ์ (Super Admin Only)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1021,6 +1086,8 @@ export function BeneficiaryRegistryView({
           </div>
         </div>
       </div>
+        </>
+      )}
 
       {/* 4. Details & 6 Main Sections View Modal */}
       {selectedRegistry && !isStatusDialogOpen && !isAssistanceDialogOpen && (
@@ -1116,6 +1183,25 @@ export function BeneficiaryRegistryView({
                       <History className="w-3.5 h-3.5 text-amber-300" />
                       <span className="hidden md:inline">ประวัติแก้ไข</span>
                     </button>
+
+                    {/* ลบ/จำหน่ายทะเบียน (เฉพาะ Super Admin) */}
+                    {currentUser.role === 'super_admin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSoftDeleteTarget({
+                            id: selectedRegistry.id,
+                            registryNumber: selectedRegistry.registrationNo,
+                            fullName: `${selectedRegistry.titlePrefix || ''} ${selectedRegistry.fullName || ''}`.trim(),
+                          });
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-red-600/85 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors border border-red-500/50 shadow-sm"
+                        title="จำหน่าย/ลบข้อมูลทะเบียน (Soft Delete) - เฉพาะ Super Admin"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-white" />
+                        <span className="hidden sm:inline">ลบ/จำหน่าย</span>
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -1666,6 +1752,47 @@ export function BeneficiaryRegistryView({
         }}
         onCancel={() => setShowUnsavedConfirm(false)}
       />
+
+      {/* 10. Super Admin Soft Delete Modal */}
+      {softDeleteTarget && (
+        <SoftDeleteModal
+          beneficiaryId={softDeleteTarget.id}
+          registryNumber={softDeleteTarget.registryNumber}
+          fullName={softDeleteTarget.fullName}
+          onClose={() => setSoftDeleteTarget(null)}
+          onSuccess={() => {
+            setSelectedRegistry(null);
+            refreshData();
+            setDeletedRefreshTrigger((prev) => prev + 1);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* 11. Super Admin Restore Modal */}
+      {restoreTarget && (
+        <RestoreModal
+          beneficiaryId={restoreTarget.id}
+          registryNumber={restoreTarget.registryNumber}
+          fullName={restoreTarget.fullName}
+          onClose={() => setRestoreTarget(null)}
+          onSuccess={() => {
+            refreshData();
+            setDeletedRefreshTrigger((prev) => prev + 1);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* 12. Super Admin Beneficiary Audit Modal */}
+      {auditTarget && (
+        <BeneficiaryAuditModal
+          beneficiaryId={auditTarget.id}
+          registryNumber={auditTarget.registryNumber}
+          fullName={auditTarget.fullName}
+          onClose={() => setAuditTarget(null)}
+        />
+      )}
 
     </div>
   );

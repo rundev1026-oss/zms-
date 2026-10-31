@@ -275,7 +275,13 @@ export default function Home() {
           )}
 
           {currentView === 'new-application' && (
-            <MultiStepRegistrationView onNavigate={setCurrentView} />
+            <MultiStepRegistrationView
+              onNavigate={(view: string) => {
+                if (view !== 'new-application') setSelectedAppId(undefined);
+                setCurrentView(view);
+              }}
+              editAppId={selectedAppId}
+            />
           )}
 
           {currentView === 'assessment' && (

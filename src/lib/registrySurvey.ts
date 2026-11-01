@@ -476,6 +476,7 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
     id: nestData.id,
     registrationNo: nestData.registryNumber,
     registryNumber: nestData.registryNumber,
+    memberId: nestData.memberId || '',
     registrationStatus: mapStatusToFrontend(nestData.status),
     status: nestData.status,
     titlePrefix,

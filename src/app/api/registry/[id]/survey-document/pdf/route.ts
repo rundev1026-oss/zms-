@@ -21,6 +21,7 @@ export async function GET(
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
         'Cache-Control': 'private, no-store',
         'X-Registry-Number': result.registryNumber,
+        'X-Member-Id': result.model.memberId,
         'X-Full-Name': encodeURIComponent(result.fullName),
       },
     });

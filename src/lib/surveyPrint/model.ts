@@ -8,6 +8,7 @@ export interface SurveyPrintImage {
 
 export interface SurveyPrintModel {
   registryNumber: string;
+  memberId: string;
   fullName: string;
   titlePrefix: string;
   firstName: string;
@@ -436,6 +437,7 @@ export function buildSurveyPrintModel(input: {
 
   return {
     registryNumber: text(mapped.registrationNo) || '-',
+    memberId: text(mapped.memberId) || text(input.beneficiary?.memberId) || '-',
     fullName: text(mapped.fullName) || 'ไม่ระบุชื่อ',
     titlePrefix: text(mapped.titlePrefix) || '',
     firstName: text(mapped.firstName) || '',

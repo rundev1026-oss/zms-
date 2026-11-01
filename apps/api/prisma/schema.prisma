@@ -227,6 +227,7 @@ model Beneficiary {
   id                       String         @id @default(uuid()) @db.Uuid
   legacyId                 String?        @unique @map("legacy_id")
   registryNumber           String         @unique @map("registry_number")
+  memberId                 String?        @unique @map("member_id")
   status                   RegistryStatus @default(DRAFT)
   title                    String?
   firstName                String         @map("first_name")
@@ -273,6 +274,7 @@ model Beneficiary {
   @@index([lastName, firstName])
   @@index([phone])
   @@index([identityNumberNormalized])
+  @@index([memberId])
   @@map("beneficiaries")
 }
 
@@ -542,6 +544,14 @@ model RegistryCounter {
   lastValue Int @default(0) @map("last_value")
 
   @@map("registry_counters")
+}
+
+/// Allocates MB-YYYY-###### without accepting a number from the client.
+model MemberCounter {
+  year      Int @id
+  lastValue Int @default(0) @map("last_value")
+
+  @@map("member_counters")
 }
 
 model PasswordResetToken {

@@ -12,7 +12,20 @@ function fontkitEngine() {
   return (loaded.default?.create ? loaded.default : loaded) as Parameters<PDFDocument['registerFontkit']>[0];
 }
 
-const INK = rgb(0, 0, 0); // Pure professional black
+// Visual Palette for Professional Government / Foundation Printing
+const INK = rgb(0, 0, 0); // Pure sharp black for form field fills
+const COLOR_NAVY = rgb(11 / 255, 37 / 255, 69 / 255); // #0b2545 - Deep official navy
+const COLOR_TEAL = rgb(13 / 255, 148 / 255, 136 / 255); // #0d9488 - Foundation teal accent
+const COLOR_SLATE = rgb(51 / 255, 65 / 255, 85 / 255); // #334155 - Slate 700
+const COLOR_MUTED = rgb(100 / 255, 116 / 255, 139 / 255); // #64748b - Slate 500
+const COLOR_DIVIDER = rgb(203 / 255, 213 / 255, 225 / 255); // #cbd5e1 - Slate 300 divider
+const COLOR_BOX_BG = rgb(248 / 255, 250 / 255, 252 / 255); // #f8fafc - Soft off-white box
+const COLOR_BOX_BORDER = rgb(203 / 255, 213 / 255, 225 / 255); // #cbd5e1 - Subtle border
+
+interface Fonts {
+  regular: PDFFont;
+  bold: PDFFont;
+}
 
 type Slot = {
   x: number;
@@ -47,13 +60,13 @@ function drawCheck(page: PDFPage, x: number, y: number) {
   page.drawLine({
     start: { x: x - 3.2, y: y - 0.4 },
     end: { x: x - 0.6, y: y - 3.6 },
-    thickness: 1.35,
+    thickness: 1.4,
     color: INK,
   });
   page.drawLine({
     start: { x: x - 0.6, y: y - 3.6 },
     end: { x: x + 4.2, y: y + 3.4 },
-    thickness: 1.35,
+    thickness: 1.4,
     color: INK,
   });
 }
@@ -192,10 +205,202 @@ function isMoney(value: string | null): boolean {
   return /^[\d\s,.\u0e50-\u0e59]+$/.test(value);
 }
 
+// -------------------------------------------------------------
+// Official Header & Footer Enhancement (Overlay Only)
+// -------------------------------------------------------------
+
+function drawHeaderPage1(page: PDFPage, fonts: Fonts, model: SurveyPrintModel) {
+  // Official metadata badge at top-right of page 1 without touching foundation logo/title
+  const boxX = 370;
+  const boxY = 705;
+  const boxW = 202;
+  const boxH = 65;
+
+  page.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxW,
+    height: boxH,
+    color: COLOR_BOX_BG,
+    borderColor: COLOR_BOX_BORDER,
+    borderWidth: 0.8,
+  });
+
+  // Left teal vertical indicator bar
+  page.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: 3.5,
+    height: boxH,
+    color: COLOR_TEAL,
+  });
+
+  // Line 1: Member ID (Prominent Navy)
+  page.drawText('รหัสสมาชิก:', {
+    x: boxX + 10,
+    y: boxY + 48,
+    size: 8,
+    font: fonts.bold,
+    color: COLOR_NAVY,
+  });
+  page.drawText(model.memberId || '-', {
+    x: boxX + 60,
+    y: boxY + 48,
+    size: 8.5,
+    font: fonts.bold,
+    color: COLOR_NAVY,
+  });
+
+  // Line 2: Registry ID
+  page.drawText('รหัสทะเบียน:', {
+    x: boxX + 10,
+    y: boxY + 34,
+    size: 7.5,
+    font: fonts.regular,
+    color: COLOR_SLATE,
+  });
+  page.drawText(model.registryNumber, {
+    x: boxX + 60,
+    y: boxY + 34,
+    size: 8,
+    font: fonts.bold,
+    color: COLOR_SLATE,
+  });
+
+  // Line 3: Registration Date
+  page.drawText('วันที่ขึ้นทะเบียน:', {
+    x: boxX + 10,
+    y: boxY + 21,
+    size: 7,
+    font: fonts.regular,
+    color: COLOR_MUTED,
+  });
+  page.drawText(model.registeredAt || '-', {
+    x: boxX + 70,
+    y: boxY + 21,
+    size: 7,
+    font: fonts.regular,
+    color: INK,
+  });
+
+  // Line 4: Beneficiary Name
+  page.drawText('ผู้ขอรับ:', {
+    x: boxX + 10,
+    y: boxY + 9,
+    size: 7,
+    font: fonts.bold,
+    color: COLOR_SLATE,
+  });
+  const fittedName = fitText(fonts.bold, model.fullName, 7.5, boxW - 55);
+  page.drawText(fittedName.text, {
+    x: boxX + 46,
+    y: boxY + 9,
+    size: fittedName.size,
+    font: fonts.bold,
+    color: COLOR_NAVY,
+  });
+}
+
+function drawHeaderOtherPages(page: PDFPage, fonts: Fonts, model: SurveyPrintModel, pageNum: number, totalPages: number) {
+  const leftX = 40;
+  const rightX = 572;
+  const topY = 766;
+
+  // Running Title
+  page.drawText('แบบสำรวจเพื่อพิจารณาความช่วยเหลือ · มูลนิธิซะกาตและสาธารณกุศล', {
+    x: leftX,
+    y: topY,
+    size: 7.5,
+    font: fonts.regular,
+    color: COLOR_MUTED,
+  });
+
+  // Right Member ID & Registry ID
+  const idStr = `รหัสสมาชิก: ${model.memberId}  |  รหัสทะเบียน: ${model.registryNumber}`;
+  const idWidth = fonts.bold.widthOfTextAtSize(idStr, 8);
+  page.drawText(idStr, {
+    x: rightX - idWidth,
+    y: topY,
+    size: 8,
+    font: fonts.bold,
+    color: COLOR_NAVY,
+  });
+
+  // Sub-line: Beneficiary full name
+  const nameLine = `ผู้ขอรับความช่วยเหลือ: ${model.fullName}`;
+  page.drawText(nameLine, {
+    x: leftX,
+    y: topY - 11,
+    size: 7.5,
+    font: fonts.regular,
+    color: COLOR_SLATE,
+  });
+
+  // Divider line
+  page.drawLine({
+    start: { x: leftX, y: topY - 16 },
+    end: { x: rightX, y: topY - 16 },
+    thickness: 0.5,
+    color: COLOR_DIVIDER,
+  });
+}
+
+function drawFooter(page: PDFPage, fonts: Fonts, model: SurveyPrintModel, pageNum: number, totalPages: number) {
+  const leftX = 40;
+  const rightX = 572;
+  const lineY = 28;
+  const textY = 17;
+
+  // Thin dividing line
+  page.drawLine({
+    start: { x: leftX, y: lineY },
+    end: { x: rightX, y: lineY },
+    thickness: 0.5,
+    color: COLOR_DIVIDER,
+  });
+
+  // Left: Member ID & Registry ID
+  page.drawText(`รหัสสมาชิก: ${model.memberId}  ·  รหัสทะเบียน: ${model.registryNumber}`, {
+    x: leftX,
+    y: textY,
+    size: 7,
+    font: fonts.regular,
+    color: COLOR_MUTED,
+  });
+
+  // Center: Printed timestamp & officer
+  const centerText = `พิมพ์เมื่อ: ${model.printedAt}  ·  ผู้พิมพ์: ${model.printedBy}`;
+  const centerWidth = fonts.regular.widthOfTextAtSize(centerText, 7);
+  const centerX = (page.getWidth() - centerWidth) / 2;
+  page.drawText(centerText, {
+    x: centerX,
+    y: textY,
+    size: 7,
+    font: fonts.regular,
+    color: COLOR_MUTED,
+  });
+
+  // Right: Page numbering
+  const pageText = `หน้า ${pageNum} จาก ${totalPages}`;
+  const pageWidth = fonts.bold.widthOfTextAtSize(pageText, 7.5);
+  page.drawText(pageText, {
+    x: rightX - pageWidth,
+    y: textY,
+    size: 7.5,
+    font: fonts.bold,
+    color: COLOR_NAVY,
+  });
+}
+
+// -------------------------------------------------------------
+// Form Data Overlay Fillers
+// -------------------------------------------------------------
+
 function fillPage1(page: PDFPage, font: PDFFont, model: SurveyPrintModel, includeContact = true) {
   // 1.1 ชื่อ ... นามสกุล (template text baseline y = 587.0)
-  const given = [model.titlePrefix, model.firstName].filter(Boolean).join(' ');
-  draw(page, font, given, { x: 265, y: 588.0, w: 110, size: 9.5 });
+  const rawGiven = [model.titlePrefix, model.firstName].filter(Boolean).join(' ');
+  const cleanGiven = rawGiven.replace(/^(นาย|นางสาว|นาง|ด\.ช\.|ด\.ญ\.)\s+(นาย|นางสาว|นาง|ด\.ช\.|ด\.ญ\.)\s*/, '$1 ');
+  draw(page, font, cleanGiven, { x: 265, y: 588.0, w: 110, size: 9.5 });
   draw(page, font, model.lastName, { x: 425, y: 588.0, w: 145, size: 9.5 });
 
   if (!includeContact) return;
@@ -368,7 +573,7 @@ function fillPage2(page: PDFPage, font: PDFFont, model: SurveyPrintModel) {
   draw(page, font, model.incomeTotal || '0.00', { x: 195, y: 401.3, w: 82, size: 8.5, align: 'right' });
   draw(page, font, model.expenseTotal || '0.00', { x: 420, y: 401.3, w: 86, size: 8.5, align: 'right' });
 
-  // อธิบายเพิ่มเติม (ถ้ามี)
+  // Additional economic notes
   const notesList = [
     model.debt?.monthly ? `ชำระหนี้รายเดือน ${model.debt.monthly} บาท (${model.debt.type || ''})` : null,
     model.incomeRows[7]?.amount && model.incomeRows[7].amount !== '0.00' ? `รายได้อื่น ${model.incomeRows[7].amount} บาท` : null,
@@ -479,14 +684,14 @@ function drawAppendix(
   const A4_W = 612;
   const A4_H = 792;
   let page = doc.addPage([A4_W, A4_H]);
-  let y = A4_H - 48;
+  let y = A4_H - 70; // Leave room for running header
 
   const writeLine = (text: string, size: number, indent = 48) => {
     const lines = wrap(font, text, size, A4_W - indent - 40);
     for (const line of lines) {
-      if (y < 56) {
+      if (y < 60) {
         page = doc.addPage([A4_W, A4_H]);
-        y = A4_H - 48;
+        y = A4_H - 70;
       }
       page.drawText(line, { x: indent, y, size, font, color: INK });
       y -= size + 5;
@@ -511,9 +716,9 @@ function drawAppendix(
     const ratio = Math.min(maxW / image.width, maxH / image.height, 1);
     const width = image.width * ratio;
     const height = image.height * ratio;
-    if (y < height + 36) {
+    if (y < height + 45) {
       page = doc.addPage([A4_W, A4_H]);
-      y = A4_H - 48;
+      y = A4_H - 70;
     }
     writeLine(captions[index] || 'รูปภาพประกอบ', 10);
     y -= height;
@@ -522,15 +727,23 @@ function drawAppendix(
   });
 }
 
+// -------------------------------------------------------------
+// Main PDF Generation Pipeline
+// -------------------------------------------------------------
+
 export async function fillSurveyPdf(model: SurveyPrintModel): Promise<Uint8Array> {
   const templatePath = path.join(process.cwd(), 'src', 'lib', 'surveyPrint', 'master-form.pdf');
-  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'Sarabun-Regular.ttf');
+  const regularFontPath = path.join(process.cwd(), 'public', 'fonts', 'Sarabun-Regular.ttf');
+  const boldFontPath = path.join(process.cwd(), 'public', 'fonts', 'Sarabun-Bold.ttf');
   const templateBytes = readFileSync(templatePath);
 
   const doc = await PDFDocument.load(templateBytes);
   const cleanDoc = await PDFDocument.load(templateBytes);
   doc.registerFontkit(fontkitEngine());
-  const font = await doc.embedFont(readFileSync(fontPath), { subset: true });
+
+  const font = await doc.embedFont(readFileSync(regularFontPath), { subset: true });
+  const boldFont = await doc.embedFont(readFileSync(boldFontPath), { subset: true });
+  const fonts: Fonts = { regular: font, bold: boldFont };
 
   const [page1, page2, page3] = doc.getPages();
 
@@ -566,11 +779,25 @@ export async function fillSurveyPdf(model: SurveyPrintModel): Promise<Uint8Array
     fillMembers(extra, font, model.members, index);
   }
 
-  // Images & overflow appendix if needed (drawn directly on doc!)
+  // Images & overflow appendix if needed
   const images = await embedImages(doc, model);
   drawAppendix(doc, font, model, overflowLines, images);
 
-  doc.setTitle(`แบบสำรวจเพื่อพิจารณาความช่วยเหลือของมูลนิธิซะกาตและสาธารณกุศล - ${model.registryNumber}`);
+  // Apply Headers and Footers to ALL pages
+  const totalPages = doc.getPageCount();
+  const pages = doc.getPages();
+
+  pages.forEach((page, idx) => {
+    const pageNum = idx + 1;
+    if (pageNum === 1) {
+      drawHeaderPage1(page, fonts, model);
+    } else {
+      drawHeaderOtherPages(page, fonts, model, pageNum, totalPages);
+    }
+    drawFooter(page, fonts, model, pageNum, totalPages);
+  });
+
+  doc.setTitle(`แบบสำรวจเพื่อพิจารณาความช่วยเหลือ - ${model.memberId} (${model.registryNumber})`);
   doc.setAuthor(model.printedBy || '');
 
   return doc.save();

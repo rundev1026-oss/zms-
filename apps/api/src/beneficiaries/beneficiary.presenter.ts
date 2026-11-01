@@ -38,6 +38,7 @@ export type BeneficiaryRecord = Prisma.BeneficiaryGetPayload<{
 export interface BeneficiaryView {
   id: string;
   registryNumber: string;
+  memberId: string | null;
   status: string;
   title: string | null;
   firstName: string;
@@ -90,6 +91,7 @@ export function presentBeneficiary(
   const view: BeneficiaryView = {
     id: row.id,
     registryNumber: row.registryNumber,
+    memberId: row.memberId ?? null,
     status: row.status,
     title: row.title,
     firstName: row.firstName,

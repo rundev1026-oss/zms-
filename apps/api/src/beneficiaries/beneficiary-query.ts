@@ -29,6 +29,7 @@ export function buildBeneficiaryWhere(filters: BeneficiaryFilters): Prisma.Benef
     const q = filters.q.trim();
     const or: Prisma.BeneficiaryWhereInput[] = [
       { registryNumber: { contains: q, mode: 'insensitive' } },
+      { memberId: { contains: q, mode: 'insensitive' } },
       { firstName: { contains: q, mode: 'insensitive' } },
       { lastName: { contains: q, mode: 'insensitive' } },
       { phone: { contains: q } },
@@ -68,6 +69,7 @@ export function buildDeletedBeneficiaryWhere(filters: DeletedBeneficiaryFilters)
     const q = filters.q.trim();
     const or: Prisma.BeneficiaryWhereInput[] = [
       { registryNumber: { contains: q, mode: 'insensitive' } },
+      { memberId: { contains: q, mode: 'insensitive' } },
       { firstName: { contains: q, mode: 'insensitive' } },
       { lastName: { contains: q, mode: 'insensitive' } },
       { phone: { contains: q } },

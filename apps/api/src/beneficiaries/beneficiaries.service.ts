@@ -79,9 +79,16 @@ export class BeneficiariesService {
           update: { lastValue: { increment: 1 } },
         });
         const registryNumber = `ZMS-${year}-${String(counter.lastValue).padStart(6, '0')}`;
+        const memberCounter = await tx.memberCounter.upsert({
+          where: { year },
+          create: { year, lastValue: 1 },
+          update: { lastValue: { increment: 1 } },
+        });
+        const memberId = `MB-${year}-${String(memberCounter.lastValue).padStart(6, '0')}`;
         const row = await tx.beneficiary.create({
           data: {
             registryNumber,
+            memberId,
             status: 'DRAFT',
             title: input.title ?? null,
             firstName: input.firstName!,
@@ -315,6 +322,20 @@ export class BeneficiariesService {
     });
     if (row === null) {
       throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบทะเบียน');
+    }
+    if (!row.memberId) {
+      const year = row.createdAt ? new Date(row.createdAt).getFullYear() : new Date().getFullYear();
+      const memberCounter = await this.prisma.memberCounter.upsert({
+        where: { year },
+        create: { year, lastValue: 1 },
+        update: { lastValue: { increment: 1 } },
+      });
+      const memberId = `MB-${year}-${String(memberCounter.lastValue).padStart(6, '0')}`;
+      return await this.prisma.beneficiary.update({
+        where: { id: row.id },
+        data: { memberId },
+        include: beneficiaryInclude,
+      });
     }
     return row;
   }

@@ -1,5 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800;900&family=Sarabun:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
+@source "../app";
+@source "../components";
+@source "../context";
+@source "../types";
+@source "../services";
 
 :root {
   --background: #f8fafc;

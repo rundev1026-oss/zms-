@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { formatPersonName, splitPersonName } from '@zms/shared';
-import { diffRegistryFields, registryNeedsReReview } from '@/lib/registrySurvey';
+import { diffRegistryFields, registryNeedsReReview, sumFilled, INCOME_LINE_KEYS, EXPENSE_LINE_KEYS } from '@/lib/registrySurvey';
 import { useApp } from '@/context/AppContext';
 import { 
   BeneficiaryRegistryItem, 
@@ -250,6 +250,7 @@ export function BeneficiaryRegistryView({
     changes: { field: string; fieldLabel: string; oldValue: string; newValue: string; material: boolean }[];
     material: boolean;
     reviewed: boolean;
+    syncedForm?: any;
   }>(null);
   const editBaseline = useRef<any>(null);
 
@@ -564,9 +565,17 @@ export function BeneficiaryRegistryView({
     }
 
     const baseline = editBaseline.current || selectedRegistry;
-    const changes = diffRegistryFields(baseline, { ...editForm, nationalId: cleanId });
+    const incomeLineSum = sumFilled(editForm.incomeBreakdown, INCOME_LINE_KEYS);
+    const expenseLineSum = sumFilled(editForm.expenseBreakdown, EXPENSE_LINE_KEYS);
+    const syncedForm = {
+      ...editForm,
+      monthlyIncome: incomeLineSum !== null ? incomeLineSum : editForm.monthlyIncome,
+      monthlyExpense: expenseLineSum !== null ? expenseLineSum : editForm.monthlyExpense,
+      nationalId: cleanId,
+    };
+    const changes = diffRegistryFields(baseline, syncedForm);
     if (changes.length === 0) {
-      showToast('ไม่พบข้อมูลที่เปลี่ยนแปลง', 'error');
+      showToast('ไม่มีข้อมูลที่เปลี่ยนแปลง', 'error');
       return;
     }
     const reviewed = registryNeedsReReview(selectedRegistry.registrationStatus);
@@ -575,20 +584,21 @@ export function BeneficiaryRegistryView({
       showToast('การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร', 'error');
       return;
     }
-    setSavePreview({ changes, material, reviewed });
+    setSavePreview({ changes, material, reviewed, syncedForm });
   };
 
   const handleConfirmSave = async () => {
     if (!selectedRegistry || !savePreview) return;
-    const cleanId = String(editForm.nationalId || '').replace(/[^0-9]/g, '');
+    const formToSave = savePreview.syncedForm || editForm;
+    const cleanId = String(formToSave.nationalId || '').replace(/[^0-9]/g, '');
     setIsSaving(true);
     try {
       const payload = {
-        ...editForm,
+        ...formToSave,
         nationalId: cleanId,
         expectedUpdatedAt: selectedRegistry.updatedAt,
         changes: savePreview.changes,
-        documents: (editForm.newUploadedDocs || []).map((d: UploadedDocumentItem) => ({
+        documents: (formToSave.newUploadedDocs || []).map((d: UploadedDocumentItem) => ({
           name: d.name,
           category: d.category,
           fileUrl: d.fileUrl,
@@ -599,7 +609,7 @@ export function BeneficiaryRegistryView({
         })),
       };
 
-      const ok = await updateBeneficiaryRegistry(selectedRegistry.id, payload, editForm.editNotes);
+      const ok = await updateBeneficiaryRegistry(selectedRegistry.id, payload, formToSave.editNotes);
       if (ok) {
         await loadRegistryDetail(selectedRegistry.id);
         setIsEditing(false);
@@ -1299,7 +1309,7 @@ export function BeneficiaryRegistryView({
                       className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-xl text-xs transition-colors shadow-md disabled:opacity-50"
                     >
                       {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</span>
+                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}</span>
                     </button>
                   </>
                 )}
@@ -1539,7 +1549,7 @@ export function BeneficiaryRegistryView({
                       ) : (
                         <Save className="w-4 h-4" />
                       )}
-                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</span>
+                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}</span>
                     </button>
                   </div>
                 </>

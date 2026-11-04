@@ -21,12 +21,86 @@ export const EXPENSE_LINE_KEYS = [
   'otherExpense',
 ] as const;
 
+const MARITAL_STATUS_DIFF_LABELS: Record<string, string> = {
+  single: 'โสด',
+  married: 'สมรส',
+  divorced: 'หย่าร้าง',
+  widowed: 'หม้าย',
+  separated: 'แยกกันอยู่',
+};
+
+const ASNAF_DIFF_LABELS: Record<string, string> = {
+  fakir: 'ฟะกีร (ผู้ยากไร้)',
+  miskin: 'มิสกีน (ผู้ขัดสน)',
+  amil: 'อามิล (เจ้าหน้าที่)',
+  muallaf: 'มุอัลลัฟ (ผู้มีจิตโน้มสู่悦)',
+  riqab: 'ริกอบ (ปลดปล่อยทาส)',
+  gharim: 'ฆอริม (ผู้มีหนี้สินล้นพ้นตัว)',
+  fisabilillah: 'ฟีสะบีลิลลาฮ์ (เพื่อการศาสนา)',
+  ibnussabil: 'อิบนุสสะบีล (ผู้เดินทางไกล)',
+};
+
+const HOUSING_TYPE_DIFF_LABELS: Record<string, string> = {
+  own: 'บ้านตนเอง',
+  rent: 'บ้านเช่า',
+  relative: 'อาศัยญาติ/ผู้อื่น',
+  public_land: 'ที่ดินสาธารณะ/บุกเบิก',
+  other: 'อื่น ๆ',
+};
+
+const LAND_TITLE_DIFF_LABELS: Record<string, string> = {
+  title_deed: 'โฉนดที่ดิน (น.ส. 4)',
+  nor_sor_3: 'น.ส. 3 / น.ส. 3 ก.',
+  sor_por_kor: 'ส.ป.ก. 4-01',
+  rental_agreement: 'สัญญาเช่าที่ดิน',
+  public_land: 'ที่ดินสาธารณะ',
+  none: 'ไม่มีเอกสารสิทธิ์',
+};
+
+const HEALTH_STATUS_DIFF_LABELS: Record<string, string> = {
+  healthy: 'ปกติ/แข็งแรง',
+  disabled: 'คนพิการ',
+  chronically_ill: 'ผู้ป่วยเรื้อรัง/ติดเตียง',
+  elderly: 'ผู้สูงอายุพึ่งพิง',
+};
+
+const LOCATION_STATUS_DIFF_LABELS: Record<string, string> = {
+  not_specified: 'ยังไม่ได้ระบุพิกัด',
+  pending_verification: 'รอตรวจสอบตำแหน่ง',
+  verified: 'ตรวจสอบพิกัดแล้ว',
+};
+
+const INCOME_FIELD_LABELS: Record<string, string> = {
+  salary: 'ค่าจ้าง/เงินเดือน',
+  familySupport: 'เงินช่วยเหลือจากบุตร/ครอบครัว',
+  agriculture: 'การเกษตร/ปศุสัตว์/ประมง',
+  trading: 'การค้าขาย/ธุรกิจส่วนตัว',
+  assetIncome: 'รายได้จากทรัพย์สิน/ค่าเช่า',
+  freelance: 'รับจ้างอิสระ/บริการทั่วไป',
+  welfare: 'สวัสดิการรัฐ/เงินสงเคราะห์',
+  otherIncome: 'รายได้อื่น ๆ',
+  otherIncomeNotes: 'หมายเหตุรายได้อื่น',
+};
+
+const EXPENSE_FIELD_LABELS: Record<string, string> = {
+  living: 'อุปโภคบริโภค/อาหาร',
+  education: 'การศึกษาบุตร',
+  healthcare: 'ค่าใช้จ่ายสุขภาพ/ยา',
+  utilities: 'ค่าน้ำ-ไฟ-โทรศัพท์',
+  rent: 'ค่าเช่าบ้าน/ที่อยู่',
+  debtPayment: 'ภาระชำระหนี้/เดือน',
+  otherExpense: 'รายจ่ายอื่น ๆ',
+  otherExpenseNotes: 'หมายเหตุรายจ่ายอื่น',
+};
+
 export function sumFilled(source: unknown, keys: readonly string[]): number | null {
   if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
   const record = source as Record<string, unknown>;
   let seen = false;
   let total = 0;
-  for (const key of keys) {
+  const allKeys = Array.from(new Set([...keys, ...Object.keys(record)]));
+  for (const key of allKeys) {
+    if (key.endsWith('Notes') || key.endsWith('Note') || key.endsWith('Comment')) continue;
     const raw = record[key];
     if (raw === undefined || raw === null || raw === '') continue;
     const amount = Number(raw);
@@ -59,6 +133,7 @@ export function buildSituationNotes(input: Record<string, any>): string | undefi
     input.hardshipReasons !== undefined ||
     input.debtType !== undefined ||
     input.debtNotes !== undefined ||
+    input.debtMonthlyPayment !== undefined ||
     input.creditorName !== undefined;
   if (!touched) return undefined;
 
@@ -75,6 +150,7 @@ export function buildSituationNotes(input: Record<string, any>): string | undefi
     debtType,
     creditorName,
     debtNotes: input.debtNotes || '',
+    debtMonthlyPayment: input.debtMonthlyPayment !== undefined ? input.debtMonthlyPayment : undefined,
     hardshipReasons: input.hardshipReasons || undefined,
   };
   const json = JSON.stringify(profile);
@@ -87,6 +163,7 @@ export function buildSituationNotes(input: Record<string, any>): string | undefi
     debtType: String(profile.debtType).slice(0, 200),
     creditorName: String(profile.creditorName).slice(0, 200),
     debtNotes: String(profile.debtNotes).slice(0, 500),
+    debtMonthlyPayment: profile.debtMonthlyPayment,
   };
   return JSON.stringify(compact);
 }
@@ -111,11 +188,12 @@ function mapMembers(rawMembers: unknown) {
     .map((member, index) => {
       const ageRaw = member.ageYears ?? member.age;
       const age = Number(ageRaw);
+      const dob = member.dateOfBirth && !isNaN(Date.parse(member.dateOfBirth)) ? member.dateOfBirth : undefined;
       return {
         fullName: String(member.fullName).trim(),
         relationship: member.relationship || member.relation || 'สมาชิกในครอบครัว',
         ageYears: Number.isFinite(age) ? Math.round(age) : undefined,
-        dateOfBirth: member.dateOfBirth || undefined,
+        dateOfBirth: dob,
         occupation: member.occupation || undefined,
         monthlyIncome: (() => {
           if (member.monthlyIncome === undefined || member.monthlyIncome === null || member.monthlyIncome === '') {
@@ -154,13 +232,28 @@ export function buildHouseholdPayload(input: Record<string, any>): Record<string
 
   const lineIncome = sumFilled(input.incomeBreakdown, INCOME_LINE_KEYS);
   const lineExpense = sumFilled(input.expenseBreakdown, EXPENSE_LINE_KEYS);
-  const householdIncome = lineIncome !== null ? lineIncome.toFixed(2) : money(input.monthlyIncome ?? input.totalIncome);
-  const householdExpense = lineExpense !== null ? lineExpense.toFixed(2) : money(input.monthlyExpense ?? input.totalExpense);
-  if (householdIncome !== undefined) payload.householdIncome = householdIncome;
-  if (householdExpense !== undefined) payload.householdExpense = householdExpense;
+  if (lineIncome !== null) {
+    payload.householdIncome = lineIncome.toFixed(2);
+  } else if (input.monthlyIncome !== undefined || input.totalIncome !== undefined) {
+    const raw = input.monthlyIncome ?? input.totalIncome;
+    payload.householdIncome = raw === null || raw === '' ? null : money(raw);
+  }
 
-  const debt = money(input.debtAmount);
-  if (input.debtAmount !== undefined && debt !== undefined) payload.debtAmount = debt;
+  if (lineExpense !== null) {
+    payload.householdExpense = lineExpense.toFixed(2);
+  } else if (input.monthlyExpense !== undefined || input.totalExpense !== undefined) {
+    const raw = input.monthlyExpense ?? input.totalExpense;
+    payload.householdExpense = raw === null || raw === '' ? null : money(raw);
+  }
+
+  if (input.debtAmount !== undefined) {
+    if (input.debtAmount === null || input.debtAmount === '') {
+      payload.debtAmount = null;
+    } else {
+      const debt = money(input.debtAmount);
+      if (debt !== undefined) payload.debtAmount = debt;
+    }
+  }
 
   if (input.debtPurpose !== undefined || input.debtType !== undefined || input.creditorName !== undefined) {
     const debtType = input.debtType || input.hardshipReasons?.debtType || '';
@@ -209,13 +302,21 @@ export function buildHouseholdPayload(input: Record<string, any>): Record<string
   if (input.coordinator) payload.coordinatorInfo = JSON.stringify(input.coordinator);
   if (input.certifier) payload.certifierInfo = JSON.stringify(input.certifier);
 
-  if (input.latitude !== undefined && input.latitude !== null && input.latitude !== '') {
-    const latitude = Number(input.latitude);
-    if (Number.isFinite(latitude)) payload.latitude = latitude;
+  if (input.latitude !== undefined) {
+    if (input.latitude === null || input.latitude === '') {
+      payload.latitude = null;
+    } else {
+      const latitude = Number(input.latitude);
+      if (Number.isFinite(latitude)) payload.latitude = latitude;
+    }
   }
-  if (input.longitude !== undefined && input.longitude !== null && input.longitude !== '') {
-    const longitude = Number(input.longitude);
-    if (Number.isFinite(longitude)) payload.longitude = longitude;
+  if (input.longitude !== undefined) {
+    if (input.longitude === null || input.longitude === '') {
+      payload.longitude = null;
+    } else {
+      const longitude = Number(input.longitude);
+      if (Number.isFinite(longitude)) payload.longitude = longitude;
+    }
   }
   if (!payload.residenceAddress && input.address) payload.residenceAddress = input.address;
   return payload;
@@ -299,94 +400,419 @@ export function registryNeedsReReview(status: string | undefined): boolean {
   return REVIEWED_FRONTEND_STATUSES.has(String(status || ''));
 }
 
-export function diffRegistryFields(before: Record<string, any>, after: Record<string, any>) {
-  const fields: [string, string, boolean][] = [
-    ['fullName', 'ชื่อ-นามสกุล', false],
-    ['titlePrefix', 'คำนำหน้า', false],
-    ['phone', 'เบอร์โทรศัพท์', false],
-    ['occupation', 'อาชีพ', false],
-    ['address', 'ที่อยู่', true],
-    ['province', 'จังหวัด', true],
-    ['district', 'อำเภอ', true],
-    ['monthlyIncome', 'รายได้ต่อเดือน', true],
-    ['monthlyExpense', 'ค่าใช้จ่ายต่อเดือน', true],
-    ['debtAmount', 'ยอดหนี้คงเหลือ', true],
-    ['debtType', 'ประเภทหนี้สิน', true],
-    ['creditorName', 'เจ้าหนี้', true],
-    ['disabilityNotes', 'ความพิการ', true],
-    ['illnessNotes', 'การเจ็บป่วย', true],
-    ['livingLimitations', 'ข้อจำกัดในการดำรงชีวิต', true],
-    ['familySituationSummary', 'ปัญหาครอบครัว', false],
-    ['nationalId', 'เลขบัตรประชาชน', true],
-  ];
-  const changes: {
-    field: string;
-    fieldLabel: string;
-    oldValue: string;
-    newValue: string;
-    material: boolean;
-  }[] = [];
-  for (const [field, label, material] of fields) {
-    const oldValue = field === 'nationalId'
-      ? maskNationalId(before[field])
-      : field === 'fullName'
-        ? formatPersonName(before)
-        : displayValue(before[field]);
-    const newValue = field === 'nationalId'
-      ? maskNationalId(after[field])
-      : field === 'fullName'
-        ? formatPersonName(after)
-        : displayValue(after[field]);
-    if (oldValue !== newValue) {
+export interface RegistryFieldDiff {
+  field: string;
+  fieldLabel: string;
+  oldValue: string;
+  newValue: string;
+  material: boolean;
+}
+
+function valuesEqual(
+  valA: unknown,
+  valB: unknown,
+  type: 'string' | 'number' | 'date' | 'phone' | 'nationalId' | 'boolean' = 'string',
+): boolean {
+  if (type === 'number') {
+    const isNoneA = valA === undefined || valA === null || valA === '';
+    const isNoneB = valB === undefined || valB === null || valB === '';
+    if (isNoneA && isNoneB) return true;
+    if (isNoneA !== isNoneB) return false;
+    const numA = Number(valA);
+    const numB = Number(valB);
+    if (!Number.isFinite(numA) || !Number.isFinite(numB)) return false;
+    return numA === numB;
+  }
+  if (type === 'nationalId') {
+    const digA = String(valA ?? '').replace(/\D/g, '');
+    const digB = String(valB ?? '').replace(/\D/g, '');
+    return digA === digB;
+  }
+  if (type === 'phone') {
+    const digA = String(valA ?? '').replace(/\D/g, '');
+    const digB = String(valB ?? '').replace(/\D/g, '');
+    if (digA && digB) return digA === digB;
+    return String(valA ?? '').trim() === String(valB ?? '').trim();
+  }
+  if (type === 'date') {
+    const strA = String(valA ?? '').trim().slice(0, 10);
+    const strB = String(valB ?? '').trim().slice(0, 10);
+    return strA === strB;
+  }
+  if (type === 'boolean') {
+    return Boolean(valA) === Boolean(valB);
+  }
+  const strA = valA === undefined || valA === null ? '' : String(valA).trim();
+  const strB = valB === undefined || valB === null ? '' : String(valB).trim();
+  return strA === strB;
+}
+
+function formatDiffValue(
+  value: unknown,
+  type: 'string' | 'number' | 'date' | 'phone' | 'nationalId' | 'boolean' = 'string',
+  valueMap?: Record<string, string>,
+): string {
+  if (type === 'nationalId') {
+    return maskNationalId(value) || 'ไม่มีข้อมูล';
+  }
+  if (type === 'number') {
+    if (value === undefined || value === null || value === '') return 'ไม่มีข้อมูล';
+    const num = Number(value);
+    return Number.isFinite(num) ? num.toLocaleString('th-TH') : 'ไม่มีข้อมูล';
+  }
+  if (type === 'boolean') {
+    return value ? 'ใช่' : 'ไม่ใช่';
+  }
+  if (type === 'date') {
+    const str = String(value ?? '').trim().slice(0, 10);
+    return str || 'ไม่มีข้อมูล';
+  }
+  const str = value === undefined || value === null ? '' : String(value).trim();
+  if (!str) return 'ไม่มีข้อมูล';
+  if (valueMap && valueMap[str]) {
+    return valueMap[str];
+  }
+  return str;
+}
+
+export function diffRegistryFields(
+  before: Record<string, any>,
+  after: Record<string, any>,
+): RegistryFieldDiff[] {
+  const changes: RegistryFieldDiff[] = [];
+
+  // 1. Name & FullName comparison
+  const firstNameChanged = !valuesEqual(before.firstName, after.firstName, 'string');
+  const lastNameChanged = !valuesEqual(before.lastName, after.lastName, 'string');
+  if (firstNameChanged) {
+    changes.push({
+      field: 'firstName',
+      fieldLabel: 'ชื่อ',
+      oldValue: formatDiffValue(before.firstName, 'string').slice(0, 500),
+      newValue: formatDiffValue(after.firstName, 'string').slice(0, 500),
+      material: false,
+    });
+  }
+  if (lastNameChanged) {
+    changes.push({
+      field: 'lastName',
+      fieldLabel: 'นามสกุล',
+      oldValue: formatDiffValue(before.lastName, 'string').slice(0, 500),
+      newValue: formatDiffValue(after.lastName, 'string').slice(0, 500),
+      material: false,
+    });
+  }
+  if (!firstNameChanged && !lastNameChanged) {
+    const nameA = formatPersonName(before) || before.fullName;
+    const nameB = formatPersonName(after) || after.fullName;
+    if (!valuesEqual(nameA, nameB, 'string')) {
       changes.push({
-        field,
-        fieldLabel: label,
-        oldValue: oldValue.slice(0, 500),
-        newValue: newValue.slice(0, 500),
-        material,
+        field: 'fullName',
+        fieldLabel: 'ชื่อ-นามสกุล',
+        oldValue: formatDiffValue(nameA, 'string').slice(0, 500),
+        newValue: formatDiffValue(nameB, 'string').slice(0, 500),
+        material: false,
       });
     }
   }
-  const beforeMembers = Array.isArray(before.householdMembers) ? before.householdMembers.length : 0;
-  const afterMembers = Array.isArray(after.householdMembers) ? after.householdMembers.length : 0;
-  if (beforeMembers !== afterMembers) {
+
+  // 2. Scalar fields configuration across all sections
+  const scalarConfigs: Array<{
+    field: string;
+    label: string;
+    type: 'string' | 'number' | 'date' | 'phone' | 'nationalId';
+    material: boolean;
+    map?: Record<string, string>;
+    altKeys?: string[];
+  }> = [
+    { field: 'titlePrefix', label: 'คำนำหน้า', type: 'string', material: false },
+    { field: 'nationalId', label: 'เลขประจำตัวประชาชน', type: 'nationalId', material: true },
+    { field: 'birthDate', label: 'วันเดือนปีเกิด', type: 'date', material: false, altKeys: ['dateOfBirth'] },
+    { field: 'age', label: 'อายุ (ปี)', type: 'number', material: false, altKeys: ['ageYears'] },
+    { field: 'phone', label: 'เบอร์โทรศัพท์', type: 'phone', material: false },
+    { field: 'email', label: 'อีเมล', type: 'string', material: false },
+    { field: 'occupation', label: 'อาชีพ', type: 'string', material: false },
+    { field: 'maritalStatus', label: 'สถานภาพสมรส', type: 'string', material: false, map: MARITAL_STATUS_DIFF_LABELS },
+    { field: 'asnafCategory', label: 'หมวดหมู่อัสนาฟ', type: 'string', material: true, map: ASNAF_DIFF_LABELS },
+    { field: 'branchId', label: 'รหัสสาขา', type: 'string', material: false },
+    { field: 'branchName', label: 'ชื่อสาขา', type: 'string', material: false },
+
+    // Section 2: Residence & Location
+    { field: 'address', label: 'ที่อยู่', type: 'string', material: true },
+    { field: 'community', label: 'ชุมชน/หมู่บ้าน', type: 'string', material: true },
+    { field: 'subdistrict', label: 'ตำบล/แขวง', type: 'string', material: true },
+    { field: 'district', label: 'อำเภอ/เขต', type: 'string', material: true },
+    { field: 'province', label: 'จังหวัด', type: 'string', material: true },
+    { field: 'postcode', label: 'รหัสไปรษณีย์', type: 'string', material: false, altKeys: ['postalCode'] },
+    { field: 'latitude', label: 'ละติจูด', type: 'number', material: false },
+    { field: 'longitude', label: 'ลองจิจูด', type: 'number', material: false },
+    { field: 'residenceAddress', label: 'ที่อยู่ตามพิกัด', type: 'string', material: false },
+    { field: 'placeName', label: 'ชื่อสถานที่/จุดสังเกต', type: 'string', material: false },
+    { field: 'locationVerificationStatus', label: 'สถานะตรวจสอบพิกัด', type: 'string', material: false, map: LOCATION_STATUS_DIFF_LABELS },
+    { field: 'housingType', label: 'ลักษณะการครอบครองที่อยู่อาศัย', type: 'string', material: true, map: HOUSING_TYPE_DIFF_LABELS },
+    { field: 'housingCondition', label: 'สภาพบ้านพัก', type: 'string', material: true },
+    { field: 'housingNotes', label: 'หมายเหตุที่อยู่อาศัย', type: 'string', material: false },
+    { field: 'landTitleType', label: 'สิทธิในที่ดิน', type: 'string', material: true, map: LAND_TITLE_DIFF_LABELS },
+    { field: 'landTitleNotes', label: 'รายละเอียดสิทธิที่ดิน', type: 'string', material: false },
+
+    // Section 7: Income & Expenses totals
+    { field: 'monthlyIncome', label: 'รายได้ต่อเดือน', type: 'number', material: true, altKeys: ['householdIncome', 'totalIncome'] },
+    { field: 'monthlyExpense', label: 'ค่าใช้จ่ายต่อเดือน', type: 'number', material: true, altKeys: ['householdExpense', 'totalExpense'] },
+
+    // Section 8: Debts
+    { field: 'debtAmount', label: 'ยอดหนี้คงเหลือ', type: 'number', material: true },
+    { field: 'debtMonthlyPayment', label: 'ยอดผ่อนชำระหนี้ต่อเดือน', type: 'number', material: true },
+    { field: 'debtType', label: 'ประเภทหนี้สิน', type: 'string', material: true },
+    { field: 'creditorName', label: 'เจ้าหนี้/แหล่งหนี้', type: 'string', material: true },
+    { field: 'debtPurpose', label: 'วัตถุประสงค์หนี้สิน', type: 'string', material: false },
+    { field: 'debtNotes', label: 'หมายเหตุหนี้สิน', type: 'string', material: false },
+
+    // Section 10: Living Conditions & Limitations
+    { field: 'disabilityNotes', label: 'ความพิการ', type: 'string', material: true },
+    { field: 'illnessNotes', label: 'การเจ็บป่วย', type: 'string', material: true },
+    { field: 'livingLimitations', label: 'ข้อจำกัดในการดำรงชีวิต', type: 'string', material: true },
+    { field: 'familySituationSummary', label: 'สรุปสภาพปัญหาครอบครัว', type: 'string', material: false },
+    { field: 'urgentNeeds', label: 'ความต้องการเร่งด่วน', type: 'string', material: false },
+    { field: 'dependentBurdens', label: 'ภาระผู้พึ่งพิง', type: 'string', material: false },
+  ];
+
+  for (const cfg of scalarConfigs) {
+    const valA = before[cfg.field] !== undefined
+      ? before[cfg.field]
+      : cfg.altKeys?.map((k) => before[k]).find((v) => v !== undefined);
+    const valB = after[cfg.field] !== undefined
+      ? after[cfg.field]
+      : cfg.altKeys?.map((k) => after[k]).find((v) => v !== undefined);
+
+    if (!valuesEqual(valA, valB, cfg.type)) {
+      changes.push({
+        field: cfg.field,
+        fieldLabel: cfg.label,
+        oldValue: formatDiffValue(valA, cfg.type, cfg.map).slice(0, 500),
+        newValue: formatDiffValue(valB, cfg.type, cfg.map).slice(0, 500),
+        material: cfg.material,
+      });
+    }
+  }
+
+  // 3. Section 7: Income Breakdown comparison
+  const incA = parseObject(before.incomeBreakdown) || {};
+  const incB = parseObject(after.incomeBreakdown) || {};
+  const incKeys = Array.from(new Set([...Object.keys(incA), ...Object.keys(incB)]));
+  for (const key of incKeys) {
+    const type = key.endsWith('Notes') ? 'string' : 'number';
+    if (!valuesEqual(incA[key], incB[key], type)) {
+      changes.push({
+        field: `incomeBreakdown.${key}`,
+        fieldLabel: `รายได้: ${INCOME_FIELD_LABELS[key] || key}`,
+        oldValue: formatDiffValue(incA[key], type).slice(0, 500),
+        newValue: formatDiffValue(incB[key], type).slice(0, 500),
+        material: true,
+      });
+    }
+  }
+
+  // 4. Section 7: Expense Breakdown comparison
+  const expA = parseObject(before.expenseBreakdown) || {};
+  const expB = parseObject(after.expenseBreakdown) || {};
+  const expKeys = Array.from(new Set([...Object.keys(expA), ...Object.keys(expB)]));
+  for (const key of expKeys) {
+    const type = key.endsWith('Notes') ? 'string' : 'number';
+    if (!valuesEqual(expA[key], expB[key], type)) {
+      changes.push({
+        field: `expenseBreakdown.${key}`,
+        fieldLabel: `รายจ่าย: ${EXPENSE_FIELD_LABELS[key] || key}`,
+        oldValue: formatDiffValue(expA[key], type).slice(0, 500),
+        newValue: formatDiffValue(expB[key], type).slice(0, 500),
+        material: true,
+      });
+    }
+  }
+
+  // 5. Section 9: Household Members deep comparison
+  const rawMemA = Array.isArray(before.householdMembers) ? before.householdMembers : [];
+  const rawMemB = Array.isArray(after.householdMembers) ? after.householdMembers : [];
+  const memA = rawMemA.filter((m: any) => m && String(m.fullName || '').trim() !== '');
+  const memB = rawMemB.filter((m: any) => m && String(m.fullName || '').trim() !== '');
+
+  if (memA.length !== memB.length) {
     changes.push({
       field: 'householdMembers',
       fieldLabel: 'จำนวนสมาชิกครัวเรือน',
-      oldValue: String(beforeMembers),
-      newValue: String(afterMembers),
+      oldValue: `${memA.length} คน`,
+      newValue: `${memB.length} คน`,
       material: true,
     });
   }
-  const beforeNames = (before.householdMembers || []).map((member: any) => member.fullName).filter(Boolean).join(', ');
-  const afterNames = (after.householdMembers || []).map((member: any) => member.fullName).filter(Boolean).join(', ');
-  if (beforeNames !== afterNames) {
+
+  const matchedA = new Set<number>();
+  for (let i = 0; i < memB.length; i++) {
+    const mb = memB[i];
+    let idxA = -1;
+    if (mb.id && !String(mb.id).startsWith('mem-')) {
+      idxA = memA.findIndex((a: any, idx: number) => !matchedA.has(idx) && a.id === mb.id);
+    }
+    if (idxA === -1 && mb.fullName) {
+      idxA = memA.findIndex(
+        (a: any, idx: number) =>
+          !matchedA.has(idx) && String(a.fullName || '').trim() === String(mb.fullName).trim(),
+      );
+    }
+    if (idxA === -1 && i < memA.length && !matchedA.has(i)) {
+      idxA = i;
+    }
+
+    if (idxA !== -1) {
+      matchedA.add(idxA);
+      const ma = memA[idxA];
+      const memberProps: Array<{
+        prop: string;
+        altProps?: string[];
+        label: string;
+        type: 'string' | 'number' | 'date' | 'boolean';
+        map?: Record<string, string>;
+      }> = [
+        { prop: 'fullName', label: 'ชื่อ-นามสกุล', type: 'string' },
+        { prop: 'relationship', altProps: ['relation'], label: 'ความสัมพันธ์', type: 'string' },
+        { prop: 'age', altProps: ['ageYears'], label: 'อายุ', type: 'number' },
+        { prop: 'dateOfBirth', label: 'วันเกิด', type: 'date' },
+        { prop: 'occupation', label: 'อาชีพ', type: 'string' },
+        { prop: 'monthlyIncome', label: 'รายได้ต่อเดือน', type: 'number' },
+        { prop: 'educationStatus', label: 'ระดับการศึกษา', type: 'string' },
+        { prop: 'healthStatus', label: 'สถานะสุขภาพ', type: 'string', map: HEALTH_STATUS_DIFF_LABELS },
+        { prop: 'healthNotes', label: 'หมายเหตุสุขภาพ', type: 'string' },
+        { prop: 'isDependent', label: 'สถานะผู้พึ่งพิง', type: 'boolean' },
+        { prop: 'notes', label: 'หมายเหตุ', type: 'string' },
+      ];
+      for (const p of memberProps) {
+        const valA =
+          ma[p.prop] !== undefined ? ma[p.prop] : p.altProps?.map((k) => ma[k]).find((v) => v !== undefined);
+        const valB =
+          mb[p.prop] !== undefined ? mb[p.prop] : p.altProps?.map((k) => mb[k]).find((v) => v !== undefined);
+        if (!valuesEqual(valA, valB, p.type)) {
+          changes.push({
+            field: `householdMember.${p.prop}`,
+            fieldLabel: `สมาชิก (${mb.fullName || ma.fullName || 'คนที่ ' + (i + 1)}): ${p.label}`,
+            oldValue: formatDiffValue(valA, p.type, p.map).slice(0, 500),
+            newValue: formatDiffValue(valB, p.type, p.map).slice(0, 500),
+            material: true,
+          });
+        }
+      }
+    }
+  }
+
+  // 6. Section 3: Coordinator comparison
+  const coordA = before.coordinator || {};
+  const coordB = after.coordinator || {};
+  const coordProps: Array<{ key: string; label: string; type: 'string' | 'number' | 'phone' }> = [
+    { key: 'fullName', label: 'ชื่อผู้ประสานงาน', type: 'string' },
+    { key: 'phone', label: 'เบอร์โทรผู้ประสานงาน', type: 'phone' },
+    { key: 'occupation', label: 'อาชีพผู้ประสานงาน', type: 'string' },
+    { key: 'roleTitle', label: 'บทบาทผู้ประสานงาน', type: 'string' },
+    { key: 'relationship', label: 'ความสัมพันธ์ผู้ประสานงาน', type: 'string' },
+    { key: 'address', label: 'ที่อยู่ผู้ประสานงาน', type: 'string' },
+    { key: 'organization', label: 'หน่วยงานผู้ประสานงาน', type: 'string' },
+    { key: 'age', label: 'อายุผู้ประสานงาน', type: 'number' },
+  ];
+  for (const p of coordProps) {
+    if (!valuesEqual(coordA[p.key], coordB[p.key], p.type)) {
+      changes.push({
+        field: `coordinator.${p.key}`,
+        fieldLabel: p.label,
+        oldValue: formatDiffValue(coordA[p.key], p.type).slice(0, 500),
+        newValue: formatDiffValue(coordB[p.key], p.type).slice(0, 500),
+        material: false,
+      });
+    }
+  }
+
+  // 7. Section 3: Certifier comparison
+  const certA = before.certifier || {};
+  const certB = after.certifier || {};
+  const certProps: Array<{ key: string; label: string; type: 'string' | 'phone' }> = [
+    { key: 'fullName', label: 'ชื่อผู้รับรอง', type: 'string' },
+    { key: 'phone', label: 'เบอร์โทรผู้รับรอง', type: 'phone' },
+    { key: 'roleTitle', label: 'ตำแหน่งผู้รับรอง', type: 'string' },
+    { key: 'organization', label: 'หน่วยงานผู้รับรอง', type: 'string' },
+    { key: 'comments', label: 'ความเห็นผู้รับรอง', type: 'string' },
+  ];
+  for (const p of certProps) {
+    if (!valuesEqual(certA[p.key], certB[p.key], p.type)) {
+      changes.push({
+        field: `certifier.${p.key}`,
+        fieldLabel: p.label,
+        oldValue: formatDiffValue(certA[p.key], p.type).slice(0, 500),
+        newValue: formatDiffValue(certB[p.key], p.type).slice(0, 500),
+        material: false,
+      });
+    }
+  }
+
+  // 8. Section 5: Past Assistance comparison
+  const pastA = (Array.isArray(before.pastAssistance) ? before.pastAssistance : []).filter(
+    (p: any) => p && (p.agency || p.amountOrItems || p.yearReceived || p.assistanceType),
+  );
+  const pastB = (Array.isArray(after.pastAssistance) ? after.pastAssistance : []).filter(
+    (p: any) => p && (p.agency || p.amountOrItems || p.yearReceived || p.assistanceType),
+  );
+  if (pastA.length !== pastB.length) {
     changes.push({
-      field: 'householdMemberNames',
-      fieldLabel: 'รายชื่อสมาชิกครัวเรือน',
-      oldValue: beforeNames.slice(0, 500),
-      newValue: afterNames.slice(0, 500),
-      material: true,
+      field: 'pastAssistance',
+      fieldLabel: 'จำนวนประวัติการรับความช่วยเหลือ',
+      oldValue: `${pastA.length} รายการ`,
+      newValue: `${pastB.length} รายการ`,
+      material: false,
     });
+  } else {
+    for (let i = 0; i < pastB.length; i++) {
+      const a = pastA[i] || {};
+      const b = pastB[i] || {};
+      if (
+        !valuesEqual(a.agency, b.agency) ||
+        !valuesEqual(a.assistanceType, b.assistanceType) ||
+        !valuesEqual(a.amountOrItems, b.amountOrItems) ||
+        !valuesEqual(a.yearReceived, b.yearReceived) ||
+        !valuesEqual(a.notes, b.notes)
+      ) {
+        changes.push({
+          field: 'pastAssistance',
+          fieldLabel: `ประวัติการรับความช่วยเหลือ (${b.agency || a.agency || 'รายการที่ ' + (i + 1)})`,
+          oldValue: a.agency ? `${a.agency} (${a.amountOrItems || '-'})` : 'ไม่มีข้อมูล',
+          newValue: b.agency ? `${b.agency} (${b.amountOrItems || '-'})` : 'ไม่มีข้อมูล',
+          material: false,
+        });
+        break;
+      }
+    }
   }
-  if (JSON.stringify(before.incomeBreakdown || null) !== JSON.stringify(after.incomeBreakdown || null)) {
+
+  // 9. Section 4: Attachments/Documents comparison
+  if (Array.isArray(after.newUploadedDocs) && after.newUploadedDocs.length > 0) {
     changes.push({
-      field: 'incomeBreakdown',
-      fieldLabel: 'รายการรายได้',
-      oldValue: displayValue(before.monthlyIncome),
-      newValue: displayValue(after.monthlyIncome),
-      material: true,
+      field: 'documents',
+      fieldLabel: 'เอกสารแนบเพิ่มเติม',
+      oldValue: '0 ไฟล์',
+      newValue: `${after.newUploadedDocs.length} ไฟล์ (${after.newUploadedDocs.map((d: any) => d.name || 'เอกสาร').join(', ').slice(0, 300)})`,
+      material: false,
     });
   }
-  if (JSON.stringify(before.expenseBreakdown || null) !== JSON.stringify(after.expenseBreakdown || null)) {
-    changes.push({
-      field: 'expenseBreakdown',
-      fieldLabel: 'รายการรายจ่าย',
-      oldValue: displayValue(before.monthlyExpense),
-      newValue: displayValue(after.monthlyExpense),
-      material: true,
-    });
+
+  // 10. Hardship reasons comparison
+  if (before.hardshipReasons || after.hardshipReasons) {
+    const jsonA = JSON.stringify(before.hardshipReasons || {});
+    const jsonB = JSON.stringify(after.hardshipReasons || {});
+    if (jsonA !== jsonB && (jsonA !== '{}' || jsonB !== '{}')) {
+      changes.push({
+        field: 'hardshipReasons',
+        fieldLabel: 'เหตุผลความเดือดร้อน',
+        oldValue: jsonA === '{}' ? 'ไม่มีข้อมูล' : 'ข้อมูลเดิม',
+        newValue: jsonB === '{}' ? 'ไม่มีข้อมูล' : 'ข้อมูลใหม่',
+        material: true,
+      });
+    }
   }
+
   return changes;
 }
 
@@ -511,6 +937,7 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
     monthlyIncome: numberOrNull(hh.householdIncome) ?? numberOrNull(inc.personalIncome),
     monthlyExpense: numberOrNull(hh.householdExpense) ?? numberOrNull(inc.regularExpense),
     debtAmount: numberOrNull(hh.debtAmount) ?? numberOrNull(inc.debtBurden),
+    debtMonthlyPayment: numberOrNull(expenseBreakdown?.debtPayment ?? situation.debtMonthlyPayment),
     debtType: debtType || undefined,
     debtPurpose: creditorName || (debtType ? '' : hh.debtPurpose || ''),
     creditorName: creditorName || '',

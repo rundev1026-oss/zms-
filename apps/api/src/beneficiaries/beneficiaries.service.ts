@@ -634,21 +634,37 @@ export class BeneficiariesService {
       'address',
       'province',
       'district',
+      'subdistrict',
+      'community',
+      'housingType',
+      'housingCondition',
       'monthlyIncome',
       'monthlyExpense',
       'debtAmount',
+      'debtMonthlyPayment',
       'debtType',
       'creditorName',
       'disabilityNotes',
       'illnessNotes',
       'livingLimitations',
+      'urgentNeeds',
+      'dependentBurdens',
+      'hardshipReasons',
+      'asnafCategory',
       'nationalId',
       'householdMembers',
       'householdMemberNames',
       'incomeBreakdown',
       'expenseBreakdown',
     ]);
-    const material = input.changes.some((change) => materialFields.has(change.field));
+    const material = input.changes.some(
+      (change) =>
+        change.material === true ||
+        materialFields.has(change.field) ||
+        change.field.startsWith('incomeBreakdown') ||
+        change.field.startsWith('expenseBreakdown') ||
+        change.field.startsWith('householdMember'),
+    );
     const sendBack = revisionRequiresReview(existing.status as RegistryStatusCode) && material;
     if (sendBack && (input.reason ?? '').trim().length < 5) {
       throw new AppException(

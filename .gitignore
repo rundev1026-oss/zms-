@@ -21,6 +21,7 @@ node_modules/
 # production
 /build
 apps/api/dist/
+apps/api/storage/
 
 # misc
 .DS_Store

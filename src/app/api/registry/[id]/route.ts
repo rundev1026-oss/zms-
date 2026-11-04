@@ -118,7 +118,7 @@ async function handleUpdate(
       );
     }
 
-    const changes = Array.isArray(input.changes)
+    const changes = Array.isArray(input.changes) && input.changes.length > 0
       ? input.changes
       : currentView
         ? diffRegistryFields(currentView, input)
@@ -136,7 +136,7 @@ async function handleUpdate(
         method: 'POST',
         headers,
         body: JSON.stringify({
-          expectedUpdatedAt: current?.updatedAt,
+          expectedUpdatedAt: input.expectedUpdatedAt || current?.updatedAt,
           reason: body.notes || input.editNotes || '',
           ipAddress: forwarded.split(',')[0]?.trim() || undefined,
           changes,
@@ -183,7 +183,16 @@ async function handleUpdate(
     }
 
     // 2. Update Addresses
-    if (input.province || input.district || input.subdistrict || input.address) {
+    if (
+      input.province !== undefined ||
+      input.district !== undefined ||
+      input.subdistrict !== undefined ||
+      input.address !== undefined ||
+      input.community !== undefined ||
+      input.postcode !== undefined ||
+      input.latitude !== undefined ||
+      input.longitude !== undefined
+    ) {
       const addressesPayload = [
         {
           addressType: 'REGISTERED',

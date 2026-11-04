@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { formatPersonName, splitPersonName } from '@zms/shared';
-import { diffRegistryFields, registryNeedsReReview, sumFilled, INCOME_LINE_KEYS, EXPENSE_LINE_KEYS } from '@/lib/registrySurvey';
+import { breakdownsEqual, diffRegistryFields, registryNeedsReReview, sumFilled, valuesEqual, INCOME_LINE_KEYS, EXPENSE_LINE_KEYS } from '@/lib/registrySurvey';
 import { useApp } from '@/context/AppContext';
 import { 
   BeneficiaryRegistryItem, 
@@ -381,12 +381,8 @@ export function BeneficiaryRegistryView({
     }
     const fresh = await loadRegistryDetail(selectedRegistry.id);
     const source = fresh || selectedRegistry;
-    editBaseline.current = JSON.parse(JSON.stringify(source));
-    setIsEditing(true);
-    setActiveMainSection(mainSec);
-    if (personalSub) setActivePersonalSubSection(personalSub);
     const name = splitPersonName(source);
-    setEditForm({
+    const initialForm = {
       titlePrefix: name.prefix,
       firstName: name.firstName,
       lastName: name.lastName,
@@ -395,12 +391,12 @@ export function BeneficiaryRegistryView({
       phone: source.phone || '',
       email: source.email || '',
       birthDate: source.birthDate || '',
-      age: source.age || 0,
+      age: source.age ?? null,
       occupation: source.occupation || '',
       maritalStatus: source.maritalStatus || '',
-      asnafCategory: source.asnafCategory || 'miskin',
-      branchId: source.branchId || 'br-hq',
-      branchName: source.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
+      asnafCategory: source.asnafCategory || '',
+      branchId: source.branchId || '',
+      branchName: source.branchName || '',
       address: source.address || '',
       province: source.province || '',
       district: source.district || '',
@@ -424,7 +420,7 @@ export function BeneficiaryRegistryView({
       expenseBreakdown: source.expenseBreakdown ? { ...source.expenseBreakdown } : null,
       householdMembers: source.householdMembers ? source.householdMembers.map(m => ({ ...m })) : [],
       pastAssistance: source.pastAssistance ? source.pastAssistance.map(a => ({ ...a })) : [],
-      hardshipReasons: source.hardshipReasons || {},
+      hardshipReasons: source.hardshipReasons ? { ...source.hardshipReasons } : {},
       disabilityNotes: source.disabilityNotes || '',
       illnessNotes: source.illnessNotes || '',
       livingLimitations: source.livingLimitations || '',
@@ -440,7 +436,12 @@ export function BeneficiaryRegistryView({
       locationVerificationStatus: source.locationVerificationStatus || '',
       editNotes: '',
       newUploadedDocs: [] as UploadedDocumentItem[],
-    });
+    };
+    editBaseline.current = JSON.parse(JSON.stringify({ ...initialForm, updatedAt: source.updatedAt }));
+    setIsEditing(true);
+    setActiveMainSection(mainSec);
+    if (personalSub) setActivePersonalSubSection(personalSub);
+    setEditForm(initialForm);
   };
 
   // Direct save of location & coordinates from Section 2
@@ -464,11 +465,7 @@ export function BeneficiaryRegistryView({
         `ปรับปรุงพิกัดที่อยู่อาศัย (${loc.latitude?.toFixed(5)}, ${loc.longitude?.toFixed(5)}) สถานะ: ${LOCATION_VERIFICATION_LABELS[status]?.label}`
       );
       if (ok) {
-        const res = await fetch(`/api/registry/${selectedRegistry.id}`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          setSelectedRegistry(json.data);
-        }
+        await loadRegistryDetail(selectedRegistry.id);
         return true;
       }
       return false;
@@ -492,9 +489,11 @@ export function BeneficiaryRegistryView({
           id: `mem-${Date.now()}`,
           fullName: '',
           relation: 'บุตร',
+          relationship: 'บุตร',
           age: 18,
+          ageYears: 18,
           occupation: '',
-          monthlyIncome: 0,
+          monthlyIncome: undefined,
           healthNotes: '',
         }
       ]
@@ -511,7 +510,16 @@ export function BeneficiaryRegistryView({
   const handleMemberChange = (index: number, field: string, value: any) => {
     setEditForm((prev: any) => {
       const list = [...(prev.householdMembers || [])];
-      list[index] = { ...list[index], [field]: value };
+      const next = { ...list[index], [field]: value };
+      if (field === 'relation' || field === 'relationship') {
+        next.relation = value;
+        next.relationship = value;
+      }
+      if (field === 'age' || field === 'ageYears') {
+        next.age = value;
+        next.ageYears = value;
+      }
+      list[index] = next;
       return { ...prev, householdMembers: list };
     });
   };
@@ -539,13 +547,32 @@ export function BeneficiaryRegistryView({
       showToast('กรุณาระบุหมายเลขบัตรประชาชน 13 หลักให้ถูกต้อง', 'error');
       return;
     }
-    if (!editForm.phone?.trim()) {
+    const trimmedPhone = String(editForm.phone || '').trim();
+    if (!trimmedPhone) {
       showToast('กรุณาระบุเบอร์โทรศัพท์ติดต่อ', 'error');
+      return;
+    }
+    if (!/^[0-9+\-\s]{8,20}$/.test(trimmedPhone)) {
+      showToast('หมายเลขโทรศัพท์ไม่ถูกต้อง (กรุณาระบุตัวเลข 8–20 หลัก)', 'error');
       return;
     }
     if (!editForm.address?.trim()) {
       showToast('กรุณาระบุที่อยู่ปัจจุบัน', 'error');
       return;
+    }
+
+    for (const [val, label] of [
+      [editForm.monthlyIncome, 'รายได้รวมต่อเดือน'],
+      [editForm.monthlyExpense, 'รายจ่ายรวมต่อเดือน'],
+      [editForm.debtAmount, 'ภาระหนี้สินคงค้าง'],
+    ] as const) {
+      if (val !== null && val !== undefined && val !== '') {
+        const num = Number(val);
+        if (!Number.isFinite(num) || num < 0) {
+          showToast(`${label}ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป`, 'error');
+          return;
+        }
+      }
     }
 
     // Coordinates validation (-90 <= lat <= 90, -180 <= lng <= 180)
@@ -565,12 +592,18 @@ export function BeneficiaryRegistryView({
     }
 
     const baseline = editBaseline.current || selectedRegistry;
+    const incBreakChanged = !breakdownsEqual(baseline.incomeBreakdown, editForm.incomeBreakdown);
+    const incTotalChanged = !valuesEqual(baseline.monthlyIncome, editForm.monthlyIncome, 'number');
+    const expBreakChanged = !breakdownsEqual(baseline.expenseBreakdown, editForm.expenseBreakdown);
+    const expTotalChanged = !valuesEqual(baseline.monthlyExpense, editForm.monthlyExpense, 'number');
     const incomeLineSum = sumFilled(editForm.incomeBreakdown, INCOME_LINE_KEYS);
     const expenseLineSum = sumFilled(editForm.expenseBreakdown, EXPENSE_LINE_KEYS);
+
     const syncedForm = {
       ...editForm,
-      monthlyIncome: incomeLineSum !== null ? incomeLineSum : editForm.monthlyIncome,
-      monthlyExpense: expenseLineSum !== null ? expenseLineSum : editForm.monthlyExpense,
+      phone: trimmedPhone,
+      monthlyIncome: incBreakChanged && !incTotalChanged && incomeLineSum !== null ? incomeLineSum : editForm.monthlyIncome,
+      monthlyExpense: expBreakChanged && !expTotalChanged && expenseLineSum !== null ? expenseLineSum : editForm.monthlyExpense,
       nationalId: cleanId,
     };
     const changes = diffRegistryFields(baseline, syncedForm);
@@ -596,7 +629,7 @@ export function BeneficiaryRegistryView({
       const payload = {
         ...formToSave,
         nationalId: cleanId,
-        expectedUpdatedAt: selectedRegistry.updatedAt,
+        expectedUpdatedAt: editBaseline.current?.updatedAt || selectedRegistry.updatedAt,
         changes: savePreview.changes,
         documents: (formToSave.newUploadedDocs || []).map((d: UploadedDocumentItem) => ({
           name: d.name,
@@ -615,6 +648,8 @@ export function BeneficiaryRegistryView({
         setIsEditing(false);
         setSavePreview(null);
         editBaseline.current = null;
+      } else {
+        setSavePreview(null);
       }
     } finally {
       setIsSaving(false);
@@ -1856,8 +1891,8 @@ export function BeneficiaryRegistryView({
                     </tr>
                   </thead>
                   <tbody>
-                    {savePreview.changes.map((change) => (
-                      <tr key={change.field} className="border-t border-slate-100">
+                    {savePreview.changes.map((change, idx) => (
+                      <tr key={`${change.field}-${idx}`} className="border-t border-slate-100">
                         <td className="py-1.5 pr-2 font-semibold">{change.fieldLabel}</td>
                         <td className="py-1.5 pr-2 text-rose-800">{change.oldValue || 'ไม่มีข้อมูล'}</td>
                         <td className="py-1.5 text-emerald-800 font-semibold">{change.newValue || 'ไม่มีข้อมูล'}</td>

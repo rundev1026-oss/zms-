@@ -5,6 +5,7 @@ import type { SurveyPrintModel } from '../../src/lib/surveyPrint/model';
 
 const model: SurveyPrintModel = {
   registryNumber: 'ZMS-2026-000012',
+  memberId: 'MB-2026-000001',
   fullName: 'นาย อาทิตย์ สะ',
   titlePrefix: 'นาย',
   firstName: 'อาทิตย์',

@@ -2,20 +2,20 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class UpsertIncomeProfileDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงินไม่ถูกต้อง' })
-  personalIncome?: string;
+  personalIncome?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงินไม่ถูกต้อง' })
-  regularExpense?: string;
+  regularExpense?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงินไม่ถูกต้อง' })
-  debtBurden?: string;
+  debtBurden?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

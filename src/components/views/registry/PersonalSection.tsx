@@ -125,7 +125,9 @@ export function PersonalSection({
           id: `mem-${Date.now()}`,
           fullName: '',
           relation: 'บุตร',
+          relationship: 'บุตร',
           age: 18,
+          ageYears: 18,
           educationStatus: '',
           occupation: '',
           monthlyIncome: undefined,
@@ -146,8 +148,50 @@ export function PersonalSection({
   const handleMemberChange = (index: number, field: string, value: any) => {
     setEditForm((prev: any) => {
       const list = [...(prev.householdMembers || [])];
-      list[index] = { ...list[index], [field]: value };
+      const next = { ...list[index], [field]: value };
+      if (field === 'relation' || field === 'relationship') {
+        next.relation = value;
+        next.relationship = value;
+      }
+      if (field === 'age' || field === 'ageYears') {
+        next.age = value;
+        next.ageYears = value;
+      }
+      list[index] = next;
       return { ...prev, householdMembers: list };
+    });
+  };
+
+  const INCOME_KEYS = ['salary', 'familySupport', 'agriculture', 'trading', 'assetIncome', 'freelance', 'welfare', 'otherIncome'];
+  const EXPENSE_KEYS = ['living', 'education', 'healthcare', 'utilities', 'rent', 'debtPayment', 'otherExpense'];
+
+  const handleIncomeBreakdownChange = (key: string, rawVal: string) => {
+    setEditForm((prev: any) => {
+      const nextBreakdown = {
+        ...(prev.incomeBreakdown || {}),
+        [key]: rawVal === '' ? undefined : Number(rawVal),
+      };
+      const nextSum = sumFilledAmounts(nextBreakdown, INCOME_KEYS);
+      return {
+        ...prev,
+        incomeBreakdown: nextBreakdown,
+        monthlyIncome: nextSum,
+      };
+    });
+  };
+
+  const handleExpenseBreakdownChange = (key: string, rawVal: string) => {
+    setEditForm((prev: any) => {
+      const nextBreakdown = {
+        ...(prev.expenseBreakdown || {}),
+        [key]: rawVal === '' ? undefined : Number(rawVal),
+      };
+      const nextSum = sumFilledAmounts(nextBreakdown, EXPENSE_KEYS);
+      return {
+        ...prev,
+        expenseBreakdown: nextBreakdown,
+        monthlyExpense: nextSum,
+      };
     });
   };
 
@@ -200,8 +244,8 @@ export function PersonalSection({
   const lineExpense = sumFilledAmounts(expenseLines, ['living', 'education', 'healthcare', 'utilities', 'rent', 'debtPayment', 'otherExpense']);
   const storedIncome = isEditing ? editForm.monthlyIncome : registry.monthlyIncome;
   const storedExpense = isEditing ? editForm.monthlyExpense : registry.monthlyExpense;
-  const totalIncome = lineIncome ?? blankToNull(storedIncome);
-  const totalExpense = lineExpense ?? blankToNull(storedExpense);
+  const totalIncome = blankToNull(storedIncome) ?? lineIncome;
+  const totalExpense = blankToNull(storedExpense) ?? lineExpense;
   const netEstimated = totalIncome === null || totalExpense === null ? null : totalIncome - totalExpense;
 
   return (
@@ -569,10 +613,11 @@ export function PersonalSection({
                   <div>
                     <label className="font-bold text-slate-700 block mb-1">สถานภาพสมรส</label>
                     <select
-                      value={editForm.maritalStatus || 'married'}
+                      value={editForm.maritalStatus || ''}
                       onChange={(e) => setEditForm({ ...editForm, maritalStatus: e.target.value })}
                       className="w-full p-2 bg-white border border-slate-300 rounded-xl"
                     >
+                      <option value="">-- ไม่ระบุ --</option>
                       <option value="single">โสด</option>
                       <option value="married">สมรส</option>
                       <option value="divorced">หย่าร้าง</option>
@@ -602,10 +647,11 @@ export function PersonalSection({
                     <div>
                       <label className="font-bold text-slate-700 block mb-1">ลักษณะการครอบครองที่อยู่อาศัย</label>
                       <select
-                        value={editForm.housingType || 'own'}
+                        value={editForm.housingType || ''}
                         onChange={(e) => setEditForm({ ...editForm, housingType: e.target.value })}
                         className="w-full p-2 bg-white border border-slate-300 rounded-xl"
                       >
+                        <option value="">-- ไม่ระบุ --</option>
                         <option value="own">บ้านตนเอง</option>
                         <option value="rent">บ้านเช่า</option>
                         <option value="relative">อาศัยญาติ/ผู้อื่น</option>
@@ -616,10 +662,11 @@ export function PersonalSection({
                     <div>
                       <label className="font-bold text-slate-700 block mb-1">สิทธิในที่ดิน/เอกสารสิทธิ์</label>
                       <select
-                        value={editForm.landTitleType || 'title_deed'}
+                        value={editForm.landTitleType || ''}
                         onChange={(e) => setEditForm({ ...editForm, landTitleType: e.target.value })}
                         className="w-full p-2 bg-white border border-slate-300 rounded-xl"
                       >
+                        <option value="">-- ไม่ระบุ --</option>
                         <option value="title_deed">โฉนดที่ดิน (น.ส. 4)</option>
                         <option value="nor_sor_3">น.ส. 3 / น.ส. 3 ก.</option>
                         <option value="sor_por_kor">ส.ป.ก. 4-01</option>
@@ -790,8 +837,10 @@ export function PersonalSection({
                           <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">อายุ (ปี)</label>
                           <input
                             type="number"
+                            min={0}
+                            max={130}
                             value={m.age ?? ''}
-                            onChange={(e) => handleMemberChange(idx, 'age', Number(e.target.value))}
+                            onChange={(e) => handleMemberChange(idx, 'age', e.target.value === '' ? null : Number(e.target.value))}
                             className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
                           />
                         </div>
@@ -1071,10 +1120,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.salary ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, salary: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('salary', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1084,10 +1130,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.familySupport ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, familySupport: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('familySupport', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1097,10 +1140,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.agriculture ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, agriculture: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('agriculture', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1110,10 +1150,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.trading ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, trading: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('trading', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1123,10 +1160,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.assetIncome ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, assetIncome: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('assetIncome', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1136,10 +1170,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.freelance ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, freelance: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('freelance', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1149,10 +1180,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.welfare ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, welfare: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('welfare', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1162,10 +1190,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.incomeBreakdown?.otherIncome ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          incomeBreakdown: { ...editForm.incomeBreakdown, otherIncome: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleIncomeBreakdownChange('otherIncome', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1182,10 +1207,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.expenseBreakdown?.living ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          expenseBreakdown: { ...editForm.expenseBreakdown, living: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleExpenseBreakdownChange('living', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1195,10 +1217,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.expenseBreakdown?.education ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          expenseBreakdown: { ...editForm.expenseBreakdown, education: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleExpenseBreakdownChange('education', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1208,10 +1227,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.expenseBreakdown?.healthcare ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          expenseBreakdown: { ...editForm.expenseBreakdown, healthcare: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleExpenseBreakdownChange('healthcare', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1221,10 +1237,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.expenseBreakdown?.utilities ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          expenseBreakdown: { ...editForm.expenseBreakdown, utilities: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleExpenseBreakdownChange('utilities', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1234,10 +1247,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.expenseBreakdown?.rent ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          expenseBreakdown: { ...editForm.expenseBreakdown, rent: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleExpenseBreakdownChange('rent', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1247,10 +1257,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.expenseBreakdown?.debtPayment ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          expenseBreakdown: { ...editForm.expenseBreakdown, debtPayment: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleExpenseBreakdownChange('debtPayment', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1260,10 +1267,7 @@ export function PersonalSection({
                       <input
                         type="number"
                         value={editForm.expenseBreakdown?.otherExpense ?? ''}
-                        onChange={(e) => setEditForm({
-                          ...editForm,
-                          expenseBreakdown: { ...editForm.expenseBreakdown, otherExpense: e.target.value === '' ? undefined : Number(e.target.value) }
-                        })}
+                        onChange={(e) => handleExpenseBreakdownChange('otherExpense', e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
                         placeholder="ยังไม่มีข้อมูล"
                       />
@@ -1288,7 +1292,7 @@ export function PersonalSection({
                     <input
                       type="text"
                       value={editForm.debtPurpose || ''}
-                      onChange={(e) => setEditForm({ ...editForm, debtPurpose: e.target.value })}
+                      onChange={(e) => setEditForm({ ...editForm, debtPurpose: e.target.value, creditorName: e.target.value })}
                       placeholder="เช่น ธนาคาร, เพื่อนบ้าน, ค่ารักษาพยาบาล"
                       className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs"
                     />

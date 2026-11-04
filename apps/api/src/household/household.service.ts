@@ -22,9 +22,9 @@ export interface HouseholdMemberInput {
 
 export interface HouseholdInput {
   memberCount?: number;
-  householdIncome?: string;
-  householdExpense?: string;
-  debtAmount?: string;
+  householdIncome?: string | null;
+  householdExpense?: string | null;
+  debtAmount?: string | null;
   debtPurpose?: string;
   dependentCount?: number;
   additionalNotes?: string;
@@ -47,8 +47,8 @@ export interface HouseholdInput {
   dependentBurdens?: string;
   coordinatorInfo?: string;
   certifierInfo?: string;
-  latitude?: number;
-  longitude?: number;
+  latitude?: number | null;
+  longitude?: number | null;
   residenceAddress?: string;
   placeName?: string;
   locationVerificationStatus?: string;
@@ -174,8 +174,10 @@ export class HouseholdService {
     return data;
   }
 
-  private money(value: string | undefined): Prisma.Decimal | undefined {
-    return value === undefined ? undefined : new Prisma.Decimal(value);
+  private money(value: string | null | undefined): Prisma.Decimal | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return new Prisma.Decimal(value);
   }
 
   private toView(household: any) {
@@ -208,8 +210,8 @@ export class HouseholdService {
       dependentBurdens: household.dependentBurdens ?? null,
       coordinatorInfo: household.coordinatorInfo ?? null,
       certifierInfo: household.certifierInfo ?? null,
-      latitude: household.latitude ? Number(household.latitude) : null,
-      longitude: household.longitude ? Number(household.longitude) : null,
+      latitude: household.latitude === null || household.latitude === undefined ? null : Number(household.latitude),
+      longitude: household.longitude === null || household.longitude === undefined ? null : Number(household.longitude),
       residenceAddress: household.residenceAddress ?? null,
       placeName: household.placeName ?? null,
       locationVerificationStatus: household.locationVerificationStatus ?? null,

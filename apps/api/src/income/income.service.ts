@@ -66,8 +66,10 @@ export class IncomeService {
     return data;
   }
 
-  private money(value: string | undefined): Prisma.Decimal | undefined {
-    return value === undefined ? undefined : new Prisma.Decimal(value);
+  private money(value: string | null | undefined): Prisma.Decimal | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return new Prisma.Decimal(value);
   }
 
   private toView(row: {

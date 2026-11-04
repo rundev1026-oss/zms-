@@ -331,11 +331,9 @@ export class BeneficiariesService {
         update: { lastValue: { increment: 1 } },
       });
       const memberId = `MB-${year}-${String(memberCounter.lastValue).padStart(6, '0')}`;
-      return await this.prisma.beneficiary.update({
-        where: { id: row.id },
-        data: { memberId },
-        include: beneficiaryInclude,
-      });
+      await this.prisma.$executeRaw`UPDATE "beneficiaries" SET "member_id" = ${memberId} WHERE "id" = ${row.id}::uuid AND "member_id" IS NULL`;
+      row.memberId = memberId;
+      return row;
     }
     return row;
   }

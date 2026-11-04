@@ -114,7 +114,7 @@ export function sumFilled(source: unknown, keys: readonly string[]): number | nu
 function money(value: unknown): string | undefined {
   if (value === undefined || value === null || value === '') return undefined;
   const amount = Number(value);
-  if (!Number.isFinite(amount)) return undefined;
+  if (!Number.isFinite(amount) || amount < 0) return undefined;
   return amount.toFixed(2);
 }
 
@@ -139,9 +139,11 @@ export function buildSituationNotes(input: Record<string, any>): string | undefi
 
   const debtType = input.debtType || input.hardshipReasons?.debtType || '';
   const creditorName =
-    input.creditorName ||
-    (input.debtPurpose && input.debtPurpose !== debtType ? input.debtPurpose : '') ||
-    '';
+    input.creditorName !== undefined && input.creditorName !== ''
+      ? String(input.creditorName)
+      : input.debtPurpose && input.debtPurpose !== debtType
+        ? String(input.debtPurpose)
+        : '';
   const profile = {
     v: 1,
     disabilityNotes: input.disabilityNotes || input.hardshipReasons?.disabilityDetails || '',
@@ -186,32 +188,33 @@ function mapMembers(rawMembers: unknown) {
   return rawMembers
     .filter((member) => String(member?.fullName || '').trim() !== '')
     .map((member, index) => {
-      const ageRaw = member.ageYears ?? member.age;
-      const age = Number(ageRaw);
+      const ageRaw = member.age !== undefined ? member.age : member.ageYears;
+      const hasAge = ageRaw !== undefined && ageRaw !== null && ageRaw !== '';
+      const ageNum = hasAge ? Math.round(Number(ageRaw)) : NaN;
+      const validAge = Number.isFinite(ageNum) && ageNum >= 0 && ageNum <= 130 ? ageNum : undefined;
       const dob = member.dateOfBirth && !isNaN(Date.parse(member.dateOfBirth)) ? member.dateOfBirth : undefined;
+      const rel = String(member.relation ?? member.relationship ?? '').trim() || 'สมาชิกในครอบครัว';
       return {
-        fullName: String(member.fullName).trim(),
-        relationship: member.relationship || member.relation || 'สมาชิกในครอบครัว',
-        ageYears: Number.isFinite(age) ? Math.round(age) : undefined,
+        fullName: String(member.fullName).trim().slice(0, 150),
+        relationship: rel.slice(0, 80),
+        ageYears: validAge,
         dateOfBirth: dob,
-        occupation: member.occupation || undefined,
+        occupation: member.occupation ? String(member.occupation).trim().slice(0, 150) : undefined,
         monthlyIncome: (() => {
           if (member.monthlyIncome === undefined || member.monthlyIncome === null || member.monthlyIncome === '') {
             return undefined;
           }
           const income = Number(member.monthlyIncome);
-          return Number.isFinite(income) ? income : undefined;
+          return Number.isFinite(income) && income >= 0 ? income : undefined;
         })(),
-        educationStatus: member.educationStatus || undefined,
-        healthStatus: member.healthStatus || undefined,
-        healthNotes: member.healthNotes || undefined,
-        notes: member.notes || undefined,
+        educationStatus: member.educationStatus ? String(member.educationStatus).trim().slice(0, 150) : undefined,
+        healthStatus: member.healthStatus ? String(member.healthStatus).trim().slice(0, 80) : undefined,
+        healthNotes: member.healthNotes ? String(member.healthNotes).trim().slice(0, 500) : undefined,
+        notes: member.notes ? String(member.notes).trim().slice(0, 500) : undefined,
         isDependent: Boolean(
           member.isDependent ??
-            (member.relation === 'บุตร' ||
-              member.relation === 'คู่สมรส' ||
-              member.relationship === 'บุตร' ||
-              member.relationship === 'คู่สมรส' ||
+            (rel === 'บุตร' ||
+              rel === 'คู่สมรส' ||
               member.healthStatus === 'disabled' ||
               member.healthStatus === 'chronically_ill'),
         ),
@@ -230,20 +233,32 @@ export function buildHouseholdPayload(input: Record<string, any>): Record<string
     payload.dependentCount = members.filter((member) => member.isDependent).length;
   }
 
+  const hasExplicitIncome = input.monthlyIncome !== undefined || input.totalIncome !== undefined;
   const lineIncome = sumFilled(input.incomeBreakdown, INCOME_LINE_KEYS);
-  const lineExpense = sumFilled(input.expenseBreakdown, EXPENSE_LINE_KEYS);
-  if (lineIncome !== null) {
+  if (hasExplicitIncome) {
+    const raw = input.monthlyIncome !== undefined ? input.monthlyIncome : input.totalIncome;
+    if (raw === null || raw === '') {
+      payload.householdIncome = null;
+    } else {
+      const formatted = money(raw);
+      if (formatted !== undefined) payload.householdIncome = formatted;
+    }
+  } else if (lineIncome !== null) {
     payload.householdIncome = lineIncome.toFixed(2);
-  } else if (input.monthlyIncome !== undefined || input.totalIncome !== undefined) {
-    const raw = input.monthlyIncome ?? input.totalIncome;
-    payload.householdIncome = raw === null || raw === '' ? null : money(raw);
   }
 
-  if (lineExpense !== null) {
+  const hasExplicitExpense = input.monthlyExpense !== undefined || input.totalExpense !== undefined;
+  const lineExpense = sumFilled(input.expenseBreakdown, EXPENSE_LINE_KEYS);
+  if (hasExplicitExpense) {
+    const raw = input.monthlyExpense !== undefined ? input.monthlyExpense : input.totalExpense;
+    if (raw === null || raw === '') {
+      payload.householdExpense = null;
+    } else {
+      const formatted = money(raw);
+      if (formatted !== undefined) payload.householdExpense = formatted;
+    }
+  } else if (lineExpense !== null) {
     payload.householdExpense = lineExpense.toFixed(2);
-  } else if (input.monthlyExpense !== undefined || input.totalExpense !== undefined) {
-    const raw = input.monthlyExpense ?? input.totalExpense;
-    payload.householdExpense = raw === null || raw === '' ? null : money(raw);
   }
 
   if (input.debtAmount !== undefined) {
@@ -258,7 +273,11 @@ export function buildHouseholdPayload(input: Record<string, any>): Record<string
   if (input.debtPurpose !== undefined || input.debtType !== undefined || input.creditorName !== undefined) {
     const debtType = input.debtType || input.hardshipReasons?.debtType || '';
     const creditor =
-      input.creditorName || (input.debtPurpose && input.debtPurpose !== debtType ? input.debtPurpose : '');
+      input.creditorName !== undefined && input.creditorName !== ''
+        ? String(input.creditorName)
+        : input.debtPurpose && input.debtPurpose !== debtType
+          ? String(input.debtPurpose)
+          : '';
     payload.debtPurpose = creditor || input.debtPurpose || debtType || '';
   }
 
@@ -322,16 +341,23 @@ export function buildHouseholdPayload(input: Record<string, any>): Record<string
   return payload;
 }
 
-export function buildIncomeProfilePayload(input: Record<string, any>): Record<string, string> | null {
-  const body: Record<string, string> = {};
+export function buildIncomeProfilePayload(input: Record<string, any>): Record<string, string | null> | null {
+  const body: Record<string, string | null> = {};
   const lineIncome = sumFilled(input.incomeBreakdown, INCOME_LINE_KEYS);
   const lineExpense = sumFilled(input.expenseBreakdown, EXPENSE_LINE_KEYS);
-  const personal = lineIncome !== null ? lineIncome.toFixed(2) : money(input.monthlyIncome);
-  const regular = lineExpense !== null ? lineExpense.toFixed(2) : money(input.monthlyExpense);
-  const debt = input.debtAmount !== undefined ? money(input.debtAmount) : undefined;
-  if (personal !== undefined) body.personalIncome = personal;
-  if (regular !== undefined) body.regularExpense = regular;
-  if (debt !== undefined) body.debtBurden = debt;
+  if (input.monthlyIncome !== undefined) {
+    body.personalIncome = input.monthlyIncome === null || input.monthlyIncome === '' ? null : (money(input.monthlyIncome) ?? null);
+  } else if (lineIncome !== null) {
+    body.personalIncome = lineIncome.toFixed(2);
+  }
+  if (input.monthlyExpense !== undefined) {
+    body.regularExpense = input.monthlyExpense === null || input.monthlyExpense === '' ? null : (money(input.monthlyExpense) ?? null);
+  } else if (lineExpense !== null) {
+    body.regularExpense = lineExpense.toFixed(2);
+  }
+  if (input.debtAmount !== undefined) {
+    body.debtBurden = input.debtAmount === null || input.debtAmount === '' ? null : (money(input.debtAmount) ?? null);
+  }
 
   const housing = clip(input.housingNotes || input.housingCondition, 2000);
   const living = clip(input.livingLimitations || input.disabilityNotes || input.illnessNotes, 2000);
@@ -408,7 +434,18 @@ export interface RegistryFieldDiff {
   material: boolean;
 }
 
-function valuesEqual(
+export function breakdownsEqual(valA: unknown, valB: unknown): boolean {
+  const objA = parseObject(valA) || {};
+  const objB = parseObject(valB) || {};
+  const keys = Array.from(new Set([...Object.keys(objA), ...Object.keys(objB)]));
+  for (const key of keys) {
+    const type = key.endsWith('Notes') ? 'string' : 'number';
+    if (!valuesEqual(objA[key], objB[key], type)) return false;
+  }
+  return true;
+}
+
+export function valuesEqual(
   valA: unknown,
   valB: unknown,
   type: 'string' | 'number' | 'date' | 'phone' | 'nationalId' | 'boolean' = 'string',
@@ -577,6 +614,14 @@ export function diffRegistryFields(
   ];
 
   for (const cfg of scalarConfigs) {
+    if (
+      cfg.field === 'debtPurpose' &&
+      changes.some((c) => c.field === 'creditorName') &&
+      valuesEqual(before.debtPurpose, before.creditorName, 'string') &&
+      valuesEqual(after.debtPurpose, after.creditorName, 'string')
+    ) {
+      continue;
+    }
     const valA = before[cfg.field] !== undefined
       ? before[cfg.field]
       : cfg.altKeys?.map((k) => before[k]).find((v) => v !== undefined);
@@ -673,7 +718,7 @@ export function diffRegistryFields(
         map?: Record<string, string>;
       }> = [
         { prop: 'fullName', label: 'ชื่อ-นามสกุล', type: 'string' },
-        { prop: 'relationship', altProps: ['relation'], label: 'ความสัมพันธ์', type: 'string' },
+        { prop: 'relation', altProps: ['relationship'], label: 'ความสัมพันธ์', type: 'string' },
         { prop: 'age', altProps: ['ageYears'], label: 'อายุ', type: 'number' },
         { prop: 'dateOfBirth', label: 'วันเกิด', type: 'date' },
         { prop: 'occupation', label: 'อาชีพ', type: 'string' },
@@ -771,6 +816,7 @@ export function diffRegistryFields(
       if (
         !valuesEqual(a.agency, b.agency) ||
         !valuesEqual(a.assistanceType, b.assistanceType) ||
+        !valuesEqual(a.format, b.format) ||
         !valuesEqual(a.amountOrItems, b.amountOrItems) ||
         !valuesEqual(a.yearReceived, b.yearReceived) ||
         !valuesEqual(a.notes, b.notes)
@@ -813,7 +859,11 @@ export function diffRegistryFields(
     }
   }
 
-  return changes;
+  return changes.map((c) => ({
+    ...c,
+    field: c.field.slice(0, 80),
+    fieldLabel: c.fieldLabel.slice(0, 120),
+  }));
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -964,6 +1014,10 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
 
 export async function readNestFailure(response: Response, fallback: string): Promise<string> {
   const body = await response.json().catch(() => ({}));
+  if (Array.isArray(body?.details) && body.details.length > 0) {
+    const msgs = body.details.map((d: any) => d?.message).filter((m: any) => typeof m === 'string' && m.trim());
+    if (msgs.length > 0) return msgs.join(', ');
+  }
   const raw = body?.message;
   if (typeof raw === 'string' && raw.trim()) return raw;
   if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0];

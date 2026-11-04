@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AddressType, AsnafDecision } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -138,20 +138,20 @@ export class UpsertHouseholdDto {
   @Min(0)
   memberCount?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงินไม่ถูกต้อง' })
-  householdIncome?: string;
+  householdIncome?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงินไม่ถูกต้อง' })
-  householdExpense?: string;
+  householdExpense?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงินไม่ถูกต้อง' })
-  debtAmount?: string;
+  debtAmount?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -265,17 +265,29 @@ export class UpsertHouseholdDto {
   @IsString()
   certifierInfo?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(({ value }) =>
+    value === null || value === undefined || value === ''
+      ? value === null
+        ? null
+        : undefined
+      : Number(value),
+  )
   @IsNumber()
-  latitude?: number;
+  latitude?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(({ value }) =>
+    value === null || value === undefined || value === ''
+      ? value === null
+        ? null
+        : undefined
+      : Number(value),
+  )
   @IsNumber()
-  longitude?: number;
+  longitude?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()

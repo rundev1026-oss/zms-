@@ -1,13 +1,18 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import type { AsnafDecision, Prisma, RegistryStatus } from '@prisma/client';
 import type { RegistryStatusCode } from '@zms/shared';
+import {
+  allocateAssessmentNumber,
+  buildMemberAssessmentSnapshot,
+  normalizeEligibilityResult,
+} from '../asnaf/assessment-snapshot';
 import { AuditService } from '../audit/audit.service';
+import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
+import { beneficiaryInclude, presentBeneficiary } from '../beneficiaries/beneficiary.presenter';
 import { AppException } from '../common/app.exception';
 import type { AuthUser } from '../common/auth-user';
 import { RequestLock } from '../common/request-lock';
 import { PrismaService } from '../prisma/prisma.service';
-import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
-import { presentBeneficiary, beneficiaryInclude } from '../beneficiaries/beneficiary.presenter';
 import { missingSubmitFields } from './completeness';
 import {
   planTransition,
@@ -110,6 +115,17 @@ export class RegistryWorkflowService {
           );
         }
         const decision = input.decision ?? 'PROPOSED';
+        const now = new Date();
+        const assessmentNumber = await allocateAssessmentNumber(tx as any, now);
+        const memberSnapshot = buildMemberAssessmentSnapshot(row as any, now);
+        const status =
+          decision === 'CONFIRMED'
+            ? 'ELIGIBLE'
+            : decision === 'NOT_CONFIRMED'
+              ? 'NOT_ELIGIBLE'
+              : 'UNDER_REVIEW';
+        const eligibilityResult = normalizeEligibilityResult(status, null);
+
         await tx.beneficiaryAsnafAssessment.create({
           data: {
             beneficiaryId: id,
@@ -117,10 +133,18 @@ export class RegistryWorkflowService {
             rationale: input.rationale,
             supportingInfo: input.supportingInfo ?? null,
             recordedById: actor.id,
-            assessedAt: new Date(),
+            assessedAt: now,
             reviewedById: decision === 'PROPOSED' ? null : actor.id,
             decision,
             reviewerNote: input.reviewerNote ?? null,
+            ...(assessmentNumber
+              ? {
+                  assessmentNumber,
+                  status,
+                  eligibilityResult,
+                }
+              : {}),
+            ...(memberSnapshot ? { memberSnapshot } : {}),
           },
         });
         await this.audit.record(tx, {

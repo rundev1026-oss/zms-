@@ -14,3 +14,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS "beneficiaries_member_id_key" ON "beneficiarie
 
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "beneficiaries_member_id_idx" ON "beneficiaries"("member_id");
+

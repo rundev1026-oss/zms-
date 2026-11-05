@@ -6,15 +6,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const nationalId = (body.nationalId || '').replace(/[^0-9]/g, '');
     const registrationNo = body.registrationNo || undefined;
+    const memberId = body.memberId || undefined;
     const beneficiaryId = body.beneficiaryId || undefined;
 
-    if (!nationalId && !registrationNo && !beneficiaryId) {
+    if (!nationalId && !registrationNo && !memberId && !beneficiaryId) {
       return NextResponse.json(
         {
           success: false,
           found: false,
           canApply: false,
-          error: 'กรุณากรอกเลขประจำตัวประชาชน 13 หลัก หรือเลขทะเบียนให้ถูกต้อง',
+          error: 'กรุณากรอกเลขประจำตัวประชาชน 13 หลัก หรือรหัสสมาชิก (MB-...) ให้ถูกต้อง',
         },
         { status: 400 }
       );
@@ -23,8 +24,9 @@ export async function POST(request: NextRequest) {
     const res = await proxyToNest('/assistance-requests/check-beneficiary', request, {
       method: 'POST',
       body: {
-        nationalId,
+        nationalId: nationalId || undefined,
         registrationNo,
+        memberId,
         beneficiaryId,
       },
     });

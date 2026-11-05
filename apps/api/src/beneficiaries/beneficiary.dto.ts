@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -147,6 +148,41 @@ export class BeneficiarySummaryQueryDto {
   @IsString()
   @MaxLength(100)
   province?: string;
+}
+
+export class CheckDuplicateNationalIdQueryDto {
+  @ApiProperty({ description: 'เลขประจำตัวประชาชน 13 หลัก' })
+  @IsString()
+  @MaxLength(30)
+  nationalId!: string;
+
+  @ApiPropertyOptional({ description: 'UUID สมาชิกที่ต้องการยกเว้นกรณีแก้ไขข้อมูลตนเอง' })
+  @IsOptional()
+  @IsUUID('4')
+  excludeId?: string;
+}
+
+export class DashboardMetricsQueryDto {
+  @ApiPropertyOptional({ description: 'กรองตามรอบการประเมิน เช่น ประจำปี 2569' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  period?: string;
+}
+
+export class UpdateMemberStatusDto {
+  @ApiProperty({ enum: ['ACTIVE', 'PENDING_VERIFICATION', 'SUSPENDED', 'ARCHIVED'] })
+  @IsString()
+  @IsIn(['ACTIVE', 'PENDING_VERIFICATION', 'SUSPENDED', 'ARCHIVED'], {
+    message: 'สถานะสมาชิกไม่ถูกต้อง',
+  })
+  memberStatus!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
 }
 
 export class CreateConsentDto {

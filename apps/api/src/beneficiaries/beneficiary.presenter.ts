@@ -16,13 +16,26 @@ export const beneficiaryInclude = {
     include: { uploadedBy: { select: { displayName: true, email: true } } },
   },
   assessments: {
-    where: { decision: 'CONFIRMED' as const },
-    orderBy: { assessedAt: 'desc' as const },
-    take: 1,
+    orderBy: [{ assessedAt: 'desc' as const }, { createdAt: 'desc' as const }],
+    take: 5,
     include: {
       category: true,
       recordedBy: { select: { displayName: true, email: true } },
       reviewedBy: { select: { displayName: true, email: true } },
+    },
+  },
+  applications: {
+    select: {
+      id: true,
+      status: true,
+      disbursedAmount: true,
+      actualAssistanceValue: true,
+    },
+  },
+  _count: {
+    select: {
+      assessments: true,
+      applications: true,
     },
   },
   createdBy: { select: { displayName: true, email: true } },
@@ -35,10 +48,29 @@ export type BeneficiaryRecord = Prisma.BeneficiaryGetPayload<{
   include: typeof beneficiaryInclude;
 }>;
 
+export interface BeneficiaryLatestAssessmentSummary {
+  id: string;
+  assessmentNumber: string | null;
+  assessmentPeriod: string | null;
+  assessmentType: string;
+  assessmentDate: string;
+  status: string;
+  decision: string;
+  resultCode: string;
+  categoryCode: string;
+  categoryNameTh: string;
+  rationale: string;
+  recommendations: string | null;
+  nextAssessmentDate: string | null;
+  assessorName: string | null;
+  approvedByName: string | null;
+}
+
 export interface BeneficiaryView {
   id: string;
   registryNumber: string;
   memberId: string | null;
+  memberStatus: string;
   status: string;
   title: string | null;
   firstName: string;
@@ -62,6 +94,8 @@ export interface BeneficiaryView {
     recordedByName: string | null;
     reviewedByName: string | null;
   } | null;
+  latestAssessment: BeneficiaryLatestAssessmentSummary | null;
+  assessmentCount: number;
   createdByName: string | null;
   requestCount: number;
   aidTotal?: string;
@@ -83,15 +117,25 @@ export function presentBeneficiary(
   row: BeneficiaryRecord,
   options: { revealIdentity: boolean; revealAid: boolean },
 ): BeneficiaryView {
-  const current = row.addresses.find((address) => address.addressType === 'CURRENT');
-  const registered = row.addresses.find((address) => address.addressType === 'REGISTERED');
+  const addresses = Array.isArray(row.addresses) ? row.addresses : [];
+  const current = addresses.find((address) => address.addressType === 'CURRENT');
+  const registered = addresses.find((address) => address.addressType === 'REGISTERED');
   const place = current ?? registered ?? null;
-  const confirmed = row.assessments[0];
+
+  const assessments = Array.isArray(row.assessments) ? row.assessments : [];
+  const latest = assessments[0];
+  const confirmed = assessments.find((a) => a.decision === 'CONFIRMED') ?? latest;
+
+  const apps = Array.isArray((row as any).applications) ? (row as any).applications : [];
+  const requestCount = (row as any)._count?.applications ?? apps.length;
+  const assessmentCount = (row as any)._count?.assessments ?? assessments.length;
+
   const dateOfBirth = row.dateOfBirth === null ? null : row.dateOfBirth.toISOString().slice(0, 10);
   const view: BeneficiaryView = {
     id: row.id,
     registryNumber: row.registryNumber,
     memberId: row.memberId ?? null,
+    memberStatus: (row as any).memberStatus ?? 'ACTIVE',
     status: row.status,
     title: row.title,
     firstName: row.firstName,
@@ -117,12 +161,38 @@ export function presentBeneficiary(
             nameTh: confirmed.category.nameTh,
             rationale: confirmed.rationale,
             assessedAt: confirmed.assessedAt.toISOString(),
-            recordedByName: confirmed.recordedBy?.displayName || confirmed.recordedBy?.email || null,
-            reviewedByName: confirmed.reviewedBy?.displayName || confirmed.reviewedBy?.email || null,
+            recordedByName:
+              confirmed.recordedBy?.displayName || confirmed.recordedBy?.email || null,
+            reviewedByName:
+              confirmed.reviewedBy?.displayName || confirmed.reviewedBy?.email || null,
           },
+    latestAssessment:
+      latest === undefined
+        ? null
+        : {
+            id: latest.id,
+            assessmentNumber: (latest as any).assessmentNumber ?? null,
+            assessmentPeriod: (latest as any).assessmentPeriod ?? null,
+            assessmentType: (latest as any).assessmentType ?? 'INITIAL',
+            assessmentDate: latest.assessedAt.toISOString(),
+            status: (latest as any).status ?? 'PENDING_ASSESSMENT',
+            decision: latest.decision,
+            resultCode: (latest as any).eligibilityResult ?? 'PENDING',
+            categoryCode: latest.category.code,
+            categoryNameTh: latest.category.nameTh,
+            rationale: latest.rationale,
+            recommendations: (latest as any).recommendations ?? null,
+            nextAssessmentDate:
+              (latest as any).nextAssessmentDate instanceof Date
+                ? (latest as any).nextAssessmentDate.toISOString().slice(0, 10)
+                : (latest as any).nextAssessmentDate ?? null,
+            assessorName: latest.recordedBy?.displayName || latest.recordedBy?.email || null,
+            approvedByName: latest.reviewedBy?.displayName || latest.reviewedBy?.email || null,
+          },
+    assessmentCount,
     createdByName: row.createdBy?.displayName || row.createdBy?.email || null,
-    requestCount: 0,
-    addresses: row.addresses,
+    requestCount,
+    addresses,
     household: row.household
       ? {
           ...row.household,
@@ -161,7 +231,7 @@ export function presentBeneficiary(
     })),
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     deletedById: row.deletedById ?? null,
-    deletedByName: row.deletedBy ? (row.deletedBy.displayName || row.deletedBy.email) : null,
+    deletedByName: row.deletedBy ? row.deletedBy.displayName || row.deletedBy.email : null,
     deletionReason: row.deletionReason ?? null,
     deletionReference: row.deletionReference ?? null,
     deletionStatus: row.deletionStatus ?? false,
@@ -169,7 +239,15 @@ export function presentBeneficiary(
     updatedAt: row.updatedAt.toISOString(),
   };
   if (options.revealAid) {
-    view.aidTotal = '0.00';
+    let totalAid = 0;
+    for (const app of apps) {
+      const st = String(app.status || '').toLowerCase();
+      const val = Number(app.actualAssistanceValue ?? app.disbursedAmount ?? 0);
+      if (Number.isFinite(val) && val > 0 && (st === 'disbursed' || st === 'completed' || Number(app.disbursedAmount || 0) > 0)) {
+        totalAid += val;
+      }
+    }
+    view.aidTotal = totalAid.toFixed(2);
   }
   return view;
 }

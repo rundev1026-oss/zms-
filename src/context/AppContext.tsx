@@ -84,11 +84,14 @@ interface AppContextType {
   // คำร้องขอความช่วยเหลือ
   createAssistanceRequest: (input: {
     beneficiaryId?: string;
+    assessmentId?: string;
     nationalId?: string;
     memberId?: string;
     asnafCategory?: AsnafCategory;
     primaryGroupCode?: string;
     specificFundId?: string;
+    specificFundCode?: string;
+    specificFundName?: string;
     fiscalYear?: string;
     branchId?: string;
     branchName?: string;
@@ -98,12 +101,23 @@ interface AppContextType {
     assistanceTypeDetails?: string;
     urgencyLevel?: any;
     requestedAmount: number;
+    hardshipReasons?: string;
     necessityDetails: string;
     notes?: string;
     coordinator?: any;
     certifier?: any;
+    idempotencyKey?: string;
     documents?: any[];
-  }) => Promise<{ applicationId: string; applicationNo: string } | null>;
+  }) => Promise<{
+    applicationId: string;
+    applicationNo: string;
+    appliedDate?: string;
+    assistanceType?: string;
+    status?: string;
+    requestedAmount?: number;
+    beneficiaryId?: string;
+    raw?: any;
+  } | null>;
   createApplication: (appData: any) => Promise<string | null>;
   updateApplication: (appId: string, appData: any) => Promise<boolean>;
   updateChecklist: (appId: string, checklist: any) => Promise<boolean>;
@@ -276,13 +290,60 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       const authHeaders = getAuthHeaders();
-      // 1. Applications from real database
-      const appRes = await fetch('/api/beneficiaries', { headers: authHeaders, credentials: 'include' });
-      if (appRes.ok) {
-        const appJson = await appRes.json();
-        if (appJson.success) {
-          setApplications(appJson.data);
+      // 1. Assistance Applications from PostgreSQL (/api/assistance-requests) + fallback merge
+      const [pgAppsRes, legacyAppRes] = await Promise.all([
+        fetch('/api/assistance-requests?limit=100', { headers: authHeaders, credentials: 'include' }).catch(() => null),
+        fetch('/api/beneficiaries', { headers: authHeaders, credentials: 'include' }).catch(() => null),
+      ]);
+
+      let pgApps: AssistanceApplication[] = [];
+      if (pgAppsRes && pgAppsRes.ok) {
+        const pgJson = await pgAppsRes.json().catch(() => ({}));
+        const rawList = Array.isArray(pgJson.data)
+          ? pgJson.data
+          : Array.isArray(pgJson.items)
+            ? pgJson.items
+            : [];
+        pgApps = rawList.map((item: any) => ({
+          ...item,
+          fullName: item.fullName || item.beneficiary?.fullName || '',
+          nationalIdMasked: item.nationalIdMasked || item.beneficiary?.identityNumberMasked || '',
+          phone: item.phone || item.beneficiary?.phone || '',
+          address: item.address || '',
+          province: item.province || '',
+          district: item.district || '',
+          community: item.community || '',
+          householdMembers: Array.isArray(item.householdMembers) ? item.householdMembers : [],
+          documents: Array.isArray(item.documents) ? item.documents : [],
+          statusHistory: Array.isArray(item.statusHistory)
+            ? item.statusHistory
+            : Array.isArray(item.history)
+              ? item.history.map((h: any) => ({
+                  status: h.status,
+                  timestamp: h.timestamp,
+                  changedBy: h.changedByName || h.changedBy || 'เจ้าหน้าที่',
+                  notes: h.notes || '',
+                }))
+              : [],
+        }));
+      }
+
+      let legacyApps: AssistanceApplication[] = [];
+      if (legacyAppRes && legacyAppRes.ok) {
+        const appJson = await legacyAppRes.json().catch(() => ({}));
+        if (appJson.success && Array.isArray(appJson.data)) {
+          legacyApps = appJson.data;
         }
+      }
+
+      if (pgApps.length > 0 || legacyApps.length > 0) {
+        const seenIds = new Set(pgApps.map((a) => a.id));
+        const seenAppNos = new Set(pgApps.map((a) => a.applicationNo));
+        const merged = [
+          ...pgApps,
+          ...legacyApps.filter((a) => !seenIds.has(a.id) && !seenAppNos.has(a.applicationNo)),
+        ];
+        setApplications(merged);
       }
 
       // 1.1 Beneficiary Registries from real database
@@ -295,7 +356,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 1.2 Separated Dashboard Stats from real database
-      const statsRes = await fetch('/api/dashboard/stats');
+      const statsRes = await fetch('/api/dashboard/stats', { headers: authHeaders, credentials: 'include' });
       if (statsRes.ok) {
         const statsJson = await statsRes.json();
         if (statsJson.success) {
@@ -898,16 +959,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const cleanId = String(profileData.nationalId || '').replace(/[^0-9]/g, '');
       if (cleanId.length === 13) {
-        const existingRes = await fetch(
-          `/api/registry?search=${encodeURIComponent(cleanId)}&limit=5`,
+        const dupRes = await fetch(
+          `/api/registry/check-duplicate?nationalId=${encodeURIComponent(cleanId)}`,
           { headers: getAuthHeaders(), credentials: 'include' },
         );
-        const existingJson = await existingRes.json().catch(() => ({}));
-        const existingHit = Array.isArray(existingJson.data) ? existingJson.data[0] : null;
-        if (existingRes.ok && existingJson.success && existingHit) {
-          const existingNo = existingHit.registrationNo || existingHit.registryNumber || existingHit.id;
+        const dupJson = await dupRes.json().catch(() => ({}));
+        const existingHit = dupJson?.data?.existingMember;
+        if (dupRes.ok && dupJson.success && dupJson.data?.duplicate && existingHit) {
+          const existingCode = existingHit.memberCode || existingHit.id;
           showToast(
-            `เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว (รหัส ${existingNo}) กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ`,
+            `เลขประจำตัวประชาชนนี้ขึ้นทะเบียนเป็นสมาชิกอยู่แล้ว (รหัสสมาชิก ${existingCode} - ${existingHit.fullName || ''}) กรุณาเปิดข้อมูลสมาชิกเดิมแทนการสร้างซ้ำ`,
             'error',
           );
           return null;
@@ -932,13 +993,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok || !json.success) {
         const conflictHint =
           res.status === 409
-            ? json.error || 'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ'
+            ? json.error || 'เลขประจำตัวประชาชนนี้ขึ้นทะเบียนเป็นสมาชิกอยู่แล้ว กรุณาเปิดข้อมูลสมาชิกเดิมแทนการสร้างซ้ำ'
             : json.error || 'เกิดข้อผิดพลาดในการขึ้นทะเบียน';
         showToast(conflictHint, 'error');
         return null;
       }
 
-      showToast(`ขึ้นทะเบียนผู้มีสิทธิ์รับซะกาตสำเร็จ: เลขทะเบียน ${json.data.registrationNo}`, 'success');
+      const assignedMemberCode = json.data?.memberCode || json.data?.registrationNo;
+      showToast(`ขึ้นทะเบียนสมาชิกผู้มีสิทธิ์รับซะกาตสำเร็จ: รหัสสมาชิก ${assignedMemberCode}`, 'success');
       await refreshData();
       return json.data.beneficiaryId;
     } catch (err: any) {
@@ -1089,11 +1151,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    */
   const createAssistanceRequest = async (input: {
     beneficiaryId?: string;
+    assessmentId?: string;
     nationalId?: string;
     memberId?: string;
     asnafCategory?: AsnafCategory;
     primaryGroupCode?: string;
     specificFundId?: string;
+    specificFundCode?: string;
+    specificFundName?: string;
     fiscalYear?: string;
     branchId?: string;
     branchName?: string;
@@ -1103,16 +1168,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     assistanceTypeDetails?: string;
     urgencyLevel?: any;
     requestedAmount: number;
+    hardshipReasons?: string;
     necessityDetails: string;
     notes?: string;
     coordinator?: any;
     certifier?: any;
+    idempotencyKey?: string;
     documents?: any[];
-  }): Promise<{ applicationId: string; applicationNo: string } | null> => {
+  }): Promise<{
+    applicationId: string;
+    applicationNo: string;
+    appliedDate?: string;
+    assistanceType?: string;
+    status?: string;
+    requestedAmount?: number;
+    beneficiaryId?: string;
+    raw?: any;
+  } | null> => {
     try {
       const res = await fetch('/api/assistance-requests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           ...input,
           memberId: input.memberId || (currentUser.role === 'member' ? currentUser.id : undefined),
@@ -1135,8 +1212,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showToast(`ยื่นคำร้องขอความช่วยเหลือสำเร็จ: เลขคำร้อง ${json.data.applicationNo}`, 'success');
       await refreshData();
       return {
-        applicationId: json.data.applicationId,
+        applicationId: json.data.applicationId || json.data.id,
         applicationNo: json.data.applicationNo,
+        appliedDate: json.data.appliedDate,
+        assistanceType: json.data.assistanceType,
+        status: json.data.status,
+        requestedAmount: json.data.requestedAmount,
+        beneficiaryId: json.data.beneficiaryId,
+        raw: json.data,
       };
     } catch (err: any) {
       showToast(err.message || 'เกิดข้อผิดพลาดในการยื่นคำร้อง', 'error');

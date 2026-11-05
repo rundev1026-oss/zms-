@@ -358,7 +358,7 @@ export class ReportsService {
 
 function sheetRows(views: BeneficiaryView[], revealAid: boolean): string[][] {
   const headers = [
-    'เลขทะเบียน',
+    'รหัสสมาชิก',
     'ชื่อ-นามสกุล',
     'เลขประจำตัว',
     'สถานะ',
@@ -376,7 +376,7 @@ function sheetRows(views: BeneficiaryView[], revealAid: boolean): string[][] {
     headers,
     ...views.map((view) => {
       const values = [
-        view.registryNumber,
+        view.memberId || view.registryNumber,
         formatPersonName({ prefix: view.title, firstName: view.firstName, lastName: view.lastName }),
         view.identityNumber ?? '',
         statusLabel(view.status as RegistryStatusCode),

@@ -17,9 +17,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const rawItems = json.items || json || [];
+    const normalizedItems = (Array.isArray(rawItems) ? rawItems : []).map((log: any) => ({
+      ...log,
+      userName: log.userName || log.actor?.displayName || log.actor?.email || 'ระบบ',
+      description: log.description || (log.metadata ? (typeof log.metadata === 'object' ? JSON.stringify(log.metadata) : String(log.metadata)) : '') || '-',
+      timestamp: log.timestamp || (log.createdAt ? new Date(log.createdAt).toLocaleString('th-TH') : '-'),
+      entityId: log.entityId || log.resourceId || '-',
+      entityType: log.entityType || log.resourceType || 'general',
+      ipAddress: log.ipAddress || '-',
+    }));
+
     return NextResponse.json({
       success: true,
-      data: json.items || json,
+      data: normalizedItems,
       pagination: json.total !== undefined ? {
         total: json.total,
         page: json.page,

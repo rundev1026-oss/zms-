@@ -335,6 +335,8 @@ export interface AssistanceApplication {
   applicationNo: string; // เช่น APP-2569-0012
   registrationNo?: string; // เช่น REG-2569-0001
   beneficiaryId: string;
+  assessmentId?: string | null;
+  periodicAssessment?: LatestAssessmentSummary | null;
   memberId?: string; // รหัสสมาชิกเจ้าของคำร้อง
   fullName: string;
   titlePrefix?: string;
@@ -415,6 +417,16 @@ export interface AssistanceApplication {
 
   householdMembers: HouseholdMember[];
   documents: BeneficiaryDocument[];
+  registryDocuments?: {
+    id: string;
+    name: string;
+    category: string;
+    mimeType?: string;
+    fileSize?: number;
+    status?: string;
+    createdAt?: string;
+    downloadUrl?: string;
+  }[];
   assessment?: BeneficiaryAssessment;
   approvalNotes?: string;
   approvedBy?: string;
@@ -486,6 +498,8 @@ export interface CashFlowDisbursementItem {
   applicationNo?: string;
   registrationNo?: string;
   beneficiaryId: string;
+  assessmentId?: string | null;
+  periodicAssessment?: LatestAssessmentSummary | null;
   beneficiaryName: string;
   nationalId: string;
   asnafCategory: string;
@@ -1256,6 +1270,10 @@ export interface BeneficiaryRegistryItem {
   householdId: string;
   householdNo: string;
   memberId?: string; // รหัสสมาชิกเจ้าของทะเบียน
+  memberCode?: string; // รหัสสมาชิกถาวร เช่น MB-2026-000012
+  memberStatus?: MemberStatusCode | string;
+  latestAssessment?: LatestAssessmentSummary | null;
+  assessmentCount?: number;
   fullName: string;
   titlePrefix?: string;
   firstName?: string;
@@ -1349,6 +1367,8 @@ export interface RegistryChangeItem {
 export interface RegistryEditHistoryItem {
   id: string;
   beneficiaryId: string;
+  assessmentId?: string | null;
+  periodicAssessment?: LatestAssessmentSummary | null;
   editedById: string;
   editedByName: string;
   editedByRole: string;
@@ -1372,6 +1392,27 @@ export interface DashboardSeparatedStats {
   approvedRequests?: number;                  // alias
   completedAssistanceDisbursed: number;       // จำนวนรายการช่วยเหลือที่ดำเนินการเสร็จสิ้น
   completedAssistance?: number;               // alias
+  // 6 Strictly Separated Core Metrics (Master Requirement Section 9)
+  period?: string | null;
+  availablePeriods?: string[];
+  totalMembers?: number;                      // 1. จำนวนสมาชิกทั้งหมด (distinct Beneficiary)
+  pendingAssessments?: number;                // 2. จำนวนรอประเมิน
+  eligibleCount?: number;                     // 3. จำนวนผ่านเกณฑ์
+  ineligibleCount?: number;                   // 4. จำนวนไม่ผ่านเกณฑ์
+  totalAssistanceRequests?: number;           // 5. จำนวนคำร้อง
+  assistedMembersCount?: number;              // 6. จำนวนผู้ได้รับความช่วยเหลือ
+  totalAssessmentRounds?: number;
+  totalDisbursedAmount?: number;
+  separated?: {
+    totalMembers: number;
+    pendingAssessments: number;
+    eligibleCount: number;
+    ineligibleCount: number;
+    totalAssistanceRequests: number;
+    assistedMembersCount: number;
+    totalAssessmentRounds?: number;
+    totalDisbursedAmount?: number;
+  };
 }
 
 // ==========================================
@@ -1414,6 +1455,8 @@ export interface FollowUpRecord {
   planId: string;
   applicationId: string;
   beneficiaryId: string;
+  assessmentId?: string | null;
+  periodicAssessment?: LatestAssessmentSummary | null;
   visitNumber: number;
   followupDate: string;
   visitFormat: FollowUpVisitFormat;
@@ -1450,6 +1493,8 @@ export interface FollowUpPlan {
   applicationNo: string;
   disbursementRef?: string;
   beneficiaryId: string;
+  assessmentId?: string | null;
+  periodicAssessment?: LatestAssessmentSummary | null;
   beneficiaryName: string;
   registrationNo: string;
   nationalId?: string;
@@ -1644,3 +1689,146 @@ export interface VerifiedAidCalculationResult {
   };
 }
 
+
+// ==========================================
+// MASTER REQUIREMENT: ทะเบียนสมาชิกถาวรและการประเมินสิทธิ์เป็นระยะ
+// ==========================================
+
+export type MemberStatusCode = 'ACTIVE' | 'PENDING_VERIFICATION' | 'SUSPENDED' | 'ARCHIVED';
+
+export type AssessmentWorkflowStatusCode =
+  | 'DRAFT'
+  | 'PENDING_ASSESSMENT'
+  | 'UNDER_REVIEW'
+  | 'ELIGIBLE'
+  | 'NOT_ELIGIBLE'
+  | 'RETURNED_FOR_CORRECTION'
+  | 'APPROVED'
+  | 'CLOSED';
+
+export type AssessmentTypeCode = 'INITIAL' | 'PERIODIC' | 'SPECIAL';
+
+export type EligibilityResultCode = 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'PENDING';
+
+export interface LatestAssessmentSummary {
+  id: string;
+  assessmentNumber: string;
+  assessmentDate: string;
+  assessmentPeriod?: string | null;
+  assessmentType?: AssessmentTypeCode | string;
+  asnafCode?: string | null;
+  asnafNameTh?: string | null;
+  eligibilityResult?: EligibilityResultCode | string;
+  status: AssessmentWorkflowStatusCode | string;
+  rationale?: string;
+  recommendations?: string | null;
+  nextAssessmentDate?: string | null;
+  assessorName?: string | null;
+  approvedByName?: string | null;
+  approvedAt?: string | null;
+}
+
+export interface BeneficiaryAssessmentSnapshot {
+  capturedAt: string;
+  memberId: string;
+  beneficiaryId: string;
+  personal: {
+    prefix?: string | null;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    nationalIdMasked?: string | null;
+    birthDate?: string | null;
+    gender?: string | null;
+    maritalStatus?: string | null;
+    phone?: string | null;
+    occupation?: string | null;
+    educationLevel?: string | null;
+  };
+  address?: {
+    line1?: string | null;
+    villageOrMoo?: string | null;
+    community?: string | null;
+    subdistrict?: string | null;
+    district?: string | null;
+    province?: string | null;
+    postalCode?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    placeName?: string | null;
+  } | null;
+  household?: {
+    housingOwnership?: string | null;
+    housingCondition?: string | null;
+    housingConditionNotes?: string | null;
+    landDocumentType?: string | null;
+    memberCount: number;
+    members: {
+      fullName: string;
+      relationship?: string | null;
+      ageYears?: number | null;
+      occupation?: string | null;
+      monthlyIncome?: number | null;
+      healthStatus?: string | null;
+    }[];
+  } | null;
+  economy?: {
+    monthlyIncome: number;
+    monthlyExpense: number;
+    netMonthly: number;
+    totalDebt: number;
+    debtMonthlyPayment?: number | null;
+    debtSource?: string | null;
+    creditorName?: string | null;
+    debtPurpose?: string | null;
+    incomeBreakdown?: Record<string, any> | null;
+    expenseBreakdown?: Record<string, any> | null;
+  } | null;
+  currentCondition?: {
+    vulnerabilityFlags?: string[];
+    livingLimitations?: string | null;
+    disabilityNotes?: string | null;
+    chronicIllnessNotes?: string | null;
+    familySituationNotes?: string | null;
+    urgentNeedsNotes?: string | null;
+    dependentCareBurdenNotes?: string | null;
+  } | null;
+  coordinatorAndCertifier?: {
+    coordinatorName?: string | null;
+    coordinatorPhone?: string | null;
+    coordinatorRelation?: string | null;
+    certifierName?: string | null;
+    certifierPosition?: string | null;
+    certifierPhone?: string | null;
+  } | null;
+}
+
+export interface BeneficiaryPeriodicAssessment {
+  id: string;
+  beneficiaryId: string;
+  memberId?: string;
+  assessmentNumber: string;
+  assessmentDate: string;
+  assessmentPeriod?: string | null;
+  assessmentType: AssessmentTypeCode | string;
+  assessmentDetails?: string | null;
+  asnafCategoryId?: string;
+  asnafCode: string;
+  asnafNameTh: string;
+  eligibilityResult: EligibilityResultCode | string;
+  status: AssessmentWorkflowStatusCode | string;
+  decision?: string;
+  rationale: string;
+  recommendations?: string | null;
+  nextAssessmentDate?: string | null;
+  checklist?: EvaluatorChecklist | Record<string, any> | null;
+  memberSnapshot?: BeneficiaryAssessmentSnapshot | Record<string, any> | null;
+  assessedById?: string;
+  assessorName?: string;
+  reviewedById?: string | null;
+  approvedByName?: string | null;
+  approvedAt?: string | null;
+  linkedRequestCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}

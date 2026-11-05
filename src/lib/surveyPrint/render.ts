@@ -158,7 +158,7 @@ export function renderSurveyHtml(model: SurveyPrintModel): string {
 <html lang="th">
 <head>
   <meta charset="utf-8" />
-  <title>แบบสำรวจ ${esc(model.registryNumber)}</title>
+  <title>แบบสำรวจ ${esc(model.memberId || model.registryNumber)}</title>
   <style>
     ${embeddedFonts()}
     @page { size: A4 portrait; margin: 16mm 12mm 16mm 12mm; }
@@ -232,10 +232,10 @@ export function renderSurveyHtml(model: SurveyPrintModel): string {
 <body>
   <div class="running-header">
     <span>แบบสำรวจเพื่อพิจารณาความช่วยเหลือ</span>
-    <span>${esc(model.registryNumber)} · ${esc(model.fullName)}</span>
+    <span>รหัสสมาชิก ${esc(model.memberId || model.registryNumber)} · ${esc(model.fullName)}</span>
   </div>
   <div class="running-footer">
-    <span>${esc(model.registryNumber)}</span>
+    <span>รหัสสมาชิก ${esc(model.memberId || model.registryNumber)}</span>
     <span>พิมพ์เมื่อ ${esc(model.printedAt)} · ผู้พิมพ์ ${esc(model.printedBy)}</span>
     <span>หน้า <span class="page-no"></span></span>
   </div>
@@ -256,7 +256,7 @@ export function renderSurveyHtml(model: SurveyPrintModel): string {
     <div class="doc-title">แบบสำรวจเพื่อพิจารณาความช่วยเหลือ</div>
     <table class="meta">
       <tr>
-        <td>รหัสทะเบียน<br/><strong>${esc(model.registryNumber)}</strong></td>
+        <td>รหัสสมาชิก<br/><strong>${esc(model.memberId || model.registryNumber)}</strong></td>
         <td>วันที่ขึ้นทะเบียน<br/>${show(model.registeredAt)}</td>
         <td>สถานะทะเบียน<br/>${esc(model.statusLabel)}</td>
       </tr>

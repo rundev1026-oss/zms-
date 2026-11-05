@@ -228,6 +228,7 @@ model Beneficiary {
   legacyId                 String?        @unique @map("legacy_id")
   registryNumber           String         @unique @map("registry_number")
   memberId                 String?        @unique @map("member_id")
+  memberStatus             String         @default("ACTIVE") @map("member_status")
   status                   RegistryStatus @default(DRAFT)
   title                    String?
   firstName                String         @map("first_name")
@@ -275,6 +276,7 @@ model Beneficiary {
   @@index([phone])
   @@index([identityNumberNormalized])
   @@index([memberId])
+  @@index([memberStatus])
   @@map("beneficiaries")
 }
 
@@ -429,27 +431,43 @@ model AsnafCategory {
 
 /// Append-only assessment history. The latest CONFIRMED row is the category to display.
 model BeneficiaryAsnafAssessment {
-  id             String        @id @default(uuid()) @db.Uuid
-  beneficiaryId  String        @map("beneficiary_id") @db.Uuid
-  categoryId     String        @map("category_id") @db.Uuid
-  rationale      String
-  supportingInfo String?       @map("supporting_info")
-  recordedById   String?       @map("recorded_by_id") @db.Uuid
-  assessedAt     DateTime      @map("assessed_at") @db.Timestamptz(6)
-  reviewedById   String?       @map("reviewed_by_id") @db.Uuid
-  decision       AsnafDecision @default(PROPOSED)
-  reviewerNote   String?       @map("reviewer_note")
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String        @id @default(uuid()) @db.Uuid
+  assessmentNumber   String?       @unique @map("assessment_number")
+  beneficiaryId      String        @map("beneficiary_id") @db.Uuid
+  categoryId         String        @map("category_id") @db.Uuid
+  assessmentPeriod   String?       @map("assessment_period")
+  assessmentType     String        @default("INITIAL") @map("assessment_type")
+  assessmentDetails  String?       @map("assessment_details")
+  eligibilityResult  String?       @map("eligibility_result")
+  rationale          String
+  recommendations    String?
+  supportingInfo     String?       @map("supporting_info")
+  nextAssessmentDate DateTime?     @map("next_assessment_date") @db.Date
+  status             String        @default("PENDING_ASSESSMENT")
+  recordedById       String?       @map("recorded_by_id") @db.Uuid
+  assessedAt         DateTime      @map("assessed_at") @db.Timestamptz(6)
+  reviewedById       String?       @map("reviewed_by_id") @db.Uuid
+  approvedAt         DateTime?     @map("approved_at") @db.Timestamptz(6)
+  decision           AsnafDecision @default(PROPOSED)
+  reviewerNote       String?       @map("reviewer_note")
+  checklist          Json?
+  memberSnapshot     Json?         @map("member_snapshot")
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  beneficiary Beneficiary   @relation(fields: [beneficiaryId], references: [id], onDelete: Restrict)
-  category    AsnafCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  recordedBy  User?         @relation("AssessmentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
-  reviewedBy  User?         @relation("AssessmentReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  beneficiary  Beneficiary             @relation(fields: [beneficiaryId], references: [id], onDelete: Restrict)
+  category     AsnafCategory           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  recordedBy   User?                   @relation("AssessmentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  reviewedBy   User?                   @relation("AssessmentReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  applications AssistanceApplication[]
 
   @@index([beneficiaryId, decision])
   @@index([beneficiaryId, assessedAt])
   @@index([categoryId])
+  @@index([status])
+  @@index([eligibilityResult])
+  @@index([assessmentPeriod])
+  @@index([nextAssessmentDate])
   @@map("beneficiary_asnaf_assessments")
 }
 
@@ -552,6 +570,14 @@ model MemberCounter {
   lastValue Int @default(0) @map("last_value")
 
   @@map("member_counters")
+}
+
+/// Allocates ASM-YYYY-###### without accepting a number from the client.
+model AssessmentCounter {
+  year      Int @id
+  lastValue Int @default(0) @map("last_value")
+
+  @@map("assessment_counters")
 }
 
 model PasswordResetToken {
@@ -677,6 +703,7 @@ model AssistanceApplication {
   legacyId                 String?   @unique @map("legacy_id")
   applicationNo            String    @unique @map("application_no")
   beneficiaryId            String    @map("beneficiary_id") @db.Uuid
+  assessmentId             String?   @map("assessment_id") @db.Uuid
   asnafCategory            String    @map("asnaf_category")
   requestedAmount          Decimal   @map("requested_amount") @db.Decimal(18, 2)
   approvedAmount           Decimal?  @map("approved_amount") @db.Decimal(18, 2)
@@ -726,10 +753,12 @@ model AssistanceApplication {
   approvedSpecificFundId   String?   @map("approved_specific_fund_id")
   classificationSnapshot   String?   @map("classification_snapshot")
   fiscalYear               String?   @default("2569") @map("fiscal_year")
+  createdById              String?   @map("created_by_id")
   createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   beneficiary              Beneficiary                    @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  assessment               BeneficiaryAsnafAssessment?    @relation(fields: [assessmentId], references: [id], onDelete: Restrict)
   documents                ApplicationDocument[]
   history                  ApplicationHistory[]
   legacyAssessment         BeneficiaryAssessmentLegacy?
@@ -742,6 +771,7 @@ model AssistanceApplication {
   disbursementItems        CashFlowDisbursementItem[]
 
   @@index([beneficiaryId])
+  @@index([assessmentId])
   @@index([status])
   @@index([urgencyLevel])
   @@index([applicationNo])

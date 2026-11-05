@@ -1,51 +1,51 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { 
   LayoutDashboard, 
   Users, 
-  UserPlus, 
   FileCheck2, 
   CheckCircle2, 
   Wallet, 
   ArrowUpRight, 
   Calculator, 
-  Receipt, 
   Clock, 
   BarChart3, 
-  ShieldAlert,
-  HelpCircle,
-  FileSpreadsheet,
-  LogOut,
+  Settings, 
+  ShieldCheck, 
+  ChevronRight, 
+  ChevronDown,
+  ClipboardCheck, 
+  Landmark, 
+  Database,
   Building2,
-  Settings,
-  ShieldCheck,
-  ChevronRight,
-  ClipboardCheck,
-  Landmark,
-  X
+  HeartHandshake,
+  FileText,
+  Bookmark,
+  Sliders,
+  LogOut,
+  X 
 } from 'lucide-react';
-
-interface SidebarItem {
-  id: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
-  badgeColor?: string;
-  allowedRoles: string[];
-}
-
-interface SidebarGroup {
-  title: string;
-  items: SidebarItem[];
-}
 
 interface SidebarProps {
   currentView: string;
   onNavigate: (view: string) => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
+}
+
+interface SubMenuItem {
+  id: string;
+  aliases?: string[];
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  allowedRoles: string[];
+}
+
+interface SubMenuGroup {
+  title: string;
+  items: SubMenuItem[];
 }
 
 export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }: SidebarProps) {
@@ -55,139 +55,185 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
   const pendingDisbursements = applications.filter((a) => a.status === 'wait_disbursement').length;
   const pendingDocReviews = applications.filter((a) => a.status === 'doc_review').length;
 
-  // Structure strictly mandated by Section 1 of the Prompt:
-  // กลุ่มที่ 1: ระบบงานหลัก
-  // 1. Dashboard (ภาพรวมระบบ)
-  // 2. ขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต
-  // 3. ยื่นคำร้องขอความช่วยเหลือ
-  // 4. ตรวจสอบ & ประเมินสิทธิ์
-  // 5. พิจารณาอนุมัติคำร้อง
-  // 6. บันทึกการช่วยเหลือ
-  // 7. ตรวจสอบและติดตามผล
-  // 8. การเงินและบัญชี
-  // 9. รายงาน
-  //
-  // กลุ่มที่ 2: ระบบงานและเครื่องมือสนับสนุน
-  // 1. จัดการผู้ใช้งาน
-  // 2. สาขาและแผนกองค์กร
-  // 3. คำนวณซะกาต 5 หมวด
-  // 4. รับบริจาค / จ่ายซะกาต
-  // 5. บันทึกประวัติการทำงาน (Audit)
-  // 6. การตั้งค่าระบบ & สำรองข้อมูล
-  const navGroups: SidebarGroup[] = [
+  const adminViewsList = [
+    'admin-center',
+    'admin-users',
+    'users',
+    'admin-roles',
+    'roles-permissions',
+    'admin-org',
+    'branches-depts',
+    'admin-models',
+    'assistance-models',
+    'admin-types',
+    'assistance-types',
+    'admin-asnaf',
+    'asnaf-categories',
+    'admin-settings',
+    'settings',
+  ];
+
+  const isAdminView = adminViewsList.includes(currentView);
+  const [isAdminExpanded, setIsAdminExpanded] = useState<boolean>(true);
+
+  // Auto-expand admin menu when currently viewing any admin section
+  useEffect(() => {
+    if (isAdminView) {
+      setIsAdminExpanded(true);
+    }
+  }, [isAdminView]);
+
+  // CANONICAL MENU STRUCTURE (Strict Specification)
+  // กลุ่มที่ 1: ระบบงานหลัก (Main Operations) - 9 รายการ
+  const mainOperationsItems = [
     {
-      title: 'กลุ่มที่ 1: ระบบงานหลัก',
+      id: 'dashboard',
+      label: 'Dashboard (ภาพรวมระบบ)',
+      icon: LayoutDashboard,
+      allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance', 'member'],
+    },
+    {
+      id: 'beneficiaries',
+      label: 'ขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต',
+      icon: Users,
+      badge: registries.length.toString(),
+      badgeColor: 'bg-teal-100 text-teal-800',
+      allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance', 'member'],
+    },
+    {
+      id: 'assistance-requests',
+      label: 'ยื่นคำร้องขอความช่วยเหลือ',
+      icon: FileCheck2,
+      badge: applications.length.toString(),
+      badgeColor: 'bg-sky-100 text-sky-800',
+      allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance', 'member'],
+    },
+    {
+      id: 'assessment',
+      label: 'ตรวจสอบ & ประเมินสิทธิ์',
+      icon: FileCheck2,
+      badge: pendingDocReviews > 0 ? pendingDocReviews.toString() : undefined,
+      badgeColor: 'bg-amber-100 text-amber-800',
+      allowedRoles: ['super_admin', 'officer', 'approver'],
+    },
+    {
+      id: 'approvals',
+      label: 'พิจารณาอนุมัติคำร้อง',
+      icon: CheckCircle2,
+      badge: pendingApprovals > 0 ? pendingApprovals.toString() : undefined,
+      badgeColor: 'bg-rose-100 text-rose-800',
+      allowedRoles: ['super_admin', 'executive', 'approver'],
+    },
+    {
+      id: 'disbursements',
+      label: 'บันทึกการช่วยเหลือ',
+      icon: Wallet,
+      badge: pendingDisbursements > 0 ? pendingDisbursements.toString() : undefined,
+      badgeColor: 'bg-emerald-100 text-emerald-800',
+      allowedRoles: ['super_admin', 'executive', 'finance', 'officer'],
+    },
+    {
+      id: 'follow-up',
+      label: 'ตรวจสอบและติดตามผล',
+      icon: ClipboardCheck,
+      badge: followUpBadgeCount > 0 ? followUpBadgeCount.toString() : undefined,
+      badgeColor: 'bg-amber-100 text-amber-800',
+      allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance'],
+    },
+    {
+      id: 'finance',
+      label: 'การเงินและบัญชี',
+      icon: Landmark,
+      allowedRoles: ['super_admin', 'executive', 'finance', 'officer'],
+    },
+    {
+      id: 'officer-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance'],
+    },
+  ];
+
+  // 2.1 การตั้งค่าและบริหารระบบ - เมนูย่อย 2 กลุ่ม
+  const adminSubGroups: SubMenuGroup[] = [
+    {
+      title: 'A. การบริหารระบบ',
       items: [
         {
-          id: 'dashboard',
-          label: 'Dashboard (ภาพรวมระบบ)',
-          icon: LayoutDashboard,
-          allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance', 'member'],
-        },
-        {
-          id: 'beneficiaries',
-          label: 'ขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต',
+          id: 'admin-users',
+          aliases: ['users'],
+          label: 'จัดการผู้ใช้งาน',
           icon: Users,
-          badge: registries.length.toString(),
-          badgeColor: 'bg-teal-100 text-teal-800',
-          allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance', 'member'],
+          allowedRoles: ['super_admin', 'executive', 'admin'],
         },
         {
-          id: 'assistance-requests',
-          label: 'ยื่นคำร้องขอความช่วยเหลือ',
-          icon: FileCheck2,
-          badge: applications.length.toString(),
-          badgeColor: 'bg-sky-100 text-sky-800',
-          allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance', 'member'],
+          id: 'admin-roles',
+          aliases: ['roles', 'roles-permissions'],
+          label: 'บทบาทและสิทธิ์การเข้าถึง',
+          icon: ShieldCheck,
+          allowedRoles: ['super_admin'],
         },
         {
-          id: 'assessment',
-          label: 'ตรวจสอบ & ประเมินสิทธิ์',
-          icon: FileCheck2,
-          badge: pendingDocReviews > 0 ? pendingDocReviews.toString() : undefined,
-          badgeColor: 'bg-amber-100 text-amber-800',
-          allowedRoles: ['super_admin', 'officer', 'approver'],
-        },
-        {
-          id: 'approvals',
-          label: 'พิจารณาอนุมัติคำร้อง',
-          icon: CheckCircle2,
-          badge: pendingApprovals > 0 ? pendingApprovals.toString() : undefined,
-          badgeColor: 'bg-rose-100 text-rose-800',
-          allowedRoles: ['super_admin', 'executive', 'approver'],
-        },
-        {
-          id: 'disbursements',
-          label: 'บันทึกการช่วยเหลือ',
-          icon: Wallet,
-          badge: pendingDisbursements > 0 ? pendingDisbursements.toString() : undefined,
-          badgeColor: 'bg-emerald-100 text-emerald-800',
-          allowedRoles: ['super_admin', 'executive', 'finance', 'officer'],
-        },
-        {
-          id: 'follow-up',
-          label: 'ตรวจสอบและติดตามผล',
-          icon: ClipboardCheck,
-          badge: followUpBadgeCount > 0 ? followUpBadgeCount.toString() : undefined,
-          badgeColor: 'bg-amber-100 text-amber-800',
-          allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance'],
-        },
-        {
-          id: 'finance',
-          label: 'การเงินและบัญชี',
-          icon: Landmark,
-          allowedRoles: ['super_admin', 'executive', 'finance', 'officer'],
-        },
-        {
-          id: 'officer-reports',
-          label: 'รายงาน',
-          icon: BarChart3,
-          allowedRoles: ['super_admin', 'executive', 'officer', 'approver', 'finance'],
+          id: 'admin-org',
+          aliases: ['org', 'branches-depts'],
+          label: 'โครงสร้างองค์กรและหน่วยงาน',
+          icon: Building2,
+          allowedRoles: ['super_admin', 'executive', 'admin'],
         },
       ],
     },
     {
-      title: 'กลุ่มที่ 2: ระบบงานและเครื่องมือสนับสนุน',
+      title: 'B. การตั้งค่าข้อมูลพื้นฐาน',
       items: [
         {
-          id: 'users',
-          label: 'จัดการผู้ใช้งาน',
-          icon: ShieldAlert,
-          allowedRoles: ['super_admin'],
+          id: 'admin-models',
+          aliases: ['models', 'assistance-models'],
+          label: 'รูปแบบการช่วยเหลือ',
+          icon: HeartHandshake,
+          allowedRoles: ['super_admin', 'executive', 'admin'],
         },
         {
-          id: 'branches-depts',
-          label: 'สาขาและแผนกองค์กร',
-          icon: Building2,
-          allowedRoles: ['super_admin', 'executive'],
+          id: 'admin-types',
+          aliases: ['types', 'assistance-types'],
+          label: 'ประเภทความช่วยเหลือ',
+          icon: FileText,
+          allowedRoles: ['super_admin', 'executive', 'admin'],
         },
         {
-          id: 'calculator',
-          label: 'คำนวณซะกาต 5 หมวด',
-          icon: Calculator,
-          allowedRoles: ['super_admin', 'finance', 'officer', 'member'],
+          id: 'admin-asnaf',
+          aliases: ['asnaf', 'asnaf-categories'],
+          label: 'หมวดหมู่ผู้มีสิทธิ์รับซะกาต (อัสนัฟ)',
+          icon: Bookmark,
+          allowedRoles: ['super_admin', 'executive', 'admin'],
         },
         {
-          id: 'payment',
-          label: 'รับบริจาค / จ่ายซะกาต',
-          icon: ArrowUpRight,
-          allowedRoles: ['super_admin', 'finance', 'officer'],
-        },
-        {
-          id: 'audit-logs',
-          label: 'บันทึกประวัติการทำงาน (Audit)',
-          icon: Clock,
-          allowedRoles: ['super_admin', 'executive'],
-        },
-        {
-          id: 'settings',
-          label: 'การตั้งค่าระบบ & สำรองข้อมูล',
-          icon: Settings,
+          id: 'admin-settings',
+          aliases: ['settings', 'general', 'general-settings'],
+          label: 'การตั้งค่าทั่วไป',
+          icon: Sliders,
           allowedRoles: ['super_admin'],
         },
       ],
     },
   ];
+
+  // Check if current user has permission for any admin sub-item
+  const allowedAdminSubGroups = adminSubGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => item.allowedRoles.includes(currentUser.role)),
+  })).filter(group => group.items.length > 0);
+
+  const canAccessAdmin = allowedAdminSubGroups.length > 0;
+
+  // Filter Group 1 items by user role
+  const visibleMainItems = mainOperationsItems.filter((item) =>
+    item.allowedRoles.includes(currentUser.role)
+  );
+
+  const handleNavigate = (view: string) => {
+    onNavigate(view);
+    if (onCloseMobile) onCloseMobile();
+  };
 
   return (
     <>
@@ -206,7 +252,7 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
           isMobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
         }`}
       >
-        {/* Mobile Drawer Header with Close Button (44x44px touch area) */}
+        {/* Mobile Drawer Header with Close Button */}
         <div className="md:hidden p-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-[#0b2545] text-amber-300 font-bold flex items-center justify-center text-xs">
@@ -226,67 +272,239 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
           </button>
         </div>
 
-        {/* Sidebar Content (Scrollable with touch momentum) */}
-        <div className="flex-1 px-3 py-4 space-y-5 overflow-y-auto touch-scroll">
-          {navGroups.map((group, idx) => {
-            // Role-based authorization filter: only show menu items allowed for current user role
-            const visibleItems = group.items.filter((item) =>
-              item.allowedRoles.includes(currentUser.role)
-            );
+        {/* Sidebar Content (Scrollable) */}
+        <div className="flex-1 px-3 py-4 space-y-6 overflow-y-auto touch-scroll">
+          {/* ============================================================ */}
+          {/* กลุ่มที่ 1: ระบบงานหลัก (Main Operations) - 9 รายการ */}
+          {/* ============================================================ */}
+          <div className="space-y-1">
+            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              กลุ่มที่ 1: ระบบงานหลัก
+            </div>
 
-            if (visibleItems.length === 0) return null;
+            <div className="space-y-0.5 pt-0.5">
+              {visibleMainItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentView === item.id;
 
-            return (
-              <div key={idx} className="space-y-1">
-                <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {group.title}
-                </div>
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavigate(item.id)}
+                    className={`w-full min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
+                      isActive
+                        ? 'bg-[#0b2545] text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 truncate">
+                      <Icon
+                        className={`w-4 h-4 shrink-0 transition-colors ${
+                          isActive ? 'text-amber-300' : 'text-slate-400 group-hover:text-teal-700'
+                        }`}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </div>
 
-                <div className="space-y-0.5 pt-0.5">
-                  {visibleItems.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = currentView === item.id;
-
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          onNavigate(item.id);
-                          if (onCloseMobile) onCloseMobile();
-                        }}
-                        className={`w-full min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
+                    {item.badge && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                           isActive
-                            ? 'bg-[#0b2545] text-white shadow-xs font-bold'
-                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                            ? 'bg-white/20 text-white'
+                            : item.badgeColor || 'bg-slate-100 text-slate-700'
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 truncate">
-                          <Icon
-                            className={`w-4 h-4 shrink-0 transition-colors ${
-                              isActive ? 'text-amber-300' : 'text-slate-400 group-hover:text-teal-700'
-                            }`}
-                          />
-                          <span className="truncate">{item.label}</span>
-                        </div>
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-                        {item.badge && (
-                          <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                              isActive
-                                ? 'bg-white/20 text-white'
-                                : item.badgeColor || 'bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            {item.badge}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+          {/* ============================================================ */}
+          {/* กลุ่มที่ 2: ระบบงานและเครื่องมือสนับสนุน (System & Support Tools) */}
+          {/* ============================================================ */}
+          <div className="space-y-1">
+            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              กลุ่มที่ 2: ระบบงานและเครื่องมือสนับสนุน
+            </div>
+
+            <div className="space-y-1 pt-0.5">
+              {/* 2.1 การตั้งค่าและบริหารระบบ (Parent with Expandable/Collapsible Sub-menu) */}
+              {canAccessAdmin && (
+                <div className="space-y-1">
+                  <div
+                    className={`w-full min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all select-none ${
+                      isAdminView
+                        ? 'bg-[#0b2545] text-white shadow-xs font-bold'
+                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    {/* Click title to open Admin Hub */}
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate('admin-center')}
+                      className="flex-1 flex items-center gap-2.5 text-left truncate"
+                    >
+                      <Settings
+                        className={`w-4 h-4 shrink-0 transition-colors ${
+                          isAdminView ? 'text-amber-300' : 'text-slate-400'
+                        }`}
+                      />
+                      <span className="truncate">การตั้งค่าและบริหารระบบ</span>
+                    </button>
+
+                    {/* Toggle Chevron for Expand/Collapse */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsAdminExpanded(!isAdminExpanded);
+                      }}
+                      className="p-1 rounded-lg hover:bg-white/20 transition-colors text-inherit ml-1 shrink-0"
+                      aria-label={isAdminExpanded ? 'ยุบเมนูย่อย' : 'ขยายเมนูย่อย'}
+                      title={isAdminExpanded ? 'ยุบเมนูย่อย' : 'ขยายเมนูย่อย'}
+                    >
+                      {isAdminExpanded ? (
+                        <ChevronDown className="w-4 h-4 text-inherit" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-inherit" />
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Sub-menu groups & items (Indented & Collapsible) */}
+                  {isAdminExpanded && (
+                    <div className="pl-3 pr-1 pt-1 pb-2 space-y-3 border-l-2 border-slate-200 ml-4 animate-fadeIn">
+                      {allowedAdminSubGroups.map((group, gIdx) => (
+                        <div key={gIdx} className="space-y-1">
+                          {/* Sub-Group Header */}
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-0.5">
+                            {group.title}
+                          </div>
+
+                          {/* Sub-Group Items */}
+                          <div className="space-y-0.5">
+                            {group.items.map((subItem) => {
+                              const SubIcon = subItem.icon;
+                              const isSubActive =
+                                currentView === subItem.id ||
+                                (subItem.aliases && subItem.aliases.includes(currentView));
+
+                              return (
+                                <button
+                                  key={subItem.id}
+                                  onClick={() => handleNavigate(subItem.id)}
+                                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all text-left ${
+                                    isSubActive
+                                      ? 'bg-teal-50 text-teal-900 font-bold border border-teal-200/80 shadow-2xs'
+                                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                  }`}
+                                >
+                                  <SubIcon
+                                    className={`w-3.5 h-3.5 shrink-0 ${
+                                      isSubActive ? 'text-teal-700' : 'text-slate-400'
+                                    }`}
+                                  />
+                                  <span className="truncate">{subItem.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
+              )}
+
+              {/* 2.2 คำนวณซะกาต 5 หมวด */}
+              {['super_admin', 'finance', 'officer', 'member', 'executive'].includes(currentUser.role) && (
+                <button
+                  onClick={() => handleNavigate('calculator')}
+                  className={`w-full min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
+                    currentView === 'calculator'
+                      ? 'bg-[#0b2545] text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Calculator
+                      className={`w-4 h-4 shrink-0 transition-colors ${
+                        currentView === 'calculator' ? 'text-amber-300' : 'text-slate-400 group-hover:text-teal-700'
+                      }`}
+                    />
+                    <span className="truncate">คำนวณซะกาต 5 หมวด</span>
+                  </div>
+                </button>
+              )}
+
+              {/* 2.3 รับบริจาค / จ่ายซะกาต */}
+              {['super_admin', 'finance', 'officer', 'executive'].includes(currentUser.role) && (
+                <button
+                  onClick={() => handleNavigate('payment')}
+                  className={`w-full min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
+                    currentView === 'payment'
+                      ? 'bg-[#0b2545] text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <ArrowUpRight
+                      className={`w-4 h-4 shrink-0 transition-colors ${
+                        currentView === 'payment' ? 'text-amber-300' : 'text-slate-400 group-hover:text-teal-700'
+                      }`}
+                    />
+                    <span className="truncate">รับบริจาค / จ่ายซะกาต</span>
+                  </div>
+                </button>
+              )}
+
+              {/* 2.4 บันทึกประวัติการทำงาน (Audit) */}
+              {['super_admin', 'executive'].includes(currentUser.role) && (
+                <button
+                  onClick={() => handleNavigate('audit-logs')}
+                  className={`w-full min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
+                    currentView === 'audit-logs'
+                      ? 'bg-[#0b2545] text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Clock
+                      className={`w-4 h-4 shrink-0 transition-colors ${
+                        currentView === 'audit-logs' ? 'text-amber-300' : 'text-slate-400 group-hover:text-teal-700'
+                      }`}
+                    />
+                    <span className="truncate">บันทึกประวัติการทำงาน (Audit)</span>
+                  </div>
+                </button>
+              )}
+
+              {/* 2.5 สำรองข้อมูล (Backup) */}
+              {['super_admin', 'executive'].includes(currentUser.role) && (
+                <button
+                  onClick={() => handleNavigate('backup')}
+                  className={`w-full min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
+                    currentView === 'backup'
+                      ? 'bg-[#0b2545] text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Database
+                      className={`w-4 h-4 shrink-0 transition-colors ${
+                        currentView === 'backup' ? 'text-amber-300' : 'text-slate-400 group-hover:text-teal-700'
+                      }`}
+                    />
+                    <span className="truncate">สำรองข้อมูล</span>
+                  </div>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Footer Info Box */}

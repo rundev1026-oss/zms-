@@ -138,6 +138,8 @@ function draftRow(status: string) {
   return {
     id: '11111111-1111-4111-8111-111111111111',
     registryNumber: 'ZMS-2026-000001',
+    memberId: 'MB-2026-000001',
+    memberStatus: 'ACTIVE',
     status,
     title: null,
     firstName: 'สมมติ',
@@ -157,5 +159,10 @@ function draftRow(status: string) {
     updatedById: null,
     addresses: [],
     assessments: [],
+    applications: [],
+    _count: {
+      assessments: 0,
+      applications: 0,
+    },
   };
 }

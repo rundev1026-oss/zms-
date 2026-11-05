@@ -1,14 +1,14 @@
 import { HttpException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { completedAgeYears } from './beneficiary-fields';
-import { CreateBeneficiaryDto } from './beneficiary.dto';
-import { isValidThaiNationalId } from './identity';
-import { maskIdentityNumber } from './mask-identity';
-import { buildBeneficiaryWhere, summaryFilters, toStatusSummary } from './beneficiary-query';
-import { presentBeneficiary, type BeneficiaryRecord } from './beneficiary.presenter';
 import { AssessmentDto } from '../common/request.dto';
 import { toErrorBody } from '../common/error-body';
+import { completedAgeYears } from './beneficiary-fields';
+import { CreateBeneficiaryDto } from './beneficiary.dto';
+import { buildBeneficiaryWhere, summaryFilters, toStatusSummary } from './beneficiary-query';
+import { presentBeneficiary, type BeneficiaryRecord } from './beneficiary.presenter';
+import { isValidThaiNationalId } from './identity';
+import { maskIdentityNumber } from './mask-identity';
 
 describe('beneficiary rules', () => {
   it('accepts a synthetic Thai national id checksum and rejects a bad one', () => {
@@ -115,6 +115,8 @@ function sample(): BeneficiaryRecord {
     id: '11111111-1111-4111-8111-111111111111',
     legacyId: null,
     registryNumber: 'ZMS-2026-000001',
+    memberId: 'MB-2026-000001',
+    memberStatus: 'ACTIVE',
     status: 'DRAFT',
     title: null,
     firstName: 'สมมติ',
@@ -136,6 +138,11 @@ function sample(): BeneficiaryRecord {
     household: null,
     incomeProfile: null,
     documents: [],
+    applications: [],
+    _count: {
+      assessments: 0,
+      applications: 0,
+    },
     createdAt: now,
     updatedAt: now,
     createdById: null,

@@ -24,10 +24,23 @@ function nestApiError(payload: any, fallback: string) {
         : typeof payload?.error === 'string'
           ? payload.error
           : fallback;
+  const details = Array.isArray(payload?.details) ? payload.details : [];
+  const findDetail = (f: string) => details.find((d: any) => d?.field === f)?.message;
+  const existingId = findDetail('existingBeneficiaryId');
+  const existingCode = findDetail('memberId');
+  const existingName = findDetail('fullName');
   return {
     success: false as const,
     error: message,
     code: typeof payload?.code === 'string' ? payload.code : undefined,
+    duplicateMember:
+      existingId || existingCode
+        ? {
+            id: existingId || '',
+            memberId: existingCode || '',
+            fullName: existingName || '',
+          }
+        : undefined,
   };
 }
 
@@ -112,7 +125,12 @@ export async function GET(request: NextRequest) {
         ...item,
         ...survey,
         id: item.id,
-        registrationNo: item.registrationNo || item.registryNumber || `REG-${item.id?.slice(0, 8)}`,
+        memberId: item.memberId || item.registryNumber || `MB-${item.id?.slice(0, 8)}`,
+        memberCode: item.memberId || item.registryNumber || `MB-${item.id?.slice(0, 8)}`,
+        registrationNo: item.memberId || item.registrationNo || item.registryNumber || `MB-${item.id?.slice(0, 8)}`,
+        memberStatus: String(item.memberStatus || 'ACTIVE').toLowerCase(),
+        latestAssessment: item.latestAssessment || null,
+        assessmentCount: item.assessmentCount ?? 0,
         fullName,
         titlePrefix,
         nationalId: cleanId,
@@ -265,37 +283,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Asnaf Category Proposal
-    if (input.asnafCategory) {
-      try {
-        const catRes = await fetch(`${API_BASE_URL}/asnaf/categories`, { headers });
-        if (catRes.ok) {
-          const catList = await catRes.json();
-          const targetKey = String(input.asnafCategory).trim().toUpperCase();
-          const match = (catList || []).find(
-            (c: any) =>
-              c.code?.toUpperCase() === targetKey ||
-              c.nameTh?.includes(input.asnafCategory) ||
-              (targetKey === 'MISKIN' && c.code === 'MISKIN') ||
-              (targetKey === 'FAQIR' && c.code === 'FAKIR')
-          );
-          if (match?.id) {
-            await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/asnaf-proposal`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                categoryId: match.id,
-                rationale: `การจัดหมวดอัสนัฟเบื้องต้นจากการขึ้นทะเบียน: ${match.nameTh || input.asnafCategory}`,
-              }),
-            });
-          }
-        }
-      } catch (asnafErr) {
-        console.error('Failed to propose Asnaf category:', asnafErr);
-      }
-    }
-
-    // 6. Save PDPA Consent
+    // 5. Save PDPA Consent
     await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/consents`, {
       method: 'POST',
       headers,
@@ -307,26 +295,46 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    // 7. If submitted, call submit endpoint
-    if (input.registrationStatus === 'pending_verification' || input.status === 'submitted' || body.submitStatus === 'submitted') {
-      const submitRes = await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/submit`, {
+    // 6. Create Initial Assessment Record (captures frozen memberSnapshot on registration)
+    try {
+      const isDraft =
+        input.registrationStatus === 'draft' ||
+        input.status === 'draft' ||
+        body.submitStatus === 'draft';
+      const initialAssessmentStatus = isDraft ? 'DRAFT' : 'UNDER_REVIEW';
+      await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/assessments`, {
         method: 'POST',
         headers,
+        body: JSON.stringify({
+          asnafCode: input.asnafCategory || 'miskin',
+          assessmentType: 'INITIAL',
+          status: initialAssessmentStatus,
+          rationale:
+            input.evaluatorChecklist?.committeeNotes ||
+            input.urgentNeeds ||
+            input.familySituationSummary ||
+            `ประเมินสิทธิ์เบื้องต้นจากการขึ้นทะเบียนสมาชิกใหม่ (หมวด ${input.asnafCategory || 'miskin'})`,
+          assessmentDetails: input.housingNotes || input.livingLimitations || undefined,
+          checklist: input.evaluatorChecklist || undefined,
+        }),
       });
-      if (submitRes.ok) {
-        createData.status = 'PENDING_REVIEW';
-      }
+    } catch (asnafErr) {
+      console.error('Failed to record initial assessment:', asnafErr);
     }
+
+    const permanentMemberId = createData.memberId || createData.registryNumber;
 
     return NextResponse.json({
       success: true,
       data: {
         beneficiaryId,
         id: beneficiaryId,
-        registrationNo: createData.registryNumber,
+        memberId: permanentMemberId,
+        memberCode: permanentMemberId,
+        registrationNo: permanentMemberId,
         status: createData.status,
       },
-      message: `ขึ้นทะเบียนผู้มีสิทธิ์รับซะกาตสำเร็จ รหัสทะเบียน ${createData.registryNumber}`,
+      message: `ขึ้นทะเบียนสมาชิกสำเร็จ รหัสสมาชิกถาวร ${permanentMemberId}`,
     });
   } catch (error: any) {
     return NextResponse.json(

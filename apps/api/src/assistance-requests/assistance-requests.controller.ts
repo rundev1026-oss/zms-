@@ -18,6 +18,7 @@ import { AssessmentService } from '../assessment/assessment.service';
 import { SubmitAssessmentDto } from '../assessment/dto/assessment.dto';
 import {
   CreateAssistanceRequestDto,
+  UpdateAssistanceRequestDto,
   QueryAssistanceRequestsDto,
   UpdateRequestStatusDto,
   CheckBeneficiaryDto,
@@ -60,6 +61,17 @@ export class AssistanceRequestsController {
   @ApiOperation({ summary: 'ดูรายละเอียดคำร้องขอความช่วยเหลือ ประวัติ และเอกสาร' })
   getById(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.assistanceService.getById(id, user);
+  }
+
+  @Patch(':id')
+  @RequirePermissions('beneficiaries.write')
+  @ApiOperation({ summary: 'แก้ไขข้อมูลคำร้องขอความช่วยเหลือ / ส่งคำร้องจากฉบับร่าง' })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAssistanceRequestDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.assistanceService.update(id, dto, user);
   }
 
   @Patch(':id/status')

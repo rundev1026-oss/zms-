@@ -19,16 +19,19 @@ import { Roles } from '../common/roles.decorator';
 import { BeneficiariesService } from './beneficiaries.service';
 import {
   BeneficiaryListQueryDto,
+  BeneficiarySummaryQueryDto,
+  CheckDuplicateNationalIdQueryDto,
   CreateBeneficiaryDto,
   CreateConsentDto,
+  DashboardMetricsQueryDto,
   RecordRevisionDto,
   UpdateBeneficiaryDto,
-  BeneficiarySummaryQueryDto,
+  UpdateMemberStatusDto,
 } from './beneficiary.dto';
 import {
-  SoftDeleteBeneficiaryDto,
-  RestoreBeneficiaryDto,
   QueryDeletedBeneficiariesDto,
+  RestoreBeneficiaryDto,
+  SoftDeleteBeneficiaryDto,
 } from './dto/soft-delete.dto';
 
 @ApiTags('beneficiaries')
@@ -39,14 +42,14 @@ export class BeneficiariesController {
 
   @Post()
   @RequirePermissions('beneficiaries.write')
-  @ApiOperation({ summary: 'สร้างร่างและออกเลขทะเบียนโดยระบบ' })
+  @ApiOperation({ summary: 'สร้างข้อมูลสมาชิกหลักและออก Member ID ถาวรโดยระบบ' })
   create(@Body() dto: CreateBeneficiaryDto, @CurrentUser() user: AuthUser) {
     return this.beneficiaries.create(dto, user);
   }
 
   @Get()
   @RequirePermissions('beneficiaries.read')
-  @ApiOperation({ summary: 'รายการทะเบียนพร้อมตัวกรอง เรียงลำดับ และแบ่งหน้า' })
+  @ApiOperation({ summary: 'รายการสมาชิกพร้อมตัวกรอง เรียงลำดับ และแบ่งหน้า' })
   list(@Query() query: BeneficiaryListQueryDto, @CurrentUser() user: AuthUser) {
     return this.beneficiaries.list(
       { ...query, status: query.status as RegistryStatus | undefined },
@@ -61,6 +64,27 @@ export class BeneficiariesController {
   })
   summary(@Query() query: BeneficiarySummaryQueryDto) {
     return this.beneficiaries.summary(query);
+  }
+
+  @Get('check-duplicate')
+  @RequirePermissions('beneficiaries.read')
+  @ApiOperation({
+    summary: 'ตรวจสอบเลขประจำตัวประชาชนซ้ำก่อนขึ้นทะเบียน เพื่อเปิดข้อมูลสมาชิกเดิมแทนการสร้างซ้ำ',
+  })
+  checkDuplicate(
+    @Query() query: CheckDuplicateNationalIdQueryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.beneficiaries.checkDuplicateNationalId(query.nationalId, query.excludeId, user);
+  }
+
+  @Get('dashboard-metrics')
+  @RequirePermissions('beneficiaries.read')
+  @ApiOperation({
+    summary: 'ตัวชี้วัดแยกจำนวนสมาชิก รอบการประเมิน คำร้อง และผู้ได้รับความช่วยเหลือออกจากกัน',
+  })
+  dashboardMetrics(@Query() query: DashboardMetricsQueryDto) {
+    return this.beneficiaries.dashboardMetrics(query.period);
   }
 
   @Get('deleted')
@@ -113,6 +137,17 @@ export class BeneficiariesController {
     return this.beneficiaries.restore(id, dto, user, ip);
   }
 
+  @Patch(':id/member-status')
+  @RequirePermissions('beneficiaries.write')
+  @ApiOperation({ summary: 'ปรับสถานะสมาชิกหลักโดยไม่กระทบประวัติผลการประเมินสิทธิ์หรือคำร้อง' })
+  updateMemberStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateMemberStatusDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.beneficiaries.updateMemberStatus(id, dto, user);
+  }
+
   @Get(':id/revisions')
   @RequirePermissions('beneficiaries.read')
   @ApiOperation({ summary: 'ประวัติการแก้ไขรายฟิลด์ อ่านอย่างเดียว' })
@@ -161,7 +196,7 @@ export class BeneficiariesController {
 
   @Patch(':id')
   @RequirePermissions('beneficiaries.write')
-  @ApiOperation({ summary: 'บันทึกร่าง ห้ามส่งสถานะหรือตัวตนของผู้ใช้มาจากไคลเอนต์' })
+  @ApiOperation({ summary: 'บันทึกข้อมูลสมาชิกหลักโดยไม่เปลี่ยน Member ID' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateBeneficiaryDto,

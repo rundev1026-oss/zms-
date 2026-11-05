@@ -1,17 +1,90 @@
-import { IsNotEmpty, IsOptional, IsString, IsNumber, IsUUID, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export class AddApplicationDocumentDto {
+  @ApiProperty({ description: 'Document name or title' })
+  @IsNotEmpty({ message: 'กรุณาระบุชื่อเอกสาร' })
+  @IsString()
+  name!: string;
+
+  @ApiProperty({ description: 'Document category (e.g. id_card, house_reg, medical, income)' })
+  @IsNotEmpty({ message: 'กรุณาระบุหมวดหมู่เอกสาร' })
+  @IsString()
+  category!: string;
+
+  @ApiProperty({ description: 'Document URL or path' })
+  @IsNotEmpty({ message: 'กรุณาระบุ URL หรือที่เก็บเอกสาร' })
+  @IsString()
+  fileUrl!: string;
+
+  @ApiPropertyOptional({ description: 'MIME Type (e.g. application/pdf, image/jpeg)' })
+  @IsOptional()
+  @IsString()
+  mimeType?: string;
+
+  @ApiPropertyOptional({ description: 'File size in bytes' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  fileSize?: number;
+
+  @ApiPropertyOptional({ description: 'Storage provider (local, s3, cloudinary)' })
+  @IsOptional()
+  @IsString()
+  storageProvider?: string;
+
+  @ApiPropertyOptional({ description: 'Storage path or object key' })
+  @IsOptional()
+  @IsString()
+  storagePath?: string;
+
+  @ApiPropertyOptional({ description: 'Confidentiality flag', default: true })
+  @IsOptional()
+  @IsBoolean()
+  isConfidential?: boolean;
+}
+
 export class CreateAssistanceRequestDto {
-  @ApiProperty({ description: 'Beneficiary UUID, National ID, or Registry Number' })
+  @ApiProperty({ description: 'Beneficiary UUID, National ID, or Member ID' })
   @IsNotEmpty({ message: 'กรุณาระบุผู้ขอรับความช่วยเหลือ' })
   @IsString()
   beneficiaryId!: string;
+
+  @ApiPropertyOptional({ description: 'Linked Periodic Assessment UUID (BeneficiaryAsnafAssessment.id)' })
+  @IsOptional()
+  @IsUUID('4', { message: 'รหัสการประเมินสิทธิ์ไม่ถูกต้อง' })
+  assessmentId?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance format/type (cash, in_kind, emergency, etc.)' })
+  @IsOptional()
+  @IsString()
+  assistanceType?: string;
+
+  @ApiPropertyOptional({ description: 'Additional assistance item or operation details' })
+  @IsOptional()
+  @IsString()
+  assistanceTypeDetails?: string;
 
   @ApiProperty({ description: 'Asnaf Category code (e.g. faqir, miskin, gharimin)' })
   @IsNotEmpty({ message: 'กรุณาระบุหมวดอัสนัฟ' })
   @IsString()
   asnafCategory!: string;
+
+  @ApiPropertyOptional({ description: 'Primary 3-tier fund group code' })
+  @IsOptional()
+  @IsString()
+  primaryGroupCode?: string;
 
   @ApiProperty({ description: 'Requested Amount in THB' })
   @IsNotEmpty({ message: 'กรุณาระบุจำนวนเงินที่ขอความช่วยเหลือ' })
@@ -30,7 +103,7 @@ export class CreateAssistanceRequestDto {
   @IsString()
   assistanceTypeId?: string;
 
-  @ApiPropertyOptional({ description: 'Assistance Group (e.g. core, development)' })
+  @ApiPropertyOptional({ description: 'Assistance Group (e.g. core, specific)' })
   @IsOptional()
   @IsString()
   assistanceGroup?: string;
@@ -60,6 +133,11 @@ export class CreateAssistanceRequestDto {
   @IsString()
   specificFundName?: string;
 
+  @ApiPropertyOptional({ description: 'Fiscal year (Buddhist year)' })
+  @IsOptional()
+  @IsString()
+  fiscalYear?: string;
+
   @ApiPropertyOptional({ description: 'Branch ID' })
   @IsOptional()
   @IsString()
@@ -69,6 +147,26 @@ export class CreateAssistanceRequestDto {
   @IsOptional()
   @IsString()
   branchName?: string;
+
+  @ApiPropertyOptional({ description: 'Client idempotency key to prevent duplicate submissions' })
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+
+  @ApiPropertyOptional({ description: 'Initial status (draft or submitted)', default: 'submitted' })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Request-specific supporting documents',
+    type: [AddApplicationDocumentDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AddApplicationDocumentDto)
+  documents?: AddApplicationDocumentDto[];
 }
 
 export class QueryAssistanceRequestsDto {
@@ -133,40 +231,107 @@ export class CheckBeneficiaryDto {
   @IsString()
   registrationNo?: string;
 
+  @ApiPropertyOptional({ description: 'Member ID (MB-YYYY-XXXXXX)' })
+  @IsOptional()
+  @IsString()
+  memberId?: string;
+
   @ApiPropertyOptional({ description: 'Beneficiary UUID' })
   @IsOptional()
   @IsString()
   beneficiaryId?: string;
 }
 
-export class AddApplicationDocumentDto {
-  @ApiProperty({ description: 'Document name or title' })
-  @IsNotEmpty({ message: 'กรุณาระบุชื่อเอกสาร' })
-  @IsString()
-  name!: string;
+export class UpdateAssistanceRequestDto {
+  @ApiPropertyOptional({ description: 'Linked Periodic Assessment UUID' })
+  @IsOptional()
+  @IsUUID('4', { message: 'รหัสการประเมินสิทธิ์ไม่ถูกต้อง' })
+  assessmentId?: string;
 
-  @ApiProperty({ description: 'Document category (e.g. id_card, house_reg, medical, income)' })
-  @IsNotEmpty({ message: 'กรุณาระบุหมวดหมู่เอกสาร' })
-  @IsString()
-  category!: string;
-
-  @ApiProperty({ description: 'Document URL or path' })
-  @IsNotEmpty({ message: 'กรุณาระบุ URL หรือที่เก็บเอกสาร' })
-  @IsString()
-  fileUrl!: string;
-
-  @ApiPropertyOptional({ description: 'MIME Type (e.g. application/pdf, image/jpeg)' })
+  @ApiPropertyOptional({ description: 'Assistance format/type (cash, in_kind, etc.)' })
   @IsOptional()
   @IsString()
-  mimeType?: string;
+  assistanceType?: string;
 
-  @ApiPropertyOptional({ description: 'File size in bytes' })
+  @ApiPropertyOptional({ description: 'Additional assistance item details' })
+  @IsOptional()
+  @IsString()
+  assistanceTypeDetails?: string;
+
+  @ApiPropertyOptional({ description: 'Asnaf Category code' })
+  @IsOptional()
+  @IsString()
+  asnafCategory?: string;
+
+  @ApiPropertyOptional({ description: 'Primary 3-tier fund group code' })
+  @IsOptional()
+  @IsString()
+  primaryGroupCode?: string;
+
+  @ApiPropertyOptional({ description: 'Requested Amount in THB' })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  fileSize?: number;
+  @IsNumber({}, { message: 'จำนวนเงินต้องเป็นตัวเลข' })
+  @Min(1, { message: 'จำนวนเงินต้องมากกว่า 0 บาท' })
+  requestedAmount?: number;
 
-  @ApiPropertyOptional({ description: 'Confidentiality flag', default: true })
+  @ApiPropertyOptional({ description: 'Urgency Level (normal, high, urgent)' })
   @IsOptional()
-  isConfidential?: boolean;
+  @IsString()
+  urgencyLevel?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance Type ID or code' })
+  @IsOptional()
+  @IsString()
+  assistanceTypeId?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance Group' })
+  @IsOptional()
+  @IsString()
+  assistanceGroup?: string;
+
+  @ApiPropertyOptional({ description: 'Hardship reasons' })
+  @IsOptional()
+  @IsString()
+  hardshipReasons?: string;
+
+  @ApiPropertyOptional({ description: 'Necessity details' })
+  @IsOptional()
+  @IsString()
+  necessityDetails?: string;
+
+  @ApiPropertyOptional({ description: 'Specific Sub Fund ID' })
+  @IsOptional()
+  @IsString()
+  specificFundId?: string;
+
+  @ApiPropertyOptional({ description: 'Specific Sub Fund Code' })
+  @IsOptional()
+  @IsString()
+  specificFundCode?: string;
+
+  @ApiPropertyOptional({ description: 'Specific Sub Fund Name' })
+  @IsOptional()
+  @IsString()
+  specificFundName?: string;
+
+  @ApiPropertyOptional({ description: 'Fiscal year (Buddhist year)' })
+  @IsOptional()
+  @IsString()
+  fiscalYear?: string;
+
+  @ApiPropertyOptional({ description: 'Status (draft or submitted)' })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Request-specific supporting documents',
+    type: [AddApplicationDocumentDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AddApplicationDocumentDto)
+  documents?: AddApplicationDocumentDto[];
 }

@@ -22,6 +22,8 @@ import {
   FileCheck2,
   ShieldCheck,
   CheckCircle2,
+  XCircle,
+  ClipboardCheck,
   ArrowRight
 } from 'lucide-react';
 
@@ -48,15 +50,38 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
       .catch((err) => console.error('Failed to load organization structure for dashboard:', err));
   }, []);
 
-  // Real database separated counts mandated by prompt
-  const separatedStats = dashboardStats || {
-    totalRegisteredBeneficiaries: registries.length,
-    pendingVerificationRegistries: registries.filter((r) => ['pending_verification', 'draft', 'pending_survey'].includes(r.registrationStatus)).length,
-    qualifiedBeneficiaries: registries.filter((r) => r.registrationStatus === 'qualified').length,
-    pendingAssistanceRequests: applications.filter((a) => ['submitted', 'doc_review', 'assessing', 'pending_approval'].includes(a.status)).length,
-    approvedAssistanceRequests: applications.filter((a) => ['approved', 'wait_disbursement'].includes(a.status)).length,
-    completedAssistanceDisbursed: applications.filter((a) => a.status === 'disbursed' || a.status === 'closed').length,
-  };
+  // Real database 6 strictly separated counts (Master Requirement Section 9)
+  const totalMembersCount =
+    dashboardStats?.totalMembers ??
+    dashboardStats?.separated?.totalMembers ??
+    dashboardStats?.totalRegisteredBeneficiaries ??
+    registries.length;
+  const pendingAssessmentsCount =
+    dashboardStats?.pendingAssessments ??
+    dashboardStats?.separated?.pendingAssessments ??
+    dashboardStats?.pendingVerificationRegistries ??
+    registries.filter((r) => ['pending_verification', 'draft', 'pending_survey', 'pending_qualification'].includes(r.registrationStatus)).length;
+  const eligibleCount =
+    dashboardStats?.eligibleCount ??
+    dashboardStats?.separated?.eligibleCount ??
+    dashboardStats?.qualifiedBeneficiaries ??
+    registries.filter((r) => r.registrationStatus === 'qualified').length;
+  const ineligibleCount =
+    dashboardStats?.ineligibleCount ??
+    dashboardStats?.separated?.ineligibleCount ??
+    registries.filter((r) => r.registrationStatus === 'disqualified').length;
+  const totalRequestsCount =
+    dashboardStats?.totalAssistanceRequests ??
+    dashboardStats?.separated?.totalAssistanceRequests ??
+    applications.length;
+  const assistedMembersCount =
+    dashboardStats?.assistedMembersCount ??
+    dashboardStats?.separated?.assistedMembersCount ??
+    new Set(
+      applications
+        .filter((a) => a.status === 'disbursed' || a.status === 'closed' || Number(a.disbursedAmount || 0) > 0)
+        .map((a) => a.beneficiaryId),
+    ).size;
 
   // Financial Calculations
   const totalReceived = funds.reduce((acc, f) => acc + f.totalReceived, 0);
@@ -65,17 +90,16 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
   const totalAvailable = funds.reduce((acc, f) => acc + f.availableAmount, 0);
 
   // Application Stats
-  const totalApplicants = applications.length;
   const pendingApprovals = applications.filter((a) => a.status === 'pending_approval');
   const waitDisbursements = applications.filter((a) => a.status === 'wait_disbursement');
   const disbursedApps = applications.filter((a) => a.status === 'disbursed');
 
   // Asnaf Distribution
   const asnafCounts = {
-    faqir: applications.filter((a) => a.asnafCategory === 'faqir').length,
-    miskin: applications.filter((a) => a.asnafCategory === 'miskin').length,
-    gharimin: applications.filter((a) => a.asnafCategory === 'gharimin').length,
-    fisabilillah: applications.filter((a) => a.asnafCategory === 'fisabilillah').length,
+    faqir: registries.filter((r) => r.asnafCategory === 'faqir').length || applications.filter((a) => a.asnafCategory === 'faqir').length,
+    miskin: registries.filter((r) => r.asnafCategory === 'miskin').length || applications.filter((a) => a.asnafCategory === 'miskin').length,
+    gharimin: registries.filter((r) => r.asnafCategory === 'gharimin').length || applications.filter((a) => a.asnafCategory === 'gharimin').length,
+    fisabilillah: registries.filter((r) => r.asnafCategory === 'fisabilillah').length || applications.filter((a) => a.asnafCategory === 'fisabilillah').length,
   };
 
   return (
@@ -92,7 +116,7 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            ภาพรวมผลการดำเนินงาน การรับเงินซะกาต การจัดสรรงบประมาณ และสถานะความช่วยเหลือผู้ยากไร้
+            ภาพรวมสมาชิกผู้มีสิทธิ์รับซะกาต การประเมินสิทธิ์ตามรอบระยะเวลา คำร้องขอความช่วยเหลือ และสถานะการเงินกองทุน
           </p>
         </div>
 
@@ -107,7 +131,7 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              เดือนนี้ (ต.ค. 2569)
+              เดือนนี้
             </button>
             <button
               onClick={() => setSelectedPeriod('quarter')}
@@ -117,7 +141,7 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              ไตรมาส 4
+              ไตรมาสปัจจุบัน
             </button>
             <button
               onClick={() => setSelectedPeriod('year')}
@@ -132,7 +156,7 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
           </div>
 
           <button
-            onClick={() => showToast('ส่งออกรายงานสรุปผู้บริหารเป็น PDF เรียบร้อย (Demo)', 'success')}
+            onClick={() => showToast('ส่งออกรายงานสรุปผู้บริหารเป็น PDF เรียบร้อย', 'success')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-xl text-xs font-semibold hover:bg-emerald-800 transition-colors shadow-xs"
           >
             <Download className="w-3.5 h-3.5" /> ส่งออกรายงาน
@@ -140,72 +164,72 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
         </div>
       </div>
 
-      {/* Separated Beneficiary Registration & Assistance Request Cards (Mandated by Specification) */}
+      {/* 6 Strictly Separated Member, Periodic Assessment & Assistance KPI Cards (Section 9) */}
       <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              สถิติแยกระบบ: ทะเบียนผู้มีสิทธิ์รับซะกาต & คำร้องขอความช่วยเหลือ
+              สถิติแยกชัดเจน: สมาชิกหลัก • ผลประเมินสิทธิ์ตามรอบ • คำร้อง • ผู้ได้รับความช่วยเหลือ
             </h2>
           </div>
           <span className="text-[11px] text-slate-400">
-            ดึงจากฐานข้อมูลจริง (Real-time Separated Metrics)
+            คำนวณจากฐานข้อมูลจริง (ไม่นับรอบการประเมินซ้ำเป็นจำนวนสมาชิก)
           </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* 1. จำนวนผู้ขึ้นทะเบียนทั้งหมด */}
+          {/* 1. จำนวนสมาชิกทั้งหมด */}
           <button
             onClick={() => onNavigate('beneficiaries')}
             className="p-3.5 rounded-2xl bg-white border border-slate-200/90 hover:border-teal-400 text-left transition-all hover:shadow-xs group"
           >
             <div className="flex items-center justify-between text-slate-500">
               <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
-                1. ทะเบียนทั้งหมด
+                1. สมาชิกทั้งหมด
               </span>
               <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
                 <Users className="w-3.5 h-3.5" />
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 font-mono">
-              {separatedStats.totalRegisteredBeneficiaries}
+              {totalMembersCount}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
-              จำนวนผู้ขึ้นทะเบียนทั้งหมด
+              จำนวนสมาชิกทั้งหมด (รายบุคคล)
             </div>
             <div className="text-[10px] text-teal-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
-              <span>ดูทะเบียน</span>
+              <span>ดูทะเบียนสมาชิก</span>
               <ArrowRight className="w-3 h-3" />
             </div>
           </button>
 
-          {/* 2. จำนวนทะเบียนที่รอตรวจสอบ */}
+          {/* 2. จำนวนรอประเมิน */}
           <button
             onClick={() => onNavigate('beneficiaries')}
             className="p-3.5 rounded-2xl bg-white border border-slate-200/90 hover:border-amber-400 text-left transition-all hover:shadow-xs group"
           >
             <div className="flex items-center justify-between text-slate-500">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                2. รอตรวจสอบ
+                2. รอประเมิน
               </span>
               <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
                 <Clock className="w-3.5 h-3.5" />
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-amber-800 mt-2 font-mono">
-              {separatedStats.pendingVerificationRegistries}
+              {pendingAssessmentsCount}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
-              ทะเบียนรอตรวจสอบข้อมูล
+              จำนวนรอประเมินสิทธิ์
             </div>
             <div className="text-[10px] text-amber-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
-              <span>ตรวจข้อมูล</span>
+              <span>ประเมินสิทธิ์</span>
               <ArrowRight className="w-3 h-3" />
             </div>
           </button>
 
-          {/* 3. จำนวนผู้ผ่านการพิจารณาคุณสมบัติ */}
+          {/* 3. จำนวนผ่านเกณฑ์ */}
           <button
             onClick={() => onNavigate('beneficiaries')}
             className="p-3.5 rounded-2xl bg-white border border-slate-200/90 hover:border-emerald-400 text-left transition-all hover:shadow-xs group"
@@ -219,10 +243,10 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-emerald-800 mt-2 font-mono">
-              {separatedStats.qualifiedBeneficiaries}
+              {eligibleCount}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
-              ผู้ผ่านคุณสมบัติตามเกณฑ์
+              จำนวนผ่านเกณฑ์รับซะกาต
             </div>
             <div className="text-[10px] text-emerald-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
               <span>ดูผู้ผ่านเกณฑ์</span>
@@ -230,76 +254,76 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
             </div>
           </button>
 
-          {/* 4. จำนวนคำร้องขอความช่วยเหลือที่รอดำเนินการ */}
+          {/* 4. จำนวนไม่ผ่านเกณฑ์ */}
+          <button
+            onClick={() => onNavigate('beneficiaries')}
+            className="p-3.5 rounded-2xl bg-white border border-slate-200/90 hover:border-rose-400 text-left transition-all hover:shadow-xs group"
+          >
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">
+                4. ไม่ผ่านเกณฑ์
+              </span>
+              <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center">
+                <XCircle className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="text-xl sm:text-2xl font-extrabold text-rose-800 mt-2 font-mono">
+              {ineligibleCount}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
+              จำนวนไม่ผ่านเกณฑ์ในรอบ
+            </div>
+            <div className="text-[10px] text-rose-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
+              <span>ดูรายละเอียด</span>
+              <ArrowRight className="w-3 h-3" />
+            </div>
+          </button>
+
+          {/* 5. จำนวนคำร้อง */}
           <button
             onClick={() => onNavigate('assistance-requests')}
             className="p-3.5 rounded-2xl bg-white border border-slate-200/90 hover:border-sky-400 text-left transition-all hover:shadow-xs group"
           >
             <div className="flex items-center justify-between text-slate-500">
               <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800">
-                4. คำร้องรอดำเนินการ
+                5. จำนวนคำร้อง
               </span>
               <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center">
                 <FileCheck2 className="w-3.5 h-3.5" />
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-sky-900 mt-2 font-mono">
-              {separatedStats.pendingAssistanceRequests}
+              {totalRequestsCount}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
-              คำร้องขอช่วยเหลือรอดำเนินการ
+              คำร้องขอความช่วยเหลือสะสม
             </div>
             <div className="text-[10px] text-sky-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
-              <span>ติดตามคำร้อง</span>
+              <span>จัดการคำร้อง</span>
               <ArrowRight className="w-3 h-3" />
             </div>
           </button>
 
-          {/* 5. จำนวนคำร้องที่อนุมัติแล้ว */}
+          {/* 6. จำนวนผู้ได้รับความช่วยเหลือ */}
           <button
-            onClick={() => onNavigate('assistance-requests')}
+            onClick={() => onNavigate('disbursements')}
             className="p-3.5 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-400 text-left transition-all hover:shadow-xs group"
           >
             <div className="flex items-center justify-between text-slate-500">
               <span className="text-[10px] font-bold uppercase tracking-wider text-purple-800">
-                5. คำร้องอนุมัติแล้ว
+                6. ได้รับช่วยเหลือ
               </span>
               <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
-                <ShieldCheck className="w-3.5 h-3.5" />
-              </div>
-            </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-purple-900 mt-2 font-mono">
-              {separatedStats.approvedAssistanceRequests}
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
-              คำร้องที่ได้รับอนุมัติวงเงิน
-            </div>
-            <div className="text-[10px] text-purple-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
-              <span>ดูคำร้องอนุมัติ</span>
-              <ArrowRight className="w-3 h-3" />
-            </div>
-          </button>
-
-          {/* 6. จำนวนรายการช่วยเหลือที่ดำเนินการเสร็จสิ้น */}
-          <button
-            onClick={() => onNavigate('disbursements')}
-            className="p-3.5 rounded-2xl bg-white border border-slate-200/90 hover:border-teal-400 text-left transition-all hover:shadow-xs group"
-          >
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
-                6. ช่วยเหลือเสร็จสิ้น
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
                 <HeartHandshake className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-teal-900 mt-2 font-mono">
-              {separatedStats.completedAssistanceDisbursed}
+            <div className="text-xl sm:text-2xl font-extrabold text-purple-900 mt-2 font-mono">
+              {assistedMembersCount}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
-              รายการช่วยเหลือที่สำเร็จ
+              จำนวนผู้ได้รับความช่วยเหลือจริง
             </div>
-            <div className="text-[10px] text-teal-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
+            <div className="text-[10px] text-purple-700 font-semibold mt-1 flex items-center gap-1 group-hover:underline">
               <span>ดูบันทึกช่วยเหลือ</span>
               <ArrowRight className="w-3 h-3" />
             </div>

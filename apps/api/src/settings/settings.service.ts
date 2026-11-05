@@ -11,11 +11,28 @@ export interface SystemSettingsData {
   address: string;
   phone: string;
   email: string;
+  website: string;
+  logoUrl: string;
   activeFiscalYear: string;
   currency: string;
+  calendarType: string;
+  dateFormat: string;
+  timezone: string;
+  pageSize: number;
   approvalLimitTier1: number;
   approvalLimitTier2: number;
   approvalLimitTier3: number;
+  memberIdPattern: string;
+  requestIdPattern: string;
+  docHeader: string;
+  docFooter: string;
+  notifyNewRequest: boolean;
+  notifyPendingApproval: boolean;
+  notifyFollowUp: boolean;
+  sessionTimeoutMinutes: number;
+  maxFailedLogins: number;
+  passwordMinLength: number;
+  requireMfa: boolean;
   updatedAt: string;
 }
 
@@ -28,11 +45,28 @@ export class SettingsService {
     address: '123 ถนนเพชรบุรี แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400',
     phone: '02-123-4567',
     email: 'contact@zms.local',
+    website: 'https://zms.or.th',
+    logoUrl: '/brand/zms-logo.svg',
     activeFiscalYear: '2569',
     currency: 'THB',
+    calendarType: 'buddhist',
+    dateFormat: 'DD/MM/YYYY',
+    timezone: 'Asia/Bangkok',
+    pageSize: 10,
     approvalLimitTier1: 10000,
     approvalLimitTier2: 50000,
     approvalLimitTier3: 200000,
+    memberIdPattern: 'MB-{YYYY}-{SEQ:6}',
+    requestIdPattern: 'REQ-{YYYY}-{SEQ:5}',
+    docHeader: 'มูลนิธิเพื่อการบริหารจัดการซะกาตและสาธารณกุศลแห่งประเทศไทย',
+    docFooter: 'เอกสารนี้ออกโดยระบบบริหารจัดการซะกาตอิเล็กทรอนิกส์ (ZMS Enterprise)',
+    notifyNewRequest: true,
+    notifyPendingApproval: true,
+    notifyFollowUp: true,
+    sessionTimeoutMinutes: 60,
+    maxFailedLogins: 5,
+    passwordMinLength: 8,
+    requireMfa: false,
     updatedAt: new Date().toISOString(),
   };
 
@@ -50,8 +84,11 @@ export class SettingsService {
 
     for (const r of rows) {
       if (r.key in result) {
-        if (typeof (this.defaultSettings as any)[r.key] === 'number') {
+        const defaultVal = (this.defaultSettings as any)[r.key];
+        if (typeof defaultVal === 'number') {
           (result as any)[r.key] = Number(r.value);
+        } else if (typeof defaultVal === 'boolean') {
+          (result as any)[r.key] = r.value === 'true' || r.value === '1';
         } else {
           (result as any)[r.key] = r.value;
         }

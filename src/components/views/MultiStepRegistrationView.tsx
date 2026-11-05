@@ -50,9 +50,10 @@ import { validateAddress, isValidThaiNationalId } from '@/lib/thaiAddress';
 interface MultiStepRegistrationViewProps {
   onNavigate: (view: string) => void;
   editAppId?: string;
+  onOpenMemberDetail?: (memberId: string) => void;
 }
 
-export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRegistrationViewProps) {
+export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberDetail }: MultiStepRegistrationViewProps) {
   const { registerBeneficiaryProfile, updateBeneficiaryRegistry, createApplication, showToast, currentUser, funds, authToken } = useApp();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -62,6 +63,17 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDocumentItem[]>([]);
   const pendingFilesRef = useRef<PendingRegistryFile[]>([]);
   const [savedDraftNotice, setSavedDraftNotice] = useState<{ savedAt: string; data: any } | null>(null);
+  const [duplicateMember, setDuplicateMember] = useState<{
+    id: string;
+    memberCode: string;
+    fullName: string;
+    memberStatus?: string;
+    latestAssessmentNumber?: string | null;
+    asnafCategory?: string | null;
+    community?: string | null;
+    province?: string | null;
+  } | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState<boolean>(false);
 
   // ========================================================
   // ส่วน A: ข้อมูลส่วนบุคคลและที่อยู่อาศัย
@@ -288,6 +300,46 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
   const [hasHousingPhotoDoc, setHasHousingPhotoDoc] = useState<boolean>(false);
   const [hasLandDoc, setHasLandDoc] = useState<boolean>(false);
   const [hasMedicalCertDoc, setHasMedicalCertDoc] = useState<boolean>(false);
+
+  // Live Duplicate National ID check (Master Requirement Section 4)
+  useEffect(() => {
+    if (editAppId || createdBeneficiaryId) {
+      setDuplicateMember(null);
+      return;
+    }
+    const cleanId = (nationalId || '').replace(/[^0-9]/g, '');
+    if (cleanId.length !== 13 || !isValidThaiNationalId(cleanId)) {
+      setDuplicateMember(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setIsCheckingDuplicate(true);
+      try {
+        const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+        const headers: Record<string, string> = {};
+        if (token && token !== 'cookie-session') headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`/api/registry/check-duplicate?nationalId=${encodeURIComponent(cleanId)}`, {
+          headers,
+          credentials: 'include',
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && json.success && json.data?.duplicate && json.data?.existingMember) {
+          setDuplicateMember(json.data.existingMember);
+        } else if (!cancelled) {
+          setDuplicateMember(null);
+        }
+      } catch {
+        if (!cancelled) setDuplicateMember(null);
+      } finally {
+        if (!cancelled) setIsCheckingDuplicate(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [nationalId, editAppId, createdBeneficiaryId, authToken]);
 
   // Auto-sync age integer with birthDate calculation
   useEffect(() => {
@@ -574,6 +626,15 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
       return;
     }
 
+    if (duplicateMember && !editAppId && !createdBeneficiaryId) {
+      showToast(
+        `เลขประจำตัวประชาชนนี้ขึ้นทะเบียนเป็นสมาชิกอยู่แล้ว (${duplicateMember.memberCode} - ${duplicateMember.fullName}) กรุณาเปิดข้อมูลสมาชิกเดิมแทนการสร้างซ้ำ`,
+        'error',
+      );
+      setCurrentStep(1);
+      return;
+    }
+
     submitLockRef.current = true;
     setIsSubmitting(true);
 
@@ -688,6 +749,12 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
           const benId = await registerBeneficiaryProfile(payload);
           if (benId) {
             setCreatedBeneficiaryId(benId);
+            await attachPendingDocuments(benId);
+            if (typeof window !== 'undefined') localStorage.removeItem('zms_draft_beneficiary');
+            if (onOpenMemberDetail) {
+              onOpenMemberDetail(benId);
+              return;
+            }
             await attachPendingDocuments(benId);
             if (typeof window !== 'undefined') localStorage.removeItem('zms_draft_beneficiary');
             onNavigate('beneficiaries');
@@ -842,6 +909,13 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
         showToast('กรุณาระบุรายละเอียดที่อยู่ปัจจุบัน (บ้านเลขที่ หมู่ ซอย ถนน)', 'error');
         return;
       }
+    }
+    if (currentStep === 1 && duplicateMember && !editAppId && !createdBeneficiaryId) {
+      showToast(
+        `พบข้อมูลสมาชิกเดิม (${duplicateMember.memberCode}) กรุณากดปุ่ม "เปิดข้อมูลสมาชิกเดิม" แทนการขึ้นทะเบียนซ้ำ`,
+        'error',
+      );
+      return;
     }
     saveDraftToStorage();
     setCurrentStep((s) => s + 1);
@@ -1015,6 +1089,48 @@ export function MultiStepRegistrationView({ onNavigate, editAppId }: MultiStepRe
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
                 />
               </div>
+
+              {isCheckingDuplicate && !editAppId && (
+                <div className="md:col-span-3 text-[11px] text-slate-500">
+                  กำลังตรวจสอบข้อมูลเลขประจำตัวประชาชนซ้ำในระบบสมาชิก...
+                </div>
+              )}
+
+              {duplicateMember && !editAppId && (
+                <div className="md:col-span-3 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                    <div className="text-xs leading-relaxed">
+                      <strong className="block text-sm text-amber-950">
+                        เลขประจำตัวประชาชนนี้มีทะเบียนสมาชิกอยู่แล้ว (ไม่อนุญาตให้ขึ้นทะเบียนบุคคลซ้ำ)
+                      </strong>
+                      <span>
+                        รหัสสมาชิกถาวร: <strong className="font-mono text-amber-900">{duplicateMember.memberCode}</strong> • ชื่อ-นามสกุล:{' '}
+                        <strong>{duplicateMember.fullName}</strong>
+                      </span>
+                      {duplicateMember.latestAssessmentNumber && (
+                        <span className="block text-[11px] text-amber-800 mt-0.5">
+                          รอบประเมินล่าสุด: {duplicateMember.latestAssessmentNumber} ({duplicateMember.asnafCategory || '-'}) • กรุณาเปิดข้อมูลสมาชิกเดิมเพื่อประเมินสิทธิ์รอบใหม่หรือยื่นคำร้อง
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenMemberDetail) {
+                        onOpenMemberDetail(duplicateMember.id);
+                      } else {
+                        onNavigate('beneficiaries');
+                      }
+                    }}
+                    className="py-2.5 px-4 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs shrink-0"
+                  >
+                    <span>เปิดข้อมูลสมาชิกเดิม ({duplicateMember.memberCode})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {/* วันเดือนปีเกิด (Date Picker) */}
               <div>

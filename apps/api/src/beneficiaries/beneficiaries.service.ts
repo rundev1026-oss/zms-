@@ -17,6 +17,7 @@ import {
   toStatusSummary,
 } from './beneficiary-query';
 import { readDateOfBirth, readIdentity } from './beneficiary-fields';
+import { isValidThaiNationalId } from './identity';
 import {
   beneficiaryInclude,
   presentBeneficiary,
@@ -89,6 +90,7 @@ export class BeneficiariesService {
           data: {
             registryNumber,
             memberId,
+            memberStatus: 'ACTIVE',
             status: 'DRAFT',
             title: input.title ?? null,
             firstName: input.firstName!,
@@ -120,7 +122,7 @@ export class BeneficiariesService {
           action: 'BENEFICIARY_CREATE',
           resourceType: 'beneficiary',
           resourceId: row.id,
-          metadata: { registryNumber },
+          metadata: { memberId, registryNumber },
         });
         return row;
       });
@@ -505,6 +507,7 @@ export class BeneficiariesService {
           ...beneficiaryInclude,
           _count: {
             select: {
+              assessments: true,
               applications: true,
               disbursementItems: true,
               followUpRecords: true,
@@ -787,8 +790,360 @@ export class BeneficiariesService {
     }));
   }
 
+  async checkDuplicateNationalId(
+    nationalId: string,
+    excludeId?: string,
+    actor?: AuthUser,
+  ) {
+    const digits = String(nationalId || '').replace(/\D/g, '');
+    if (digits.length !== 13 || !isValidThaiNationalId(digits)) {
+      return {
+        valid: false,
+        duplicate: false,
+        existingMember: null,
+      };
+    }
+
+    const existing = await this.prisma.beneficiary.findFirst({
+      where: {
+        identityType: 'THAI_NATIONAL_ID',
+        identityNumberNormalized: digits,
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      include: {
+        addresses: true,
+        assessments: {
+          orderBy: [{ assessedAt: 'desc' }, { createdAt: 'desc' }],
+          take: 1,
+          include: { category: true },
+        },
+      },
+    });
+
+    if (actor) {
+      await this.audit.write({
+        actorId: actor.id,
+        action: 'BENEFICIARY_DUPLICATE_CHECK',
+        resourceType: 'beneficiary',
+        resourceId: existing?.id ?? null,
+        metadata: {
+          duplicate: Boolean(existing),
+          memberId: existing?.memberId ?? null,
+        },
+      });
+    }
+
+    if (!existing) {
+      return {
+        valid: true,
+        duplicate: false,
+        existingMember: null,
+      };
+    }
+
+    const currentAddr =
+      existing.addresses.find((a) => a.addressType === 'CURRENT') ??
+      existing.addresses[0] ??
+      null;
+    const latestAsm = existing.assessments[0] ?? null;
+
+    return {
+      valid: true,
+      duplicate: true,
+      existingMember: {
+        id: existing.id,
+        memberId: existing.memberId ?? existing.registryNumber,
+        fullName: formatPersonName({
+          prefix: existing.title,
+          firstName: existing.firstName,
+          lastName: existing.lastName,
+        }),
+        memberStatus: existing.memberStatus || 'ACTIVE',
+        registryStatus: existing.status,
+        latestAssessmentStatus: latestAsm?.status ?? null,
+        latestAssessmentNumber: latestAsm?.assessmentNumber ?? null,
+        asnafCategory: latestAsm?.category?.nameTh ?? null,
+        province: currentAddr?.province ?? null,
+        community: currentAddr?.community ?? null,
+        createdAt: existing.createdAt.toISOString(),
+      },
+    };
+  }
+
+  async updateMemberStatus(
+    id: string,
+    input: { memberStatus: string; reason?: string },
+    actor: AuthUser,
+  ): Promise<BeneficiaryView> {
+    const existing = await this.requireRecord(id);
+    const nextMemberStatus = input.memberStatus.toUpperCase();
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const nextRegistryStatus: RegistryStatus =
+        nextMemberStatus === 'SUSPENDED'
+          ? 'SUSPENDED'
+          : nextMemberStatus === 'ARCHIVED'
+            ? 'ARCHIVED'
+            : existing.status === 'SUSPENDED' || existing.status === 'ARCHIVED'
+              ? 'PENDING_REVIEW'
+              : existing.status;
+
+      const row = await tx.beneficiary.update({
+        where: { id },
+        data: {
+          memberStatus: nextMemberStatus,
+          status: nextRegistryStatus,
+          updatedById: actor.id,
+        },
+        include: beneficiaryInclude,
+      });
+
+      if (nextRegistryStatus !== existing.status) {
+        await tx.registryStatusHistory.create({
+          data: {
+            beneficiaryId: id,
+            fromStatus: existing.status,
+            toStatus: nextRegistryStatus,
+            reason: input.reason?.trim() || `ปรับสถานะสมาชิกเป็น ${nextMemberStatus}`,
+            actedById: actor.id,
+          },
+        });
+      }
+
+      await this.audit.record(tx, {
+        actorId: actor.id,
+        action: 'BENEFICIARY_MEMBER_STATUS_UPDATE',
+        resourceType: 'beneficiary',
+        resourceId: id,
+        metadata: {
+          memberId: existing.memberId,
+          fromMemberStatus: existing.memberStatus,
+          toMemberStatus: nextMemberStatus,
+          reason: input.reason?.trim() ?? null,
+        },
+      });
+
+      return row;
+    });
+
+    return presentBeneficiary(updated, this.viewOptions(actor));
+  }
+
+  /**
+   * Strictly separated counts per Master Requirement Section 9:
+   * - totalMembers: distinct non-deleted Beneficiary rows (never counts assessment rounds as members)
+   * - pendingAssessments: assessments awaiting review/assessment (+ unassessed members)
+   * - eligibleCount: assessments passing eligibility in selected period (or latest per member)
+   * - ineligibleCount: assessments not eligible in selected period (or latest per member)
+   * - totalAssistanceRequests: AssistanceApplication count
+   * - assistedMembersCount: distinct beneficiaries with actual disbursed/confirmed aid
+   */
+  async dashboardMetrics(period?: string) {
+    const normalizedPeriod = period?.trim() || undefined;
+
+    const [
+      activeBeneficiaries,
+      allAssessments,
+      applications,
+      confirmedExecutions,
+    ] = await Promise.all([
+      this.prisma.beneficiary.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          memberId: true,
+          memberStatus: true,
+          status: true,
+          addresses: {
+            select: { addressType: true, province: true },
+          },
+          assessments: {
+            orderBy: [{ assessedAt: 'desc' }, { createdAt: 'desc' }],
+            include: { category: { select: { code: true, nameTh: true } } },
+          },
+        },
+      }),
+      this.prisma.beneficiaryAsnafAssessment.findMany({
+        where: { beneficiary: { deletedAt: null } },
+        select: {
+          id: true,
+          beneficiaryId: true,
+          assessmentPeriod: true,
+          status: true,
+          eligibilityResult: true,
+          decision: true,
+          assessedAt: true,
+          category: { select: { code: true, nameTh: true } },
+        },
+        orderBy: [{ assessedAt: 'desc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.assistanceApplication.findMany({
+        where: { beneficiary: { deletedAt: null } },
+        select: {
+          id: true,
+          beneficiaryId: true,
+          status: true,
+          requestedAmount: true,
+          approvedAmount: true,
+          disbursedAmount: true,
+          actualAssistanceValue: true,
+          assistanceResultStatus: true,
+        },
+      }),
+      this.prisma.assistanceExecutionRecord.findMany({
+        where: {
+          isConfirmed: true,
+          application: { beneficiary: { deletedAt: null } },
+        },
+        select: {
+          applicationId: true,
+          actualDisbursedAmount: true,
+          actualAssistanceValue: true,
+          application: { select: { beneficiaryId: true } },
+        },
+      }),
+    ]);
+
+    const totalMembers = activeBeneficiaries.length;
+    let activeMembers = 0;
+    let suspendedMembers = 0;
+    let archivedMembers = 0;
+    const byProvince: Record<string, number> = {};
+
+    for (const b of activeBeneficiaries) {
+      const ms = (b.memberStatus || 'ACTIVE').toUpperCase();
+      if (ms === 'SUSPENDED') suspendedMembers += 1;
+      else if (ms === 'ARCHIVED') archivedMembers += 1;
+      else activeMembers += 1;
+
+      const cur = b.addresses.find((a) => a.addressType === 'CURRENT') ?? b.addresses[0];
+      const prov = cur?.province?.trim() || 'ไม่ระบุจังหวัด';
+      byProvince[prov] = (byProvince[prov] || 0) + 1;
+    }
+
+    const availablePeriods = Array.from(
+      new Set(
+        allAssessments
+          .map((a) => a.assessmentPeriod?.trim())
+          .filter((p): p is string => Boolean(p)),
+      ),
+    );
+
+    // Evaluate assessment metrics either for a specific period or latest assessment per member
+    let pendingAssessments = 0;
+    let eligibleCount = 0;
+    let ineligibleCount = 0;
+    const byAsnaf: Record<string, number> = {};
+
+    if (normalizedPeriod) {
+      const periodAssessments = allAssessments.filter(
+        (a) => (a.assessmentPeriod || '').trim() === normalizedPeriod,
+      );
+      // Latest per member within the selected period
+      const seenMembers = new Set<string>();
+      for (const asm of periodAssessments) {
+        if (seenMembers.has(asm.beneficiaryId)) continue;
+        seenMembers.add(asm.beneficiaryId);
+        const bucket = classifyAssessmentOutcome(asm.status, asm.eligibilityResult, asm.decision);
+        if (bucket === 'ELIGIBLE') eligibleCount += 1;
+        else if (bucket === 'NOT_ELIGIBLE') ineligibleCount += 1;
+        else pendingAssessments += 1;
+
+        const code = (asm.category?.code || 'other').toLowerCase();
+        byAsnaf[code] = (byAsnaf[code] || 0) + 1;
+      }
+    } else {
+      for (const b of activeBeneficiaries) {
+        const latest = b.assessments[0];
+        if (!latest) {
+          if ((b.memberStatus || 'ACTIVE').toUpperCase() === 'ACTIVE') {
+            pendingAssessments += 1;
+          }
+          continue;
+        }
+        if (b.status === 'NEEDS_CORRECTION') {
+          pendingAssessments += 1;
+        } else {
+          const bucket = classifyAssessmentOutcome(
+            latest.status,
+            latest.eligibilityResult,
+            latest.decision,
+          );
+          if (bucket === 'ELIGIBLE') eligibleCount += 1;
+          else if (bucket === 'NOT_ELIGIBLE') ineligibleCount += 1;
+          else pendingAssessments += 1;
+        }
+
+        const code = (latest.category?.code || 'other').toLowerCase();
+        byAsnaf[code] = (byAsnaf[code] || 0) + 1;
+      }
+    }
+
+    const totalAssistanceRequests = applications.length;
+    let pendingAssistanceRequests = 0;
+    let approvedAssistanceRequests = 0;
+    let rejectedAssistanceRequests = 0;
+    let totalDisbursedAmount = 0;
+    const assistedMemberSet = new Set<string>();
+
+    for (const app of applications) {
+      const st = (app.status || '').toLowerCase();
+      const resSt = (app.assistanceResultStatus || '').toLowerCase();
+      const disb = Number(app.actualAssistanceValue ?? app.disbursedAmount ?? 0);
+
+      if (st === 'rejected' || st === 'cancelled') {
+        rejectedAssistanceRequests += 1;
+      } else if (st === 'approved' || st === 'pending_disbursement') {
+        approvedAssistanceRequests += 1;
+      } else if (st === 'disbursed' || st === 'completed' || resSt === 'completed' || disb > 0) {
+        approvedAssistanceRequests += 1;
+        assistedMemberSet.add(app.beneficiaryId);
+        if (Number.isFinite(disb) && disb > 0) {
+          totalDisbursedAmount += disb;
+        }
+      } else {
+        pendingAssistanceRequests += 1;
+      }
+    }
+
+    for (const exec of confirmedExecutions) {
+      if (exec.application?.beneficiaryId) {
+        assistedMemberSet.add(exec.application.beneficiaryId);
+      }
+    }
+
+    return {
+      period: normalizedPeriod ?? null,
+      availablePeriods,
+      // 6 Strictly Separated Core Metrics (Section 9)
+      totalMembers,
+      pendingAssessments,
+      eligibleCount,
+      ineligibleCount,
+      totalAssistanceRequests,
+      assistedMembersCount: assistedMemberSet.size,
+      // Breakdowns
+      memberBreakdown: {
+        active: activeMembers,
+        suspended: suspendedMembers,
+        archived: archivedMembers,
+      },
+      totalAssessmentRounds: allAssessments.length,
+      requestBreakdown: {
+        total: totalAssistanceRequests,
+        pending: pendingAssistanceRequests,
+        approved: approvedAssistanceRequests,
+        rejected: rejectedAssistanceRequests,
+      },
+      totalDisbursedAmount: Number(totalDisbursedAmount.toFixed(2)),
+      byAsnaf,
+      byProvince,
+    };
+  }
+
   private async duplicateIdentityConflict(identityNumberNormalized: string | null) {
-    let registryNumber: string | undefined;
+    let existingInfo: { id: string; code: string; fullName: string } | undefined;
     if (identityNumberNormalized) {
       const existing = await this.prisma.beneficiary.findFirst({
         where: {
@@ -796,16 +1151,40 @@ export class BeneficiariesService {
           identityNumberNormalized,
           deletedAt: null,
         },
-        select: { registryNumber: true },
+        select: {
+          id: true,
+          memberId: true,
+          registryNumber: true,
+          title: true,
+          firstName: true,
+          lastName: true,
+        },
       });
-      registryNumber = existing?.registryNumber;
+      if (existing) {
+        existingInfo = {
+          id: existing.id,
+          code: existing.memberId || existing.registryNumber,
+          fullName: formatPersonName({
+            prefix: existing.title,
+            firstName: existing.firstName,
+            lastName: existing.lastName,
+          }),
+        };
+      }
     }
     return new AppException(
       HttpStatus.CONFLICT,
       'DUPLICATE_IDENTITY',
-      registryNumber
-        ? `เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว (รหัส ${registryNumber}) กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ`
-        : 'เลขประจำตัวนี้มีในทะเบียนที่ยังใช้งานแล้ว กรุณาเปิดทะเบียนเดิมแทนการสร้างซ้ำ',
+      existingInfo
+        ? `เลขประจำตัวประชาชนนี้ขึ้นทะเบียนเป็นสมาชิกอยู่แล้ว (รหัสสมาชิก ${existingInfo.code} - ${existingInfo.fullName}) กรุณาเปิดข้อมูลสมาชิกเดิมแทนการสร้างซ้ำ`
+        : 'เลขประจำตัวประชาชนนี้ขึ้นทะเบียนเป็นสมาชิกอยู่แล้ว กรุณาเปิดข้อมูลสมาชิกเดิมแทนการสร้างซ้ำ',
+      existingInfo
+        ? [
+            { field: 'existingBeneficiaryId', message: existingInfo.id },
+            { field: 'memberId', message: existingInfo.code },
+            { field: 'fullName', message: existingInfo.fullName },
+          ]
+        : undefined,
     );
   }
 
@@ -833,4 +1212,24 @@ function parseHistoryDetail(raw: string | null) {
   } catch {
     return [];
   }
+}
+
+function classifyAssessmentOutcome(
+  status?: string | null,
+  eligibilityResult?: string | null,
+  decision?: string | null,
+): 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'PENDING' {
+  const st = String(status || '').toUpperCase();
+  const res = String(eligibilityResult || '').toUpperCase();
+  const dec = String(decision || '').toUpperCase();
+  if (st === 'DRAFT' || st === 'PENDING_ASSESSMENT' || st === 'UNDER_REVIEW' || st === 'RETURNED_FOR_CORRECTION') {
+    return 'PENDING';
+  }
+  if (st === 'ELIGIBLE' || st === 'APPROVED' || res === 'ELIGIBLE' || dec === 'CONFIRMED') {
+    return 'ELIGIBLE';
+  }
+  if (st === 'NOT_ELIGIBLE' || res === 'NOT_ELIGIBLE' || dec === 'REJECTED' || dec === 'NOT_CONFIRMED') {
+    return 'NOT_ELIGIBLE';
+  }
+  return 'PENDING';
 }

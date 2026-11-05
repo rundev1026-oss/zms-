@@ -39,7 +39,19 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const res = await proxyToNest(`/assistance-requests/${id}/status`, request, {
+    const isFullUpdate =
+      body.requestedAmount !== undefined ||
+      body.assistanceType !== undefined ||
+      body.hardshipReasons !== undefined ||
+      body.necessityDetails !== undefined ||
+      body.specificFundCode !== undefined ||
+      Array.isArray(body.documents);
+
+    const endpoint = isFullUpdate
+      ? `/assistance-requests/${id}`
+      : `/assistance-requests/${id}/status`;
+
+    const res = await proxyToNest(endpoint, request, {
       method: 'PATCH',
       body,
     });
@@ -47,7 +59,7 @@ export async function PATCH(
     const json = await res.json();
     if (!res.ok) {
       return NextResponse.json(
-        { success: false, error: json.message || 'ไม่สามารถปรับปรุงสถานะคำร้องได้' },
+        { success: false, error: json.message || 'ไม่สามารถปรับปรุงคำร้องได้' },
         { status: res.status }
       );
     }
@@ -55,13 +67,20 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       data: json,
-      message: `ปรับปรุงสถานะคำร้องเรียบร้อยแล้ว`,
+      message: isFullUpdate ? 'ปรับปรุงข้อมูลคำร้องเรียบร้อยแล้ว' : 'ปรับปรุงสถานะคำร้องเรียบร้อยแล้ว',
     });
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, error: error.message || 'เกิดข้อผิดพลาดในการปรับปรุงสถานะคำร้อง' },
+      { success: false, error: error.message || 'เกิดข้อผิดพลาดในการปรับปรุงคำร้อง' },
       { status: 500 }
     );
   }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return PATCH(request, { params });
 }
 

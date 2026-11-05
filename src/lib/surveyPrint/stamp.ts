@@ -235,34 +235,34 @@ function drawHeaderPage1(page: PDFPage, fonts: Fonts, model: SurveyPrintModel) {
     color: COLOR_TEAL,
   });
 
-  // Line 1: Member ID (Prominent Navy)
+  // Line 1: Permanent Member ID (Prominent Navy)
   page.drawText('รหัสสมาชิก:', {
     x: boxX + 10,
-    y: boxY + 48,
-    size: 8,
-    font: fonts.bold,
-    color: COLOR_NAVY,
-  });
-  page.drawText(model.memberId || '-', {
-    x: boxX + 60,
     y: boxY + 48,
     size: 8.5,
     font: fonts.bold,
     color: COLOR_NAVY,
   });
+  page.drawText(model.memberId || model.registryNumber || '-', {
+    x: boxX + 62,
+    y: boxY + 48,
+    size: 9,
+    font: fonts.bold,
+    color: COLOR_NAVY,
+  });
 
-  // Line 2: Registry ID
-  page.drawText('รหัสทะเบียน:', {
+  // Line 2: Status
+  page.drawText('สถานะ:', {
     x: boxX + 10,
     y: boxY + 34,
     size: 7.5,
     font: fonts.regular,
     color: COLOR_SLATE,
   });
-  page.drawText(model.registryNumber, {
-    x: boxX + 60,
+  page.drawText(model.statusLabel || '-', {
+    x: boxX + 62,
     y: boxY + 34,
-    size: 8,
+    size: 7.5,
     font: fonts.bold,
     color: COLOR_SLATE,
   });
@@ -315,8 +315,8 @@ function drawHeaderOtherPages(page: PDFPage, fonts: Fonts, model: SurveyPrintMod
     color: COLOR_MUTED,
   });
 
-  // Right Member ID & Registry ID
-  const idStr = `รหัสสมาชิก: ${model.memberId}  |  รหัสทะเบียน: ${model.registryNumber}`;
+  // Right Permanent Member ID
+  const idStr = `รหัสสมาชิก: ${model.memberId || model.registryNumber}`;
   const idWidth = fonts.bold.widthOfTextAtSize(idStr, 8);
   page.drawText(idStr, {
     x: rightX - idWidth,
@@ -359,8 +359,8 @@ function drawFooter(page: PDFPage, fonts: Fonts, model: SurveyPrintModel, pageNu
     color: COLOR_DIVIDER,
   });
 
-  // Left: Member ID & Registry ID
-  page.drawText(`รหัสสมาชิก: ${model.memberId}  ·  รหัสทะเบียน: ${model.registryNumber}`, {
+  // Left: Permanent Member ID
+  page.drawText(`รหัสสมาชิก: ${model.memberId || model.registryNumber}`, {
     x: leftX,
     y: textY,
     size: 7,

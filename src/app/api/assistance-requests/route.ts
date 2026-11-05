@@ -56,9 +56,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const rawDocs = Array.isArray(rawInput.documents)
+      ? rawInput.documents
+      : Array.isArray(body.documents)
+        ? body.documents
+        : undefined;
+
     const payload = {
       beneficiaryId,
+      assessmentId: rawInput.assessmentId || body.assessmentId || undefined,
+      assistanceType: rawInput.assistanceType || body.assistanceType || undefined,
+      assistanceTypeDetails:
+        rawInput.assistanceTypeDetails || body.assistanceTypeDetails || undefined,
       asnafCategory: rawInput.asnafCategory || 'miskin',
+      primaryGroupCode: rawInput.primaryGroupCode || body.primaryGroupCode || undefined,
       requestedAmount: Number(rawInput.requestedAmount || 0),
       urgencyLevel: rawInput.urgencyLevel || 'normal',
       hardshipReasons: rawInput.hardshipReasons || rawInput.necessityDetails || rawInput.notes,
@@ -66,8 +77,24 @@ export async function POST(request: NextRequest) {
       assistanceTypeId: rawInput.assistanceTypeId,
       assistanceGroup: rawInput.assistanceGroup || 'core',
       specificFundId: rawInput.specificFundId,
+      specificFundCode: rawInput.specificFundCode || body.specificFundCode || undefined,
+      specificFundName: rawInput.specificFundName || body.specificFundName || undefined,
+      fiscalYear: rawInput.fiscalYear || body.fiscalYear || undefined,
       branchId: rawInput.branchId,
       branchName: rawInput.branchName,
+      status: rawInput.status || body.status || undefined,
+      idempotencyKey: rawInput.idempotencyKey || body.idempotencyKey || undefined,
+      documents: rawDocs
+        ?.filter((d: any) => d && d.name && d.fileUrl)
+        .map((d: any) => ({
+          name: String(d.name),
+          category: String(d.category || 'other_doc'),
+          fileUrl: String(d.fileUrl),
+          mimeType: d.mimeType ? String(d.mimeType) : undefined,
+          fileSize: typeof d.fileSize === 'number' ? d.fileSize : undefined,
+          storageProvider: d.storageProvider ? String(d.storageProvider) : undefined,
+          storagePath: d.storagePath ? String(d.storagePath) : undefined,
+        })),
     };
 
     const res = await proxyToNest('/assistance-requests', request, {

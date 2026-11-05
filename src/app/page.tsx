@@ -21,6 +21,7 @@ import { ExecutiveDashboard } from '@/components/views/ExecutiveDashboard';
 import { UserManagementView } from '@/components/views/UserManagementView';
 import { BeneficiaryRegistryView } from '@/components/views/BeneficiaryRegistryView';
 import { AssistanceRequestsView } from '@/components/views/AssistanceRequestsView';
+import { AssistanceRequestFormView } from '@/components/views/assistance/AssistanceRequestFormView';
 import { MultiStepRegistrationView } from '@/components/views/MultiStepRegistrationView';
 import { AssessmentView } from '@/components/views/AssessmentView';
 import { ApprovalsView } from '@/components/views/ApprovalsView';
@@ -29,6 +30,7 @@ import { ZakatCalculatorView } from '@/components/views/ZakatCalculatorView';
 import { PaymentAndMemberView } from '@/components/views/PaymentAndMemberView';
 import { OfficerReportsAndAuditView } from '@/components/views/OfficerReportsAndAuditView';
 import { BranchesAndDepartmentsView, AdminSettingsView } from '@/components/views/AdminOrgAndSettingsViews';
+import { SystemAdminCenterView } from '@/components/views/admin/SystemAdminCenterView';
 import { FollowUpMonitoringView } from '@/components/views/follow-up/FollowUpMonitoringView';
 import { FinanceView } from '@/components/views/FinanceView';
 import { useApp } from '@/context/AppContext';
@@ -42,6 +44,10 @@ export default function Home() {
 
   // Shared state for navigation across views
   const [selectedAppId, setSelectedAppId] = useState<string | undefined>(undefined);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(undefined);
+  const [assistanceRequestBeneficiaryId, setAssistanceRequestBeneficiaryId] = useState<string | undefined>(undefined);
+  const [initialMemberSection, setInitialMemberSection] = useState<'member_info' | 'requests' | undefined>(undefined);
+  const [initialMemberStartEdit, setInitialMemberStartEdit] = useState<boolean>(false);
   const [checkoutAmount, setCheckoutAmount] = useState<number>(5000);
   const [checkoutCategory, setCheckoutCategory] = useState<string>('ซะกาตทรัพย์สินทางการเงิน');
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | undefined>(undefined);
@@ -87,6 +93,7 @@ export default function Home() {
       case 'beneficiaries':
       case 'registry': return 'ขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต (Beneficiary Master Registry)';
       case 'assistance-requests': return 'ยื่นคำร้องขอความช่วยเหลือ (Assistance Requests)';
+      case 'new-assistance-request': return 'ยื่นคำร้องขอความช่วยเหลือ (Assistance Request Form)';
       case 'disbursements': return 'บันทึกการช่วยเหลือ (Disbursements & Aid Records)';
       case 'follow-up': return 'ตรวจสอบและติดตามผล (Follow-up & Monitoring)';
       case 'finance': return 'การเงินและบัญชี (Financial & Accounting Module)';
@@ -102,7 +109,24 @@ export default function Home() {
       case 'branches-depts': return 'โครงสร้างสาขาและแผนก (Branches & Departments)';
       case 'transparency-reports': return 'รายงานและความโปร่งใส (Reports & Transparency)';
       case 'audit-logs': return 'บันทึกประวัติระบบ (Audit Trail Log)';
-      case 'settings': return 'การตั้งค่าระบบ & สำรองข้อมูล (System Settings)';
+      case 'admin-center':
+      case 'admin-users':
+      case 'users':
+      case 'admin-roles':
+      case 'roles-permissions':
+      case 'admin-org':
+      case 'branches-depts':
+      case 'admin-models':
+      case 'assistance-models':
+      case 'admin-types':
+      case 'assistance-types':
+      case 'admin-asnaf':
+      case 'asnaf-categories':
+      case 'admin-settings':
+      case 'settings':
+        return 'การตั้งค่าและบริหารระบบ (System Administration & Configuration)';
+      case 'backup':
+        return 'สำรองข้อมูล (Database Backup)';
       default: return 'ระบบจัดการเงินซะกาต';
     }
   };
@@ -257,12 +281,48 @@ export default function Home() {
             />
           )}
 
-          {currentView === 'users' && (
-            <UserManagementView onNavigate={setCurrentView} />
+          {[
+            'admin-center',
+            'admin-users',
+            'users',
+            'admin-roles',
+            'roles-permissions',
+            'admin-org',
+            'branches-depts',
+            'admin-models',
+            'assistance-models',
+            'admin-types',
+            'assistance-types',
+            'admin-asnaf',
+            'asnaf-categories',
+            'admin-settings',
+            'settings',
+            'backup',
+          ].includes(currentView) && (
+            <SystemAdminCenterView
+              initialTab={currentView}
+              onNavigate={setCurrentView}
+            />
           )}
 
           {(currentView === 'beneficiaries' || currentView === 'registry') && (
             <BeneficiaryRegistryView
+              initialMemberId={selectedMemberId}
+              onClearInitialMember={() => {
+                setSelectedMemberId(undefined);
+                setInitialMemberSection(undefined);
+                setInitialMemberStartEdit(false);
+              }}
+              initialMainSection={initialMemberSection as any}
+              initialStartEdit={initialMemberStartEdit}
+              onStartAssistanceRequest={(benId) => {
+                setAssistanceRequestBeneficiaryId(benId);
+                setCurrentView('new-assistance-request');
+              }}
+              onOpenAssistanceRequestDetail={(requestId) => {
+                setSelectedAppId(requestId);
+                setCurrentView('assistance-requests');
+              }}
               onNavigate={setCurrentView}
             />
           )}
@@ -271,6 +331,36 @@ export default function Home() {
             <AssistanceRequestsView
               onNavigate={setCurrentView}
               selectedRequestId={selectedAppId}
+              onClearSelectedRequestId={() => setSelectedAppId(undefined)}
+              initialBeneficiaryId={assistanceRequestBeneficiaryId}
+              onClearInitialBeneficiaryId={() => setAssistanceRequestBeneficiaryId(undefined)}
+              onOpenMemberDetail={(beneficiaryId, startEdit, targetSec) => {
+                setSelectedMemberId(beneficiaryId);
+                setInitialMemberSection(targetSec);
+                setInitialMemberStartEdit(Boolean(startEdit));
+                setCurrentView('beneficiaries');
+              }}
+            />
+          )}
+
+          {currentView === 'new-assistance-request' && (
+            <AssistanceRequestFormView
+              onNavigate={(view: string) => {
+                if (view !== 'new-assistance-request') setAssistanceRequestBeneficiaryId(undefined);
+                setCurrentView(view);
+              }}
+              initialBeneficiaryId={assistanceRequestBeneficiaryId}
+              editDraftId={selectedAppId}
+              onOpenMemberDetail={(memberUuid: string, startEdit, targetSection) => {
+                setSelectedMemberId(memberUuid);
+                setInitialMemberStartEdit(Boolean(startEdit));
+                setInitialMemberSection(targetSection);
+                setCurrentView('beneficiaries');
+              }}
+              onOpenRequestDetail={(applicationId) => {
+                setSelectedAppId(applicationId);
+                setCurrentView('assistance-requests');
+              }}
             />
           )}
 
@@ -281,6 +371,11 @@ export default function Home() {
                 setCurrentView(view);
               }}
               editAppId={selectedAppId}
+              onOpenMemberDetail={(memberUuid: string) => {
+                setSelectedAppId(undefined);
+                setSelectedMemberId(memberUuid);
+                setCurrentView('beneficiaries');
+              }}
             />
           )}
 
@@ -341,17 +436,13 @@ export default function Home() {
             />
           )}
 
-          {currentView === 'branches-depts' && (
-            <BranchesAndDepartmentsView onNavigate={setCurrentView} />
-          )}
+
 
           {currentView === 'transparency-reports' && (
             <PublicTransparencyView />
           )}
 
-          {currentView === 'settings' && (
-            <AdminSettingsView />
-          )}
+
         </main>
       </div>
     </div>

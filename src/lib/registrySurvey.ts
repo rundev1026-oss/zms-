@@ -948,11 +948,18 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
   let asnafKey = '';
   if (nestData.asnaf?.code) asnafKey = String(nestData.asnaf.code).toLowerCase();
 
+  const primaryMemberCode = nestData.memberId || nestData.registryNumber || '';
   return {
     id: nestData.id,
-    registrationNo: nestData.registryNumber,
+    memberId: primaryMemberCode,
+    memberCode: primaryMemberCode,
+    registrationNo: primaryMemberCode,
     registryNumber: nestData.registryNumber,
-    memberId: nestData.memberId || '',
+    memberStatus: String(nestData.memberStatus || 'ACTIVE').toLowerCase(),
+    latestAssessment: nestData.latestAssessment || null,
+    assessmentCount: nestData.assessmentCount ?? 0,
+    assistanceApplicationsCount: nestData.requestCount ?? 0,
+    totalAssistanceReceived: nestData.aidTotal !== undefined ? Number(nestData.aidTotal) || 0 : 0,
     registrationStatus: mapStatusToFrontend(nestData.status),
     status: nestData.status,
     titlePrefix,

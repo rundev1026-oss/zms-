@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:4000/api/v1';
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me-zms-enterprise-2026';
-const SYSTEM_ADMIN_ID = 'fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d';
+const SYSTEM_ADMIN_ID = process.env.SYSTEM_ADMIN_ID || '0b4b3ae1-b1d6-49cb-a947-3ce94ff24516';
 
 export function createServiceToken(userId = SYSTEM_ADMIN_ID): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');

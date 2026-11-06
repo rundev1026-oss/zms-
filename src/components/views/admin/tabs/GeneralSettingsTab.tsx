@@ -23,11 +23,17 @@ import {
   Clock
 } from 'lucide-react';
 
+import { DatabaseBackupTab } from './DatabaseBackupTab';
+
 export interface GeneralSettingsTabProps {
   initialSubSection?: 'org' | 'system' | 'docs' | 'notifications' | 'security' | 'backup';
 }
 
 export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSettingsTabProps = {}) {
+  // If backup mode, render DatabaseBackupTab directly without General Settings header/tabs
+  if (initialSubSection === 'backup') {
+    return <DatabaseBackupTab />;
+  }
   const { showToast, authToken, currentUser } = useApp();
   const [activeSubSection, setActiveSubSection] = useState<'org' | 'system' | 'docs' | 'notifications' | 'security' | 'backup'>(initialSubSection);
 
@@ -227,108 +233,76 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
-      {/* Top Banner */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-teal-800 uppercase tracking-wider mb-1">
-            <Settings className="w-4 h-4 text-teal-700" />
-            <span>Master Configuration: General Settings</span>
-          </div>
-          <h2 className="text-xl font-bold text-slate-900">การตั้งค่าทั่วไป (General Settings)</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            ศูนย์กลางจัดการค่ากำหนดพื้นฐาน ข้อมูลมูลนิธิ รูปแบบปฏิทิน รูปแบบเอกสาร นโยบายความปลอดภัย และการสำรองข้อมูล
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={fetchSettings}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-            title="รีเฟรชข้อมูล"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={handleSaveAll}
-            disabled={isSaving}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-800 text-white font-semibold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all disabled:opacity-60"
-          >
-            {isSaving ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>กำลังบันทึก...</span>
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                <span>บันทึกการตั้งค่าทั้งหมด</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
       {/* Segmented Tabs Navigation */}
-      <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs flex flex-wrap gap-1.5">
-        <button
-          onClick={() => setActiveSubSection('org')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeSubSection === 'org' ? 'bg-teal-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          <span>A. ข้อมูลองค์กร</span>
-        </button>
+      <div className="bg-white p-2 rounded-2xl border border-slate-200/90 shadow-xs flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('org')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSubSection === 'org' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>A. ข้อมูลองค์กร</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubSection('system')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeSubSection === 'system' ? 'bg-teal-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Calendar className="w-4 h-4" />
-          <span>B. การตั้งค่าระบบ & วงเงิน</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('system')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSubSection === 'system' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>B. การตั้งค่าระบบ & วงเงิน</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubSection('docs')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeSubSection === 'docs' ? 'bg-teal-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>C. รูปแบบเอกสาร & รหัส</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('docs')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSubSection === 'docs' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>C. รูปแบบเอกสาร & รหัส</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubSection('notifications')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeSubSection === 'notifications' ? 'bg-teal-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Bell className="w-4 h-4" />
-          <span>D. การแจ้งเตือน</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('notifications')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSubSection === 'notifications' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Bell className="w-4 h-4" />
+            <span>D. การแจ้งเตือน</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubSection('security')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeSubSection === 'security' ? 'bg-teal-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>E. ความปลอดภัย & Session</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('security')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSubSection === 'security' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>E. ความปลอดภัย & Session</span>
+          </button>
+        </div>
 
-        <button
-          onClick={() => setActiveSubSection('backup')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeSubSection === 'backup' ? 'bg-teal-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Database className="w-4 h-4" />
-          <span>F. การสำรองข้อมูล & Checksum</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0 px-1">
+          <button
+            type="button"
+            onClick={fetchSettings}
+            disabled={isLoading}
+            className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            title="รีเฟรชการตั้งค่า"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Main Settings Form Container */}

@@ -1397,8 +1397,199 @@ export async function initDb(): Promise<void> {
       proof_url TEXT,
       auditor_id TEXT NOT NULL,
       auditor_name TEXT NOT NULL,
+      incoming_amount REAL DEFAULT 0,
+      outgoing_amount REAL DEFAULT 0,
+      outstanding_checks_amount REAL DEFAULT 0,
+      deposits_in_transit_amount REAL DEFAULT 0,
+      bank_fees REAL DEFAULT 0,
+      approver_id TEXT,
+      approver_name TEXT,
+      approved_at TEXT,
+      reconciled_items_json TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (bank_account_id) REFERENCES bank_accounts (id)
+    );
+  `);
+
+  // Ensure migration columns exist in bank_reconciliations
+  const brCols = await db.execute(`PRAGMA table_info(bank_reconciliations)`);
+  const brColNames = brCols.rows.map((c) => String(c.name));
+  const brNewCols: [string, string][] = [
+    ['incoming_amount', 'REAL DEFAULT 0'],
+    ['outgoing_amount', 'REAL DEFAULT 0'],
+    ['outstanding_checks_amount', 'REAL DEFAULT 0'],
+    ['deposits_in_transit_amount', 'REAL DEFAULT 0'],
+    ['bank_fees', 'REAL DEFAULT 0'],
+    ['approver_id', 'TEXT'],
+    ['approver_name', 'TEXT'],
+    ['approved_at', 'TEXT'],
+    ['reconciled_items_json', 'TEXT'],
+  ];
+  for (const [col, colType] of brNewCols) {
+    if (!brColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE bank_reconciliations ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+
+  // 2.0.1 Official Payment Vouchers Table (Phase 7 ZMS Master Disbursement)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payment_vouchers (
+      id TEXT PRIMARY KEY,
+      voucher_no TEXT UNIQUE NOT NULL,
+      voucher_type TEXT DEFAULT 'aid_disbursement',
+      application_id TEXT NOT NULL,
+      beneficiary_id TEXT NOT NULL,
+      beneficiary_name TEXT NOT NULL,
+      national_id TEXT NOT NULL,
+      asnaf_category TEXT NOT NULL,
+      fund_id TEXT NOT NULL,
+      fund_name TEXT NOT NULL,
+      bank_account_id TEXT,
+      bank_account_name TEXT,
+      bank_account_number TEXT,
+      amount REAL NOT NULL,
+      payment_method TEXT NOT NULL,
+      recipient_bank_name TEXT,
+      recipient_account_number TEXT,
+      recipient_account_name TEXT,
+      cheque_number TEXT,
+      cheque_date TEXT,
+      cheque_clearing_date TEXT,
+      cash_receiver_name TEXT,
+      cash_receiver_position TEXT,
+      status TEXT DEFAULT 'pending_approval',
+      created_by_id TEXT NOT NULL,
+      created_by_name TEXT NOT NULL,
+      created_by_role TEXT NOT NULL,
+      approved_by_id TEXT,
+      approved_by_name TEXT,
+      approved_by_role TEXT,
+      approved_at TEXT,
+      disbursed_by_id TEXT,
+      disbursed_by_name TEXT,
+      disbursed_at TEXT,
+      proof_url TEXT,
+      proof_name TEXT,
+      notes TEXT,
+      rejection_reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  try {
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_pv_voucher_no ON payment_vouchers(voucher_no);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_pv_application_id ON payment_vouchers(application_id);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_pv_status ON payment_vouchers(status);`);
+  } catch {}
+
+  // 2.1 Bank Account Change History (Audit Log for all account modifications)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS bank_account_change_logs (
+      id TEXT PRIMARY KEY,
+      bank_account_id TEXT NOT NULL,
+      changed_by_id TEXT NOT NULL,
+      changed_by_name TEXT NOT NULL,
+      changed_by_role TEXT NOT NULL,
+      action TEXT NOT NULL,
+      field_name TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      reason TEXT,
+      effective_date TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (bank_account_id) REFERENCES bank_accounts (id)
+    );
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS bank_account_audit_logs (
+      id TEXT PRIMARY KEY,
+      bank_account_id TEXT NOT NULL,
+      changed_by_id TEXT NOT NULL,
+      changed_by_name TEXT NOT NULL,
+      changed_by_role TEXT NOT NULL,
+      action TEXT NOT NULL,
+      field_name TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      reason TEXT,
+      effective_date TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 2.2 Payment Webhook Idempotency & Replay Attack Defense Table
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payment_webhook_idempotency (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      reference_no TEXT NOT NULL,
+      provider_tx_id TEXT NOT NULL,
+      event_type TEXT,
+      amount REAL NOT NULL,
+      signature TEXT,
+      raw_payload TEXT,
+      status TEXT NOT NULL,
+      processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(provider, reference_no, provider_tx_id)
+    );
+  `);
+
+  const pwiCols = await db.execute(`PRAGMA table_info(payment_webhook_idempotency)`);
+  const pwiColNames = pwiCols.rows.map((c) => String(c.name));
+  if (!pwiColNames.includes('signature')) {
+    try { await db.execute(`ALTER TABLE payment_webhook_idempotency ADD COLUMN signature TEXT;`); } catch {}
+  }
+  if (!pwiColNames.includes('event_type')) {
+    try { await db.execute(`ALTER TABLE payment_webhook_idempotency ADD COLUMN event_type TEXT;`); } catch {}
+  }
+  if (!pwiColNames.includes('raw_payload')) {
+    try { await db.execute(`ALTER TABLE payment_webhook_idempotency ADD COLUMN raw_payload TEXT;`); } catch {}
+  }
+
+  // 2.2.1 Raw Webhook Events Audit Log (Regulatory Compliance & Forensics)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payment_webhook_events (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      event_type TEXT,
+      reference_no TEXT,
+      provider_tx_id TEXT,
+      amount REAL,
+      currency TEXT DEFAULT 'THB',
+      headers_json TEXT,
+      raw_payload TEXT,
+      signature TEXT,
+      status TEXT NOT NULL,
+      client_ip TEXT,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 2.3 Payment & Bank Reconciliation Records (3-Way Matching Engine)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payment_reconciliation_records (
+      id TEXT PRIMARY KEY,
+      batch_no TEXT UNIQUE NOT NULL,
+      reconciled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      provider TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      total_zms_count INTEGER DEFAULT 0,
+      total_zms_amount REAL DEFAULT 0,
+      total_provider_count INTEGER DEFAULT 0,
+      total_provider_amount REAL DEFAULT 0,
+      matched_count INTEGER DEFAULT 0,
+      matched_amount REAL DEFAULT 0,
+      mismatch_count INTEGER DEFAULT 0,
+      missing_in_zms_count INTEGER DEFAULT 0,
+      missing_in_provider_count INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'completed',
+      auditor_id TEXT NOT NULL,
+      auditor_name TEXT NOT NULL,
+      details_json TEXT,
+      notes TEXT
     );
   `);
 
@@ -1964,12 +2155,86 @@ export async function initDb(): Promise<void> {
     ['is_anonymous', 'INTEGER DEFAULT 0'],
     ['usage_restriction', 'TEXT'],
     ['workflow_id', 'TEXT'],
+    ['donor_type', 'TEXT DEFAULT "individual"'],
+    ['donor_phone', 'TEXT'],
+    ['donor_email', 'TEXT'],
+    ['donor_tax_id', 'TEXT'],
+    ['receipt_required', 'INTEGER DEFAULT 1'],
+    ['receipt_address', 'TEXT'],
+    ['verified_at', 'TEXT'],
+    ['rejection_reason', 'TEXT'],
+    ['provider_tx_id', 'TEXT'],
+    ['branch_id', 'TEXT'],
+    ['bank_account_name', 'TEXT'],
+    ['bank_account_number', 'TEXT'],
+    ['bank_name', 'TEXT'],
+    ['gateway_provider', 'TEXT'],
+    ['gateway_fee', 'REAL DEFAULT 0'],
+    ['net_amount', 'REAL'],
+    ['payment_status', 'TEXT DEFAULT "PENDING_PAYMENT"'],
+    ['settlement_status', 'TEXT DEFAULT "unsettled"'],
+    ['settlement_batch_id', 'TEXT'],
+    ['settlement_date', 'TEXT'],
+    ['refund_amount', 'REAL DEFAULT 0'],
+    ['refund_reason', 'TEXT'],
+    ['refund_at', 'TEXT'],
+    ['refund_by_id', 'TEXT'],
+    ['refund_by_name', 'TEXT'],
+    ['webhook_verified_at', 'TEXT'],
   ];
   for (const [col, colType] of ftNewCols) {
     if (!ftColNames.includes(col)) {
       try { await db.execute(`ALTER TABLE financial_transactions ADD COLUMN ${col} ${colType};`); } catch {}
     }
   }
+
+  // Migration columns for bank_accounts
+  const baCols = await db.execute(`PRAGMA table_info(bank_accounts)`);
+  const baColNames = baCols.rows.map((c) => String(c.name));
+  const baNewCols: [string, string][] = [
+    ['promptpay_id', 'TEXT'],
+    ['account_type', 'TEXT DEFAULT "savings"'],
+    ['money_types', 'TEXT DEFAULT "zakat,sadaqah,operational"'],
+    ['qr_config', 'TEXT'],
+    ['effective_date', 'TEXT DEFAULT "2569-01-01"'],
+    ['branch_id', 'TEXT'],
+  ];
+  for (const [col, colType] of baNewCols) {
+    if (!baColNames.includes(col)) {
+      try { await db.execute(`ALTER TABLE bank_accounts ADD COLUMN ${col} ${colType};`); } catch {}
+    }
+  }
+
+  // Ensure default bank accounts have promptpay_id and details populated
+  try {
+    await db.execute(`UPDATE bank_accounts SET promptpay_id = '0-1255-69000-12-6', account_type = 'savings', money_types = 'zakat,sadaqah,operational', branch_id = 'branch-1', effective_date = '2569-01-01' WHERE id = 'bank-1' AND (promptpay_id IS NULL OR promptpay_id = '' OR promptpay_id = '0-1255-69000-12-0')`);
+    await db.execute(`UPDATE bank_accounts SET promptpay_id = '0812345678', account_type = 'savings', money_types = 'zakat,sadaqah', branch_id = 'branch-2', effective_date = '2569-01-01' WHERE id = 'bank-2' AND (promptpay_id IS NULL OR promptpay_id = '' OR promptpay_id LIKE '0-1255%')`);
+    await db.execute(`UPDATE bank_accounts SET promptpay_id = '012345678901234', account_type = 'current', money_types = 'operational,sadaqah', branch_id = 'branch-2', effective_date = '2569-01-01' WHERE id = 'bank-3' AND (promptpay_id IS NULL OR promptpay_id = '' OR promptpay_id LIKE '0-1255%')`);
+  } catch {}
+
+  // 11. Create donation_qr_sessions table for tracking EMVCo Dynamic QR lifecycles
+  await db.execute(`CREATE TABLE IF NOT EXISTS donation_qr_sessions (
+    id TEXT PRIMARY KEY,
+    reference_no TEXT UNIQUE NOT NULL,
+    amount REAL NOT NULL,
+    qr_type TEXT NOT NULL,
+    promptpay_id TEXT NOT NULL,
+    promptpay_type TEXT NOT NULL,
+    bank_account_id TEXT,
+    bank_name TEXT,
+    account_name TEXT,
+    account_number TEXT,
+    payload TEXT NOT NULL,
+    crc TEXT NOT NULL,
+    status TEXT DEFAULT 'active',
+    expires_at TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    paid_at TEXT
+  );`);
+  try {
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_qr_sessions_ref ON donation_qr_sessions(reference_no);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_qr_sessions_status ON donation_qr_sessions(status);`);
+  } catch {}
 
   // Seed Default Bank Accounts (3 required accounts)
   const bankCount = await db.execute('SELECT COUNT(*) as count FROM bank_accounts');

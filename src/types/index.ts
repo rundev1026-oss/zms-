@@ -470,8 +470,29 @@ export interface BankAccount {
   lastReconciledBy?: string;
   status: 'active' | 'inactive' | 'closed';
   isDefault: boolean;
+  promptpayId?: string;
+  accountType?: 'savings' | 'current';
+  moneyTypes?: string[];
+  qrConfig?: string;
+  branchId?: string;
+  effectiveDate?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface BankAccountChangeLog {
+  id: string;
+  bankAccountId: string;
+  changedById: string;
+  changedByName: string;
+  changedByRole: string;
+  action: 'create' | 'update' | 'set_default' | 'toggle_status' | 'close';
+  fieldName: string;
+  oldValue?: string;
+  newValue?: string;
+  reason?: string;
+  effectiveDate?: string;
+  createdAt: string;
 }
 
 export interface BankReconciliation {
@@ -482,12 +503,35 @@ export interface BankReconciliation {
   systemBalance: number;
   statementBalance: number;
   difference: number;
+  incomingAmount?: number;
+  outgoingAmount?: number;
+  outstandingChecksAmount?: number;
+  depositsInTransitAmount?: number;
+  bankFees?: number;
   status: 'balanced' | 'discrepancy' | 'adjusted';
   notes?: string;
   proofUrl?: string;
   auditorId: string;
   auditorName: string;
+  approverId?: string;
+  approverName?: string;
+  approvedAt?: string;
+  reconciledItemsJson?: any;
   createdAt: string;
+}
+
+export interface ReconcileBankAccountInput {
+  bankAccountId: string;
+  reconciliationDate?: string;
+  statementBalance: number;
+  depositsInTransit?: number;
+  outstandingChecks?: number;
+  bankFees?: number;
+  notes?: string;
+  proofUrl?: string;
+  approverId?: string;
+  approverName?: string;
+  reconciledItems?: any[];
 }
 
 export interface CashFlowDisbursementItem {
@@ -1214,7 +1258,6 @@ export interface FinancialTransaction {
   notes?: string;
   // Extended fields for ZMS Master Finance Specification
   bankAccountId?: string;
-  bankAccountName?: string;
   moneyType?: 'zakat' | 'sadaqah' | 'operational_admin';
   zakatYear?: string;
   asnafCategory?: string;
@@ -1224,9 +1267,133 @@ export interface FinancialTransaction {
   beneficiaryId?: string;
   applicationId?: string;
   donorName?: string;
+  donorType?: 'individual' | 'organization' | 'anonymous';
+  donorPhone?: string;
+  donorEmail?: string;
+  donorTaxId?: string;
+  receiptRequired?: boolean;
+  receiptAddress?: string;
   isAnonymous?: boolean;
   usageRestriction?: string;
   workflowId?: string;
+  verifiedAt?: string;
+  rejectionReason?: string;
+  providerTxId?: string;
+  branchId?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  gatewayProvider?: string;
+  gatewayFee?: number;
+  netAmount?: number;
+  paymentStatus?: 'PENDING_PAYMENT' | 'PROCESSING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'CANCELLED' | 'REFUND_PENDING' | 'REFUNDED' | 'REVIEW_REQUIRED';
+  settlementStatus?: string;
+  settlementBatchId?: string;
+  settlementDate?: string;
+  refundAmount?: number;
+  refundReason?: string;
+  refundAt?: string;
+  refundById?: string;
+  refundByName?: string;
+  webhookVerifiedAt?: string;
+}
+
+export interface PaymentReconciliationRecord {
+  id: string;
+  batchNo: string;
+  reconciledAt: string;
+  provider: string;
+  startDate: string;
+  endDate: string;
+  totalZmsCount: number;
+  totalZmsAmount: number;
+  totalProviderCount: number;
+  totalProviderAmount: number;
+  matchedCount: number;
+  matchedAmount: number;
+  mismatchCount: number;
+  missingInZmsCount: number;
+  missingInProviderCount: number;
+  status: string;
+  auditorId: string;
+  auditorName: string;
+  detailsJson?: any;
+  notes?: string;
+}
+
+export interface PaymentVoucher {
+  id: string;
+  voucherNo: string;
+  voucherType: 'aid_disbursement' | 'office_expense' | 'other_approved';
+  applicationId: string;
+  applicationNo?: string;
+  beneficiaryId: string;
+  beneficiaryName: string;
+  nationalId: string;
+  asnafCategory: string;
+  fundId: string;
+  fundName: string;
+  bankAccountId?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  amount: number;
+  paymentMethod: 'bank_transfer' | 'cash' | 'cheque' | 'promptpay';
+  recipientBankName?: string;
+  recipientAccountNumber?: string;
+  recipientAccountName?: string;
+  chequeNumber?: string;
+  chequeDate?: string;
+  chequeClearingDate?: string;
+  cashReceiverName?: string;
+  cashReceiverPosition?: string;
+  status: 'draft' | 'pending_approval' | 'approved' | 'disbursed' | 'rejected' | 'cancelled' | 'reversed';
+  createdById: string;
+  createdByName: string;
+  createdByRole: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedByRole?: string;
+  approvedAt?: string;
+  disbursedById?: string;
+  disbursedByName?: string;
+  disbursedAt?: string;
+  proofUrl?: string;
+  proofName?: string;
+  notes?: string;
+  rejectionReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreatePaymentVoucherInput {
+  applicationId: string;
+  amount?: number;
+  fundId?: string;
+  bankAccountId?: string;
+  paymentMethod: 'bank_transfer' | 'cash' | 'cheque' | 'promptpay';
+  recipientBankName?: string;
+  recipientAccountNumber?: string;
+  recipientAccountName?: string;
+  chequeNumber?: string;
+  chequeDate?: string;
+  cashReceiverName?: string;
+  cashReceiverPosition?: string;
+  notes?: string;
+}
+
+export interface ApprovePaymentVoucherInput {
+  voucherId: string;
+  action: 'approve' | 'reject';
+  notes?: string;
+}
+
+export interface ExecutePaymentVoucherInput {
+  voucherId: string;
+  proofUrl?: string;
+  proofName?: string;
+  referenceNo?: string;
+  chequeClearingDate?: string;
+  notes?: string;
 }
 
 export interface ZakatCalculationItem {

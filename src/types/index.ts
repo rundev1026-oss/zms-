@@ -352,6 +352,7 @@ export interface AssistanceApplication {
   postcode?: string;
   community: string;
   asnafCategory: AsnafCategory;
+  asnafCategories?: string[];
   appliedDate: string;
   requestedAmount: number;
   approvedAmount?: number;
@@ -1454,6 +1455,7 @@ export interface BeneficiaryRegistryItem {
   occupation?: string;
   maritalStatus?: MaritalStatus;
   asnafCategory: AsnafCategory;
+  asnafCategories?: string[];
   branchId?: string;
   branchName?: string;
   address: string;

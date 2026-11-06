@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          asnafCode: input.asnafCategory || 'miskin',
+          asnafCode: (Array.isArray(input.asnafCategories) && input.asnafCategories[0]) || input.asnafCategory || 'miskin',
           assessmentType: 'INITIAL',
           status: initialAssessmentStatus,
           rationale:

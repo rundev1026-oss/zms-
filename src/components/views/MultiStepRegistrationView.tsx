@@ -14,6 +14,7 @@ import {
   HouseholdExpenseBreakdown
 } from '@/types';
 import {
+  Bookmark,
   UserPlus,
   ChevronRight,
   ChevronLeft,
@@ -46,6 +47,28 @@ import { GoogleMapsLocationPicker } from '@/components/common/GoogleMapsLocation
 import { calculateAge, getTodayISODate, normalizeBirthDateToCE } from '@/utils/ageCalculator';
 import { ThaiAddressFields } from '@/components/common/ThaiAddressFields';
 import { validateAddress, isValidThaiNationalId } from '@/lib/thaiAddress';
+
+interface AsnafMasterOption {
+  id: string;
+  code: string;
+  nameTh: string;
+  nameAr?: string;
+  nameEn?: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+const DEFAULT_ASNAF_FALLBACKS: AsnafMasterOption[] = [
+  { id: '1', code: 'faqir', nameTh: 'ผู้ยากไร้ (ฟะกีร)', nameAr: 'الفقراء (Al-Fuqara)', sortOrder: 1, isActive: true },
+  { id: '2', code: 'miskin', nameTh: 'คนขัดสน (มิสเกน)', nameAr: 'المساكين (Al-Masakin)', sortOrder: 2, isActive: true },
+  { id: '3', code: 'amil', nameTh: 'เจ้าหน้าที่ซะกาต (อามิล)', nameAr: 'العاملين عليها (Al-Amilina Alayha)', sortOrder: 3, isActive: true },
+  { id: '4', code: 'muallaf', nameTh: 'ผู้มีจิตโน้มสู่ศรัทธา (มุอัลลัฟ)', nameAr: 'المؤلفة قلوبهم (Al-Muallafatu Qulubuhum)', sortOrder: 4, isActive: true },
+  { id: '5', code: 'riqab', nameTh: 'ปลดปล่อยพันธนาการ (ริกอบ)', nameAr: 'في الرقاب (Fi Ar-Riqab)', sortOrder: 5, isActive: true },
+  { id: '6', code: 'gharimin', nameTh: 'ผู้มีหนี้สินล้นพ้นตัว (ฆอริมีน)', nameAr: 'الغارمين (Al-Gharimin)', sortOrder: 6, isActive: true },
+  { id: '7', code: 'fisabilillah', nameTh: 'งานเพื่อวิถีทางของอัลลอฮ์ (ฟีสะบีลิลลาฮ์)', nameAr: 'في سبيل الله (Fi Sabilillah)', sortOrder: 7, isActive: true },
+  { id: '8', code: 'ibnsabil', nameTh: 'ผู้เดินทางตกยาก (อิบนุสสะบีล)', nameAr: 'ابน السبيل (Ibn As-Sabil)', sortOrder: 8, isActive: true },
+];
 
 interface MultiStepRegistrationViewProps {
   onNavigate: (view: string) => void;
@@ -151,6 +174,9 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
   const [otherHardshipDetails, setOtherHardshipDetails] = useState<string>('');
 
   const [asnafCategory, setAsnafCategory] = useState<AsnafCategory>('miskin');
+  const [selectedAsnafs, setSelectedAsnafs] = useState<string[]>(['miskin']);
+  const [asnafMasterList, setAsnafMasterList] = useState<AsnafMasterOption[]>([]);
+  const [isLoadingAsnaf, setIsLoadingAsnaf] = useState<boolean>(true);
   const [urgencyLevel, setUrgencyLevel] = useState<'normal' | 'high' | 'urgent'>('high');
 
   // ========================================================
@@ -341,6 +367,67 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
     };
   }, [nationalId, editAppId, createdBeneficiaryId, authToken]);
 
+  // Load Asnaf Master Data
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingAsnaf(true);
+    fetch('/api/admin/asnaf')
+      .then((r) => r.json())
+      .then((json) => {
+        if (!isMounted) return;
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setAsnafMasterList(json.data);
+        } else {
+          setAsnafMasterList(DEFAULT_ASNAF_FALLBACKS);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load asnaf master data:', err);
+        if (isMounted) setAsnafMasterList(DEFAULT_ASNAF_FALLBACKS);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingAsnaf(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Filter active categories OR categories already selected in record history/draft
+  const displayedAsnafList = useMemo(() => {
+    const source = asnafMasterList.length > 0 ? asnafMasterList : DEFAULT_ASNAF_FALLBACKS;
+    const list = source.filter((item) => item.isActive || selectedAsnafs.includes(item.code));
+
+    // Preserve any historical/custom codes not in master list
+    selectedAsnafs.forEach((code) => {
+      if (!list.some((item) => item.code === code)) {
+        list.push({
+          id: `legacy-${code}`,
+          code,
+          nameTh: code,
+          nameAr: '',
+          sortOrder: 999,
+          isActive: false,
+        });
+      }
+    });
+
+    return [...list].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+  }, [asnafMasterList, selectedAsnafs]);
+
+  const toggleAsnaf = (code: string) => {
+    setSelectedAsnafs((prev) => {
+      const exists = prev.includes(code);
+      if (!exists && prev.length >= 2) {
+        showToast('สามารถเลือกหมวดหมู่อัสนัฟได้ไม่เกิน 2 ตัวเลือก', 'error');
+        return prev;
+      }
+      const next = exists ? prev.filter((c) => c !== code) : [...prev, code];
+      setAsnafCategory((next[0] || 'miskin') as AsnafCategory);
+      return next;
+    });
+  };
+
   // Auto-sync age integer with birthDate calculation
   useEffect(() => {
     if (ageCalculation.isValid) {
@@ -410,7 +497,21 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
     if (b.housingNotes) setHousingNotes(b.housingNotes);
     if (b.landTitleType) setLandTitleType(b.landTitleType);
     if (b.landTitleNotes) setLandTitleNotes(b.landTitleNotes);
-    if (b.asnafCategory) setAsnafCategory(b.asnafCategory);
+    const loadedAsnafs: string[] = [];
+    if (Array.isArray(b.selectedAsnafs) && b.selectedAsnafs.length > 0) {
+      loadedAsnafs.push(...b.selectedAsnafs.map((c: any) => String(c)));
+    } else if (Array.isArray(b.asnafCategories) && b.asnafCategories.length > 0) {
+      loadedAsnafs.push(...b.asnafCategories.map((c: any) => String(c)));
+    } else if (b.asnafCategory) {
+      loadedAsnafs.push(String(b.asnafCategory));
+    } else if (b.asnafCode) {
+      loadedAsnafs.push(String(b.asnafCode));
+    }
+    if (loadedAsnafs.length > 0) {
+      const capped = loadedAsnafs.slice(0, 2);
+      setSelectedAsnafs(capped);
+      setAsnafCategory(capped[0] as AsnafCategory);
+    }
     if (b.incomeBreakdown) setIncomeBreakdown(b.incomeBreakdown);
     if (b.expenseBreakdown) setExpenseBreakdown(b.expenseBreakdown);
     if (b.debtAmount !== undefined && b.debtAmount !== null) {
@@ -493,7 +594,10 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
         latitude, longitude, residenceAddress, placeName,
         poverty, hasDebt, debtType, debtAmount, unemployed, familyIssue, familyIssueDetails,
         hasDisability, disabilityDetails, hasIllness, illnessDetails, otherHardship, otherHardshipDetails,
-        asnafCategory, urgencyLevel,
+        asnafCategory: selectedAsnafs[0] || asnafCategory || 'miskin',
+        asnafCategories: selectedAsnafs,
+        selectedAsnafs,
+        urgencyLevel,
         assistanceType, assistanceTypeDetails, requestedAmount, necessityDetails,
         hasPastAssistance, pastAssistanceList,
         incomeBreakdown, expenseBreakdown,
@@ -626,6 +730,17 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
       return;
     }
 
+    if (selectedAsnafs.length === 0) {
+      showToast('กรุณาเลือกหมวดหมู่ผู้มีสิทธิ์รับซะกาต (Asnaf) อย่างน้อย 1 หมวดหมู่', 'error');
+      setCurrentStep(1);
+      return;
+    }
+    if (selectedAsnafs.length > 2) {
+      showToast('สามารถเลือกหมวดหมู่ผู้มีสิทธิ์รับซะกาต (Asnaf) ได้ไม่เกิน 2 ตัวเลือก', 'error');
+      setCurrentStep(1);
+      return;
+    }
+
     if (duplicateMember && !editAppId && !createdBeneficiaryId) {
       showToast(
         `เลขประจำตัวประชาชนนี้ขึ้นทะเบียนเป็นสมาชิกอยู่แล้ว (${duplicateMember.memberCode} - ${duplicateMember.fullName}) กรุณาเปิดข้อมูลสมาชิกเดิมแทนการสร้างซ้ำ`,
@@ -672,7 +787,9 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
         longitude,
         residenceAddress: residenceAddress || address,
         placeName,
-        asnafCategory,
+        asnafCategory: (selectedAsnafs[0] || asnafCategory || 'miskin') as AsnafCategory,
+        asnafCategories: selectedAsnafs,
+        selectedAsnafs,
         monthlyIncome: totalIncome,
         monthlyExpense: totalExpense,
         incomeBreakdown,
@@ -803,7 +920,9 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
             other: otherHardship,
             otherDetails: otherHardship ? otherHardshipDetails : undefined,
           },
-          asnafCategory,
+          asnafCategory: (selectedAsnafs[0] || asnafCategory || 'miskin') as AsnafCategory,
+          asnafCategories: selectedAsnafs,
+          selectedAsnafs,
           urgencyLevel,
           debtAmount: hasDebt ? debtAmount : 0,
           debtPurpose: hasDebt ? debtType : '',
@@ -903,6 +1022,14 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
       const addrCheck = validateAddress(postcode, province, district, subdistrict);
       if (!addrCheck.isValid) {
         showToast(`ข้อมูลที่อยู่ไม่สัมพันธ์กัน: ${addrCheck.message}`, 'error');
+        return;
+      }
+      if (selectedAsnafs.length === 0) {
+        showToast('กรุณาเลือกหมวดหมู่ผู้มีสิทธิ์รับซะกาต (Asnaf) อย่างน้อย 1 หมวดหมู่', 'error');
+        return;
+      }
+      if (selectedAsnafs.length > 2) {
+        showToast('สามารถเลือกหมวดหมู่ผู้มีสิทธิ์รับซะกาต (Asnaf) ได้ไม่เกิน 2 ตัวเลือก', 'error');
         return;
       }
       if (!address || !address.trim()) {
@@ -1283,6 +1410,116 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                 </select>
               </div>
 
+              {/* ลักษณะที่อยู่อาศัย (ย้ายมาต่อจากศาสนา เพื่อจัด Grid ให้เต็มแถวอย่างเหมาะสม) */}
+              <div className="md:col-span-2">
+                <label className="font-bold text-slate-700 block mb-1">ลักษณะที่อยู่อาศัย</label>
+                <select
+                  value={housingType}
+                  onChange={(e) => setHousingType(e.target.value as any)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
+                >
+                  <option value="own">บ้านของตนเอง</option>
+                  <option value="rent">บ้านเช่า</option>
+                  <option value="relative">อาศัยกับญาติ</option>
+                  <option value="other">บ้านผู้อื่น</option>
+                </select>
+              </div>
+
+              {/* หมวดหมู่ผู้มีสิทธิ์รับซะกาต (Asnaf Categories) - Multi-select Checkbox Grid/Cards จาก Master Data */}
+              <div className="col-span-full pt-2">
+                <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <label className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                        <Bookmark className="w-4 h-4 text-emerald-700" />
+                        <span>หมวดหมู่ผู้มีสิทธิ์รับซะกาต (Asnaf Categories) <span className="text-rose-500">*</span></span>
+                      </label>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        เลือกหมวดหมู่ตามหลักศาสนบัญญัติ (ดึงจาก Master Data ระบบ • สามารถเลือกได้ไม่เกิน 2 ตัวเลือก)
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedAsnafs.length === 0 ? (
+                        <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 shrink-0">
+                          ยังไม่ได้เลือก (เลือกได้ไม่เกิน 2 ตัวเลือก)
+                        </span>
+                      ) : selectedAsnafs.length === 2 ? (
+                        <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/90 px-2.5 py-1 rounded-full border border-emerald-300 shrink-0">
+                          เลือกแล้ว 2/2 หมวดหมู่ (ครบตามกำหนด)
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-full border border-emerald-200 shrink-0">
+                          เลือกแล้ว 1/2 หมวดหมู่ (เลือกเพิ่มได้อีก 1)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Validation warning if no Asnaf selected */}
+                  {selectedAsnafs.length === 0 && (
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 flex items-center gap-2.5 text-xs shadow-2xs">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>
+                        ⚠️ <strong>ยังไม่ได้เลือกหมวดหมู่อัสนัฟ:</strong> กรุณาเลือกหมวดหมู่ผู้มีสิทธิ์รับซะกาตอย่างน้อย 1 หมวดหมู่ เพื่อความถูกต้องตามหลักเกณฑ์
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Multi-select Cards Grid: 1 col on mobile, 2 cols on tablet, 4 cols on desktop */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {displayedAsnafList.map((item) => {
+                      const isChecked = selectedAsnafs.includes(item.code);
+                      return (
+                        <button
+                          key={item.code}
+                          type="button"
+                          onClick={() => toggleAsnaf(item.code)}
+                          className={`w-full text-left p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-2.5 min-h-[96px] ${
+                            isChecked
+                              ? 'bg-emerald-50/80 border-emerald-600 ring-2 ring-emerald-600/20 shadow-xs'
+                              : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 w-full">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-4 h-4 rounded-md flex items-center justify-center shrink-0 border transition-colors ${
+                                  isChecked
+                                    ? 'bg-emerald-700 border-emerald-700 text-white'
+                                    : 'border-slate-300 bg-white'
+                                }`}
+                              >
+                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <span className={`text-xs font-bold leading-snug ${isChecked ? 'text-emerald-950' : 'text-slate-800'}`}>
+                                {item.nameTh}
+                              </span>
+                            </div>
+                            {!item.isActive && (
+                              <span className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
+                                เดิม
+                              </span>
+                            )}
+                          </div>
+                          {item.nameAr && (
+                            <div className="text-right w-full">
+                              <span
+                                dir="rtl"
+                                className={`text-xs font-arabic block font-medium leading-relaxed ${
+                                  isChecked ? 'text-emerald-800' : 'text-slate-500'
+                                }`}
+                              >
+                                {item.nameAr}
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               {/* ที่อยู่และการค้นหาข้อมูลจากรหัสไปรษณีย์ */}
               <div className="col-span-full pt-2">
                 <ThaiAddressFields
@@ -1300,58 +1537,6 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                   onChangeCommunity={setCommunity}
                   onValidateStatus={setAddressValidationStatus}
                 />
-              </div>
-
-              {/* สาขามูลนิธิที่รับผิดชอบ (แถวเดียวกันกับลักษณะที่อยู่อาศัยและเอกสารสิทธิ์ที่ดิน) */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">สาขาผู้รับผิดชอบ (เฉพาะสาขาที่เปิดใช้งาน)</label>
-                <select
-                  value={branchId}
-                  onChange={(e) => {
-                    const selected = activeBranches.find((b) => b.id === e.target.value);
-                    setBranchId(e.target.value);
-                    setBranchName(selected ? selected.name : e.target.options[e.target.selectedIndex].text);
-                  }}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
-                >
-                  {activeBranches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name} ({b.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* ลักษณะที่อยู่อาศัย (แถวเดียวกันกับสาขาผู้รับผิดชอบและเอกสารสิทธิ์ที่ดิน) */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">ลักษณะที่อยู่อาศัย</label>
-                <select
-                  value={housingType}
-                  onChange={(e) => setHousingType(e.target.value as any)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
-                >
-                  <option value="own">บ้านของตนเอง</option>
-                  <option value="rent">บ้านเช่า</option>
-                  <option value="relative">อาศัยกับญาติ</option>
-                  <option value="other">บ้านผู้อื่น</option>
-                </select>
-              </div>
-
-              {/* เอกสารสิทธิ์ที่ดิน (แถวเดียวกันกับสาขาผู้รับผิดชอบและลักษณะที่อยู่อาศัย) */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">เอกสารสิทธิ์ที่ดิน (หากเกี่ยวข้องกับคำร้อง)</label>
-                <select
-                  value={landTitleType}
-                  onChange={(e) => setLandTitleType(e.target.value as any)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px]"
-                >
-                  <option value="title_deed">โฉนดที่ดิน (ครุฑแดง)</option>
-                  <option value="ns3">น.ส.3 / น.ส.3 ก</option>
-                  <option value="spk">ส.ป.ก.</option>
-                  <option value="permission_granted">ที่ดินผู้อื่น (ได้รับอนุญาตให้ใช้ประโยชน์ถูกต้อง)</option>
-                  <option value="public_land">ที่ดินสาธารณะ</option>
-                  <option value="no_doc">ไม่มีเอกสารสิทธิ์</option>
-                </select>
               </div>
 
               {/* ส่วนพิกัดที่อยู่อาศัยบน Google Maps */}

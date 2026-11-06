@@ -402,7 +402,20 @@ export function PersonalSection({
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">หมวดอัสนาฟ:</span>
-                      <span className="text-emerald-800 font-bold block">{asnafLabels[registry.asnafCategory] || registry.asnafCategory}</span>
+                      {Array.isArray(registry.asnafCategories) && registry.asnafCategories.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {registry.asnafCategories.map((code) => (
+                            <span
+                              key={code}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
+                            >
+                              {asnafLabels[code] || code}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-emerald-800 font-bold block">{asnafLabels[registry.asnafCategory] || registry.asnafCategory || '-'}</span>
+                      )}
                     </div>
                   </div>
                 </div>

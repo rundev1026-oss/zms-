@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   FileText,
   X,
@@ -26,7 +26,12 @@ import {
 } from 'lucide-react';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll } from '@/components/common/Modal';
 import { DocumentUploader, UploadedDocumentItem } from '@/components/common/DocumentUploader';
+import { SearchableSelect } from '@/components/common/SearchableSelect';
 import { useApp } from '@/context/AppContext';
+import {
+  LEVEL_3_ASSISTANCE_FORMATS,
+  getSupportedFormatsForType,
+} from '@/lib/constants/asnafRelationshipCatalog';
 
 export interface AssistanceRequestWizardModalProps {
   isOpen: boolean;
@@ -211,6 +216,50 @@ const DEFAULT_PRIMARY_GROUPS: any[] = [
   },
 ];
 
+// Helper mappings for clean Thai presentation (No English codes or identifiers shown)
+function getCleanFormatTitle(fmt: any): string {
+  if (!fmt) return '';
+  const code = String(fmt.code || '').toLowerCase();
+  if (code.includes('bank_transfer') || code.includes('transfer')) return 'โอนเงินเข้าบัญชี';
+  if (code.includes('cash')) return 'เงินสด';
+  if (code.includes('in_kind') || code.includes('kind')) return 'มอบสิ่งของ';
+  if (code.includes('materials') || code.includes('material')) return 'จัดซื้อวัสดุ';
+  if (code.includes('vendor_direct') || code.includes('vendor')) return 'จ่ายให้ผู้ให้บริการโดยตรง';
+  if (code.includes('contractor')) return 'จ้างผู้รับเหมา';
+  if (code.includes('scholarship')) return 'ทุนการศึกษา';
+  if (code.includes('career_equipment') || code.includes('career')) return 'สนับสนุนอุปกรณ์ประกอบอาชีพ';
+  if (code.includes('training')) return 'จัดฝึกอบรม';
+  return fmt.name || 'โอนเงินเข้าบัญชี';
+}
+
+function getCleanFormatDescription(fmt: any): string {
+  if (!fmt) return '';
+  const code = String(fmt.code || '').toLowerCase();
+  if (code.includes('bank_transfer') || code.includes('transfer')) return 'โอนเงินเข้าบัญชีเงินฝากธนาคารของผู้มีสิทธิ์โดยตรง';
+  if (code.includes('cash')) return 'ส่งมอบเงินสดพร้อมหลักฐานใบสำคัญรับเงิน';
+  if (code.includes('in_kind') || code.includes('kind')) return 'ส่งมอบเครื่องอุปโภคบริโภคหรือสิ่งของจำเป็น';
+  if (code.includes('materials') || code.includes('material')) return 'จัดซื้อวัสดุเพื่อนำไปใช้งานตามความจำเป็น';
+  if (code.includes('vendor_direct') || code.includes('vendor')) return 'ชำระค่าสินค้าหรือบริการแก่ผู้ให้บริการโดยตรง';
+  if (code.includes('contractor')) return 'ชำระค่างวดงานตามสัญญาจ้างเหมา';
+  if (code.includes('scholarship')) return 'ส่งมอบทุนการศึกษาแก่ผู้เรียนหรือสถานศึกษา';
+  if (code.includes('career_equipment') || code.includes('career')) return 'จัดซื้อเครื่องมือและอุปกรณ์ประกอบอาชีพ';
+  if (code.includes('training')) return 'สนับสนุนค่าใช้จ่ายในการฝึกอบรมทักษะ';
+  return fmt.description || '';
+}
+
+function getCleanAsnafTitle(codeOrName: string): string {
+  if (!codeOrName) return 'ฟากีร–มิสกิน';
+  const raw = codeOrName.toLowerCase();
+  if (raw.includes('faqir') || raw.includes('miskin') || raw.includes('ฟากีร') || raw.includes('มิสคีน') || raw.includes('ยากไร้')) return 'ฟากีร–มิสกิน';
+  if (raw.includes('amil') || raw.includes('อามิล')) return 'อามิลีน';
+  if (raw.includes('muallaf') || raw.includes('มุอัลลัฟ')) return 'มุอัลลัฟ';
+  if (raw.includes('riqab') || raw.includes('humanitarian') || raw.includes('มนุษยธรรม')) return 'มนุษยธรรม';
+  if (raw.includes('gharim') || raw.includes('หนี้สิน') || raw.includes('ฆอริมีน')) return 'ผู้มีหนี้สินล้นตัว';
+  if (raw.includes('fisabilillah') || raw.includes('ฟีสะบีลิลลาฮ์')) return 'ฟีสะบีลิลลาฮ์';
+  if (raw.includes('sabil') || raw.includes('ผู้เดินทาง') || raw.includes('อิบนุ')) return 'ผู้เดินทาง';
+  return codeOrName;
+}
+
 function generateIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return `wiz-${crypto.randomUUID()}`;
@@ -244,6 +293,19 @@ export function AssistanceRequestWizardModal({
   const [selectedPrimaryCode, setSelectedPrimaryCode] = useState<string>('faqir_miskin');
   const [selectedSpecificFundId, setSelectedSpecificFundId] = useState<string>('');
   const [selectedAssistanceTypeId, setSelectedAssistanceTypeId] = useState<string>('');
+  const [asnafChangeNotice, setAsnafChangeNotice] = useState<string | null>(null);
+  const prevAsnafRef = useRef<string>(selectedPrimaryCode);
+
+  // Phase 6: Level 3 Assistance Delivery Format State
+  const [selectedFormatCode, setSelectedFormatCode] = useState<string>('bank_transfer');
+  const [selectedFormatId, setSelectedFormatId] = useState<string>('');
+  const [selectedFormatName, setSelectedFormatName] = useState<string>('');
+  const [formatChangeNotice, setFormatChangeNotice] = useState<string | null>(null);
+  const prevAssistanceTypeRef = useRef<string>(selectedAssistanceTypeId);
+
+  // Phase 8: Category-Specific Duplicate Prevention State
+  const [duplicateCheck, setDuplicateCheck] = useState<any>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState<boolean>(false);
 
   // Step 1: Assistance Type Fields
   const [targetAssessmentId, setTargetAssessmentId] = useState<string>('');
@@ -322,8 +384,8 @@ export function AssistanceRequestWizardModal({
         }
 
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        const payload: any = {};
-        if (isUuid) {
+        const payload: any = { beneficiaryId: id };
+        if (isUuid || id.startsWith('ben-')) {
           payload.beneficiaryId = id;
         } else if (id.startsWith('MB-')) {
           payload.memberId = id;
@@ -343,17 +405,22 @@ export function AssistanceRequestWizardModal({
           const ben = json.beneficiary;
           setBeneficiary(ben);
 
-          // Pre-populate Asnaf matching the member if valid
-          if (ben.asnafCategory) {
+          // Phase 4: Pre-populate Asnaf matching verified beneficiary registry
+          if (ben.eligibleAsnafs && ben.eligibleAsnafs.length > 0) {
+            const primary = ben.eligibleAsnafs.find((a: any) => a.isPrimary) || ben.eligibleAsnafs[0];
+            setSelectedPrimaryCode(primary.asnafCode);
+          } else if (ben.asnafCategory) {
             const raw = String(ben.asnafCategory).toLowerCase();
             if (raw.includes('miskin') || raw.includes('faqir')) {
               setSelectedPrimaryCode('faqir_miskin');
             } else if (raw.includes('gharim')) {
               setSelectedPrimaryCode('gharimin');
             } else if (raw.includes('sabil') || raw.includes('travel')) {
-              setSelectedPrimaryCode('ibn_sabil');
+              setSelectedPrimaryCode('ibnsabil');
             } else if (raw.includes('muallaf')) {
               setSelectedPrimaryCode('muallaf');
+            } else {
+              setSelectedPrimaryCode(ben.asnafCategory);
             }
           }
 
@@ -493,7 +560,26 @@ export function AssistanceRequestWizardModal({
     [availableAssistanceTypes, selectedAssistanceTypeId]
   );
 
-  // Keep fund & type defaults synchronized
+  const availableAssistanceFormats = useMemo(() => {
+    if (currentAssistanceType && Array.isArray((currentAssistanceType as any).supportedFormats) && (currentAssistanceType as any).supportedFormats.length > 0) {
+      return (currentAssistanceType as any).supportedFormats;
+    }
+    const code = currentAssistanceType?.code;
+    return code ? getSupportedFormatsForType(code) : LEVEL_3_ASSISTANCE_FORMATS;
+  }, [currentAssistanceType]);
+
+  const currentAssistanceFormat = useMemo(() => {
+    return (
+      availableAssistanceFormats.find(
+        (f: any) => f.code === selectedFormatCode || f.id === selectedFormatId
+      ) ||
+      availableAssistanceFormats.find((f: any) => f.isDefault) ||
+      availableAssistanceFormats[0] ||
+      null
+    );
+  }, [availableAssistanceFormats, selectedFormatCode, selectedFormatId]);
+
+  // Phase 5: Dynamic Assistance Type Synchronization & Asnaf Switch Validation
   useEffect(() => {
     if (availableSpecificFunds.length > 0) {
       if (!availableSpecificFunds.some((sf: any) => sf.id === selectedSpecificFundId || sf.code === selectedSpecificFundId)) {
@@ -503,12 +589,118 @@ export function AssistanceRequestWizardModal({
   }, [availableSpecificFunds, selectedSpecificFundId]);
 
   useEffect(() => {
-    if (availableAssistanceTypes.length > 0) {
-      if (!availableAssistanceTypes.some((at: any) => at.id === selectedAssistanceTypeId || at.code === selectedAssistanceTypeId)) {
-        setSelectedAssistanceTypeId(availableAssistanceTypes[0].id);
+    const isAsnafChanged = prevAsnafRef.current && prevAsnafRef.current !== selectedPrimaryCode;
+    if (isAsnafChanged) {
+      prevAsnafRef.current = selectedPrimaryCode;
+      const isValidInNewAsnaf = availableAssistanceTypes.some(
+        (at: any) => at.id === selectedAssistanceTypeId || at.code === selectedAssistanceTypeId
+      );
+
+      if (!isValidInNewAsnaf) {
+        const fallbackType = availableAssistanceTypes[0];
+        setSelectedAssistanceTypeId(fallbackType ? fallbackType.id : '');
+        const asnafName = getCleanAsnafTitle(currentPrimaryGroup?.asnafName || selectedPrimaryCode);
+        setAsnafChangeNotice(`เปลี่ยนหมวดอัสนัฟเป็น "${asnafName}": ระบบได้รีเซ็ตประเภทการช่วยเหลือให้สอดคล้องกับหมวดใหม่โดยอัตโนมัติ`);
+      } else {
+        setAsnafChangeNotice(null);
+      }
+    } else {
+      prevAsnafRef.current = selectedPrimaryCode;
+      if (availableAssistanceTypes.length > 0) {
+        if (!availableAssistanceTypes.some((at: any) => at.id === selectedAssistanceTypeId || at.code === selectedAssistanceTypeId)) {
+          setSelectedAssistanceTypeId(availableAssistanceTypes[0].id);
+        }
       }
     }
-  }, [availableAssistanceTypes, selectedAssistanceTypeId]);
+  }, [availableAssistanceTypes, selectedAssistanceTypeId, selectedPrimaryCode, currentPrimaryGroup]);
+
+  // Phase 6: Dynamic Assistance Format Synchronization & Type Switch Validation
+  useEffect(() => {
+    const isTypeChanged = prevAssistanceTypeRef.current && prevAssistanceTypeRef.current !== selectedAssistanceTypeId;
+    if (isTypeChanged) {
+      prevAssistanceTypeRef.current = selectedAssistanceTypeId;
+      const isValidInNewType = availableAssistanceFormats.some(
+        (fmt: any) => fmt.code === selectedFormatCode || fmt.id === selectedFormatId
+      );
+
+      if (!isValidInNewType) {
+        const defaultFmt = availableAssistanceFormats.find((f: any) => f.isDefault) || availableAssistanceFormats[0];
+        if (defaultFmt) {
+          const defaultFmtTitle = getCleanFormatTitle(defaultFmt);
+          setSelectedFormatCode(defaultFmt.code);
+          setSelectedFormatId(defaultFmt.id);
+          setSelectedFormatName(defaultFmtTitle);
+          setFormatChangeNotice(`เปลี่ยนประเภทการช่วยเหลือ: ระบบได้รีเซ็ตรูปแบบการช่วยเหลือเป็น "${defaultFmtTitle}" โดยอัตโนมัติ`);
+        } else {
+          setSelectedFormatCode('');
+          setSelectedFormatId('');
+          setSelectedFormatName('');
+        }
+      } else {
+        setFormatChangeNotice(null);
+      }
+    } else {
+      prevAssistanceTypeRef.current = selectedAssistanceTypeId;
+      if (availableAssistanceFormats.length > 0) {
+        if (!availableAssistanceFormats.some((fmt: any) => fmt.code === selectedFormatCode || fmt.id === selectedFormatId)) {
+          const defaultFmt = availableAssistanceFormats.find((f: any) => f.isDefault) || availableAssistanceFormats[0];
+          if (defaultFmt) {
+            const defaultFmtTitle = getCleanFormatTitle(defaultFmt);
+            setSelectedFormatCode(defaultFmt.code);
+            setSelectedFormatId(defaultFmt.id);
+            setSelectedFormatName(defaultFmtTitle);
+          }
+        }
+      }
+    }
+  }, [availableAssistanceFormats, selectedAssistanceTypeId, selectedFormatCode, selectedFormatId]);
+
+  // Phase 8: Live Real-time Category Duplicate Check Effect
+  useEffect(() => {
+    const benId = beneficiary?.id;
+    const natId = beneficiary?.nationalId;
+    if ((!benId && !natId) || !selectedAssistanceTypeId) {
+      setDuplicateCheck(null);
+      return;
+    }
+
+    let isCancelled = false;
+    const checkDuplicate = async () => {
+      setIsCheckingDuplicate(true);
+      try {
+        const curType = availableAssistanceTypes.find((t: any) => t.id === selectedAssistanceTypeId);
+        const res = await fetch('/api/assistance-requests/check-duplicate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            beneficiaryId: benId,
+            nationalId: natId,
+            assistanceTypeId: selectedAssistanceTypeId,
+            assistanceTypeCode: curType?.code,
+            assistanceTypeName: curType?.name,
+            fiscalYear: '2569',
+          }),
+        });
+        const data = await res.json();
+        if (!isCancelled) {
+          if (data.success && data.hasDuplicate) {
+            setDuplicateCheck(data);
+          } else {
+            setDuplicateCheck(null);
+          }
+        }
+      } catch {
+        if (!isCancelled) setDuplicateCheck(null);
+      } finally {
+        if (!isCancelled) setIsCheckingDuplicate(false);
+      }
+    };
+
+    checkDuplicate();
+    return () => {
+      isCancelled = true;
+    };
+  }, [beneficiary?.id, beneficiary?.nationalId, selectedAssistanceTypeId, availableAssistanceTypes]);
 
   // Handle Close / Cancel
   const handleClose = () => {
@@ -524,6 +716,10 @@ export function AssistanceRequestWizardModal({
     }
     if (!selectedPrimaryCode || !currentSpecificFund || !currentAssistanceType) {
       showToast('กรุณาเลือกหมวดอัสนัฟ กองทุนเฉพาะ และประเภทความช่วยเหลือให้ครบถ้วน', 'info');
+      return;
+    }
+    if (duplicateCheck && duplicateCheck.hasDuplicate) {
+      showToast(duplicateCheck.message || 'ตรวจพบเงื่อนไขการขอรับความช่วยเหลือซ้ำซ้อนตามระเบียบ', 'error');
       return;
     }
     setCurrentStep(2);
@@ -570,6 +766,10 @@ export function AssistanceRequestWizardModal({
         assistanceTypeId: currentAssistanceType?.id,
         assistanceTypeDetails: currentAssistanceType?.name,
         assistanceGroup: currentAssistanceType?.group || 'core',
+        assistanceFormatId: currentAssistanceFormat?.id || selectedFormatId || undefined,
+        assistanceFormatCode: currentAssistanceFormat?.code || selectedFormatCode || undefined,
+        assistanceFormatName: getCleanFormatTitle(currentAssistanceFormat) || currentAssistanceFormat?.name || selectedFormatName || undefined,
+        deliveryMethod: currentAssistanceFormat?.deliveryMethod || undefined,
         requestedAmount: Number(requestedAmount) || 0,
         urgencyLevel,
         hardshipReasons: hardshipReasons?.trim() || purpose?.trim() || 'ขอรับความช่วยเหลือเนื่องจากรายได้ไม่เพียงพอต่อค่าครองชีพ',
@@ -662,10 +862,10 @@ export function AssistanceRequestWizardModal({
               </div>
               <div>
                 <h2 className="text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                  <span>ยื่นคำร้องขอความช่วยเหลือ (Assistance Request)</span>
+                  <span>ยื่นคำร้องขอความช่วยเหลือ</span>
                 </h2>
                 <p className="text-xs md:text-sm text-teal-200/80 font-normal mt-0.5">
-                  สำหรับผู้ที่มีทะเบียนผู้มีสิทธิ์รับซะกาตในระบบ
+                  สำหรับผู้มีทะเบียนผู้มีสิทธิ์รับซะกาต
                 </p>
               </div>
             </div>
@@ -709,7 +909,7 @@ export function AssistanceRequestWizardModal({
                         : 'font-medium text-slate-400'
                     }`}
                   >
-                    1. ประเภทความช่วยเหลือ
+                    1. ข้อมูลการช่วยเหลือ {/* 1. ประเภทความช่วยเหลือ */}
                   </span>
                 </div>
 
@@ -816,31 +1016,31 @@ export function AssistanceRequestWizardModal({
 
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-2.5 text-xs mb-6">
                   <div className="flex justify-between pb-2 border-b border-slate-200">
-                    <span className="text-slate-500">เลขที่คำร้อง (Request ID):</span>
+                    <span className="text-slate-500">เลขที่คำร้อง:</span>
                     <span className="font-mono font-bold text-teal-800 text-sm">
                       {submittedApplication.applicationNo}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">รหัสสมาชิก (Member ID):</span>
+                    <span className="text-slate-500">รหัสสมาชิก:</span>
                     <span className="font-mono font-semibold text-slate-800">
                       {submittedApplication.memberId || '-'}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">ชื่อผู้ขอรับความช่วยเหลือ:</span>
+                    <span className="text-slate-500">ผู้ขอรับความช่วยเหลือ:</span>
                     <span className="font-semibold text-slate-800">
                       {submittedApplication.beneficiaryName}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">ประเภทความช่วยเหลือ:</span>
+                    <span className="text-slate-500">ประเภทการช่วยเหลือ:</span>
                     <span className="font-semibold text-slate-800">
                       {submittedApplication.assistanceType}
                     </span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-slate-200">
-                    <span className="text-slate-500">วงเงินที่ร้องขอ:</span>
+                    <span className="text-slate-500">วงเงินที่ขอรับ:</span>
                     <span className="font-mono font-bold text-emerald-700 text-sm">
                       ฿{submittedApplication.amount.toLocaleString()}
                     </span>
@@ -853,7 +1053,7 @@ export function AssistanceRequestWizardModal({
                     onClick={handleClose}
                     className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-medium text-xs hover:bg-slate-50 transition"
                   >
-                    ปิดหน้าต่าง / กลับสู่ทะเบียน
+                    ปิดหน้าต่าง
                   </button>
                   {onNavigate && onOpenRequestDetail && (
                     <button
@@ -865,7 +1065,7 @@ export function AssistanceRequestWizardModal({
                       }}
                       className="px-5 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-medium text-xs shadow-xs transition flex items-center justify-center gap-1.5"
                     >
-                      <span>ดูคำร้องในระบบ</span>
+                      <span>ดูรายการคำร้อง</span>
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   )}
@@ -879,6 +1079,7 @@ export function AssistanceRequestWizardModal({
                 {/* ======================================================== */}
                 {/* Auto-Loaded Beneficiary Card (Always Visible on Steps)   */}
                 {/* ======================================================== */}
+                {/* ส่วนที่ 1: ข้อมูลผู้มีสิทธิ์ */}
                 <div className="bg-gradient-to-r from-teal-50/70 via-slate-50 to-sky-50/40 border border-teal-200/80 rounded-xl p-4 shadow-2xs">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 pb-3 mb-3">
                     <div className="flex items-center gap-3">
@@ -886,8 +1087,9 @@ export function AssistanceRequestWizardModal({
                         {beneficiary.firstName ? beneficiary.firstName[0] : 'ซ'}
                       </div>
                       <div>
-                        <div className="text-[11px] font-medium text-teal-700">
-                          สมาชิกผู้ขอรับความช่วยเหลือ (เชื่อมโยงจากทะเบียนหลัก)
+                        <div className="text-[11px] font-medium text-teal-700 flex items-center gap-1">
+                          <User className="w-3.5 h-3.5 inline text-teal-600" />
+                          <span>ผู้รับความช่วยเหลือ</span>
                         </div>
                         <div className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                           <span>{beneficiary.fullName || `${beneficiary.firstName} ${beneficiary.lastName}`}</span>
@@ -911,9 +1113,9 @@ export function AssistanceRequestWizardModal({
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div>
-                      <span className="text-slate-500 block text-[11px]">หมวดอัสนัฟหลัก</span>
+                      <span className="text-slate-500 block text-[11px]">อัสนัฟจากทะเบียน</span>
                       <span className="font-semibold text-slate-800">
-                        {beneficiary.asnafNameTh || beneficiary.asnafCategory || 'ฟากีร-มิสคีน'}
+                        {getCleanAsnafTitle(beneficiary.asnafNameTh || beneficiary.asnafCategory)}
                       </span>
                     </div>
                     <div>
@@ -929,133 +1131,256 @@ export function AssistanceRequestWizardModal({
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[11px]">สถานะการผูกโยง</span>
-                      <span className="font-semibold text-teal-700 flex items-center gap-1">
-                        <Shield className="w-3.5 h-3.5 text-teal-600 inline" /> ไม่สร้างทะเบียนซ้ำ
+                      <span className="text-slate-500 block text-[11px]">สถานะทะเบียน</span>
+                      <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                        <Shield className="w-3.5 h-3.5 text-emerald-600 inline" /> มีสิทธิ์รับซะกาต
                       </span>
                     </div>
                   </div>
                 </div>
 
                 {/* ======================================================== */}
-                {/* STEP 1: ประเภทความช่วยเหลือ                              */}
+                {/* STEP 1: ข้อมูลการช่วยเหลือ                               */}
                 {/* ======================================================== */}
                 {currentStep === 1 && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider pb-1 border-b border-slate-100">
                       <Layers className="w-4 h-4 text-teal-700" />
-                      <span>กำหนดประเภทความช่วยเหลือและกองทุนที่เกี่ยวข้อง</span>
+                      <span>ข้อมูลการช่วยเหลือและกองทุนที่เกี่ยวข้อง</span>
                     </div>
 
-                    {/* 4.1 ข้อมูลอ้างอิงการประเมินสิทธิ์ (Auto-referenced by Registration Year, Optional) */}
-                    {matchedAssessment ? (
-                      <div className="p-3 bg-emerald-50/80 border border-emerald-200/90 rounded-xl flex items-center justify-between flex-wrap gap-2.5 shadow-2xs">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                            <Check className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-emerald-950 flex items-center gap-2 flex-wrap">
-                              <span>อ้างอิงการประเมินสิทธิ์ ปี {registrationYearBe}</span>
-                              <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-white text-emerald-800 border border-emerald-200 font-semibold">
-                                {matchedAssessment.assessmentNumber || 'รอบล่าสุด'}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-emerald-700 mt-0.5">
-                              ผลการประเมิน: <strong>{matchedAssessment.asnafNameTh || matchedAssessment.asnafCode}</strong> ({matchedAssessment.eligibilityResult || matchedAssessment.status || 'ผ่านเกณฑ์'}) • ระบบเชื่อมโยงให้อัตโนมัติตามปีทะเบียน
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/90 px-2.5 py-1 rounded-md border border-emerald-200">
-                          อ้างอิงอัตโนมัติ (Read-only)
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between flex-wrap gap-2.5 shadow-2xs">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
-                            <Shield className="w-4 h-4 text-slate-500" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                              <span>ยังไม่มีข้อมูลการประเมินสิทธิ์ในปีที่อ้างอิง (ปี {registrationYearBe})</span>
-                            </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              ไม่พบข้อมูลการประเมินสิทธิ์ในปีที่อ้างอิง สามารถยื่นคำร้องได้ตามสถานะสมาชิกหลัก
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-semibold text-slate-600 bg-white px-2.5 py-1 rounded-md border border-slate-200">
-                          อ้างอิงสมาชิกหลัก (Optional)
-                        </span>
-                      </div>
-                    )}
-
                     {/* 3-Tier Dynamic Fund Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {/* 4.2 กลุ่มหลัก */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                      {/* อัสนัฟ */}
                       <div>
+                        {/* ส่วนที่ 2: อัสนัฟจากทะเบียน */}
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          1. กลุ่มหลัก (Asnaf Group) *:
+                          อัสนัฟ *
                         </label>
-                        <select
-                          value={selectedPrimaryCode}
-                          onChange={(e) => setSelectedPrimaryCode(e.target.value)}
-                          className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-600 bg-white"
-                        >
-                          {primaryGroups.map((g) => (
-                            <option key={g.asnafCode} value={g.asnafCode}>
-                              {g.asnafName}
-                            </option>
-                          ))}
-                        </select>
+                        {beneficiary?.hasMultipleAsnafs && beneficiary.eligibleAsnafs?.length > 1 ? (
+                          <SearchableSelect
+                            options={beneficiary.eligibleAsnafs.map((g: any) => ({
+                              value: g.asnafCode,
+                              label: getCleanAsnafTitle(g.asnafNameTh || g.asnafCode),
+                            }))}
+                            value={selectedPrimaryCode}
+                            onChange={(code) => setSelectedPrimaryCode(code)}
+                            placeholder="เลือกอัสนัฟ..."
+                          />
+                        ) : beneficiary ? (
+                          <div className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-xs font-semibold text-emerald-950 flex items-center justify-between min-h-[44px]">
+                            <span>
+                              {getCleanAsnafTitle(
+                                beneficiary.asnafNameTh ||
+                                beneficiary.eligibleAsnafs?.[0]?.asnafNameTh ||
+                                currentPrimaryGroup?.asnafName ||
+                                selectedPrimaryCode
+                              )}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-medium">
+                              จากทะเบียน
+                            </span>
+                          </div>
+                        ) : (
+                          <select
+                            value={selectedPrimaryCode}
+                            onChange={(e) => setSelectedPrimaryCode(e.target.value)}
+                            className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-600 bg-white min-h-[44px]"
+                          >
+                            {primaryGroups.map((g) => (
+                              <option key={g.asnafCode} value={g.asnafCode}>
+                                {getCleanAsnafTitle(g.asnafName)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
 
-                      {/* 4.3 กองทุนเฉพาะ */}
+                      {/* กองทุน */}
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          2. กองทุนเฉพาะ (Specific Fund) *:
+                          กองทุน *
                         </label>
                         <select
                           value={currentSpecificFund?.id || ''}
                           onChange={(e) => setSelectedSpecificFundId(e.target.value)}
-                          className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-600 bg-white"
+                          className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-600 bg-white min-h-[44px] text-slate-800 font-medium"
                         >
                           {availableSpecificFunds.map((sf: any) => (
                             <option key={sf.id} value={sf.id}>
-                              [{sf.code}] {sf.name}
+                              {sf.name}
                             </option>
                           ))}
                         </select>
                       </div>
 
-                      {/* 4.4 ประเภทความช่วยเหลือ */}
+                      {/* ประเภทการช่วยเหลือ */}
                       <div>
+                        {/* ส่วนที่ 3: ประเภทความช่วยเหลือ */}
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          3. ประเภทความช่วยเหลือ *:
+                          ประเภทการช่วยเหลือ *
                         </label>
-                        <select
-                          value={currentAssistanceType?.id || ''}
-                          onChange={(e) => setSelectedAssistanceTypeId(e.target.value)}
-                          className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-600 bg-white"
-                        >
-                          {availableAssistanceTypes.map((at: any) => (
-                            <option key={at.id} value={at.id}>
-                              {at.name}
-                            </option>
-                          ))}
-                        </select>
+                        <SearchableSelect
+                          options={availableAssistanceTypes.map((at: any) => ({
+                            value: at.id,
+                            label: at.name,
+                          }))}
+                          value={currentAssistanceType?.id || selectedAssistanceTypeId}
+                          onChange={(id) => setSelectedAssistanceTypeId(id)}
+                          placeholder="เลือกประเภทการช่วยเหลือ..."
+                        />
                       </div>
                     </div>
 
-                    {/* 4.5 ระดับความเร่งด่วน */}
+                    {/* Asnaf Switch Alert Banner */}
+                    {asnafChangeNotice && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start justify-between gap-2 shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>{asnafChangeNotice}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAsnafChangeNotice(null)}
+                          className="text-amber-500 hover:text-amber-800 text-sm font-bold leading-none p-0.5"
+                          title="ปิดข้อความแจ้งเตือน"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+
+                    {/* รูปแบบการช่วยเหลือ */}
+                    {availableAssistanceFormats.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        {/* ส่วนที่ 4: รูปแบบการช่วยเหลือ */}
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-slate-700">
+                            รูปแบบการช่วยเหลือ *
+                          </label>
+                          <span className="text-[10px] text-teal-800 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200 font-medium">
+                            {availableAssistanceFormats.length} รูปแบบที่รองรับ
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                          {availableAssistanceFormats.map((fmt: any) => {
+                            const isSelected = selectedFormatCode === fmt.code || selectedFormatId === fmt.id;
+                            const titleTh = getCleanFormatTitle(fmt);
+                            const descTh = getCleanFormatDescription(fmt);
+                            return (
+                              <button
+                                key={fmt.id || fmt.code}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedFormatCode(fmt.code);
+                                  setSelectedFormatId(fmt.id);
+                                  setSelectedFormatName(titleTh);
+                                  setFormatChangeNotice(null);
+                                }}
+                                className={`p-3 rounded-xl text-left border transition-all text-xs flex items-start gap-3 min-h-[58px] ${
+                                  isSelected
+                                    ? 'border-teal-600 bg-teal-50/80 ring-2 ring-teal-500/20 shadow-xs font-medium'
+                                    : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
+                                }`}
+                              >
+                                <div
+                                  className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 transition-all ${
+                                    isSelected
+                                      ? 'border-teal-600 bg-teal-600'
+                                      : 'border-slate-300 bg-white'
+                                  }`}
+                                >
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <strong className={`block text-xs truncate ${isSelected ? 'text-teal-950 font-bold' : 'text-slate-900 font-semibold'}`}>
+                                      {titleTh}
+                                    </strong>
+                                    {fmt.isDefault && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 font-medium shrink-0">
+                                        แนะนำ
+                                      </span>
+                                    )}
+                                  </div>
+                                  {descTh && (
+                                    <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">
+                                      {descTh}
+                                    </p>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Format Switch Alert Banner */}
+                    {formatChangeNotice && (
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start justify-between gap-2 shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>{formatChangeNotice}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFormatChangeNotice(null)}
+                          className="text-blue-500 hover:text-blue-800 text-sm font-bold leading-none p-0.5"
+                          title="ปิดข้อความแจ้งเตือน"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Category-Specific Duplicate Prevention Alert Banner */}
+                    {duplicateCheck && duplicateCheck.hasDuplicate && (
+                      <div className="p-4 bg-amber-50/90 border-2 border-amber-300 rounded-2xl text-xs text-amber-950 shadow-sm space-y-2.5 animate-in fade-in duration-200">
+                        <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                          <span>ตรวจพบเงื่อนไขการขอรับความช่วยเหลือซ้ำซ้อน: {duplicateCheck.ruleNameTh}</span>
+                        </div>
+                        <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                          {duplicateCheck.message}
+                        </p>
+                        {duplicateCheck.existingApplication && (
+                          <div className="bg-white/90 p-3 rounded-xl border border-amber-200 text-xs text-slate-700 grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            <div>
+                              <span className="font-semibold text-slate-500">เลขที่คำร้องเดิม:</span>{' '}
+                              <span className="font-mono font-bold text-slate-900">{duplicateCheck.existingApplication.applicationNo}</span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-500">วันที่ยื่น / ได้รับ:</span>{' '}
+                              <span className="font-medium text-slate-900">{duplicateCheck.existingApplication.appliedDate}</span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-500">วงเงินเดิม:</span>{' '}
+                              <span className="font-bold text-teal-700">฿{(duplicateCheck.existingApplication.approvedAmount || duplicateCheck.existingApplication.requestedAmount || 0).toLocaleString()}</span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-500">สถานะปัจจุบัน:</span>{' '}
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900">
+                                {duplicateCheck.existingApplication.statusLabelTh}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-amber-700 italic">
+                          * ระบบจำกัดการยื่นคำร้องตามเกณฑ์ธรรมาภิบาลเพื่อป้องกันการขอรับความช่วยเหลือซ้ำซ้อน
+                        </p>
+                      </div>
+                    )}
+
+                    {/* ระดับความเร่งด่วน */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        ระดับความเร่งด่วน *:
+                        ระดับความเร่งด่วน *
                       </label>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <label
-                          className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition ${
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border cursor-pointer transition min-h-[44px] ${
                             urgencyLevel === 'normal'
                               ? 'bg-teal-50/70 border-teal-500 text-teal-900 font-semibold shadow-2xs'
                               : 'border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -1067,13 +1392,13 @@ export function AssistanceRequestWizardModal({
                             value="normal"
                             checked={urgencyLevel === 'normal'}
                             onChange={() => setUrgencyLevel('normal')}
-                            className="text-teal-600 focus:ring-teal-500"
+                            className="w-4 h-4 text-teal-600 focus:ring-teal-500"
                           />
-                          <span className="text-xs">ปกติ (ตามรอบการพิจารณา)</span>
+                          <span className="text-xs">ปกติ</span>
                         </label>
 
                         <label
-                          className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition ${
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border cursor-pointer transition min-h-[44px] ${
                             urgencyLevel === 'high'
                               ? 'bg-amber-50 border-amber-500 text-amber-900 font-semibold shadow-2xs'
                               : 'border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -1085,13 +1410,13 @@ export function AssistanceRequestWizardModal({
                             value="high"
                             checked={urgencyLevel === 'high'}
                             onChange={() => setUrgencyLevel('high')}
-                            className="text-amber-600 focus:ring-amber-500"
+                            className="w-4 h-4 text-amber-600 focus:ring-amber-500"
                           />
-                          <span className="text-xs">เร่งด่วน (ต้องการความช่วยเหลือภายใน 7 วัน)</span>
+                          <span className="text-xs">เร่งด่วน (ภายใน 7 วัน)</span>
                         </label>
 
                         <label
-                          className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition ${
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border cursor-pointer transition min-h-[44px] ${
                             urgencyLevel === 'urgent'
                               ? 'bg-rose-50 border-rose-500 text-rose-900 font-semibold shadow-2xs'
                               : 'border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -1103,30 +1428,31 @@ export function AssistanceRequestWizardModal({
                             value="urgent"
                             checked={urgencyLevel === 'urgent'}
                             onChange={() => setUrgencyLevel('urgent')}
-                            className="text-rose-600 focus:ring-rose-500"
+                            className="w-4 h-4 text-rose-600 focus:ring-rose-500"
                           />
-                          <span className="text-xs">เร่งด่วนมาก / ฉุกเฉิน (ทันที)</span>
+                          <span className="text-xs">ฉุกเฉิน (ทันที)</span>
                         </label>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* ======================================================== */}
+                        {/* ======================================================== */}
                 {/* STEP 2: รายละเอียดคำร้อง                                */}
                 {/* ======================================================== */}
                 {currentStep === 2 && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider pb-1 border-b border-slate-100">
                       <DollarSign className="w-4 h-4 text-teal-700" />
-                      <span>กรอกจำนวนเงิน รายละเอียดปัญหา และเอกสารแนบ</span>
+                      <span>กรอกจำนวนเงิน รายละเอียดความจำเป็น และเอกสารแนบ</span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* 1. จำนวนเงินที่ร้องขอ */}
+                      {/* วงเงินที่ขอรับ */}
                       <div>
+                        {/* ส่วนที่ 6: วงเงินงบประมาณ */}
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          วงเงินที่ขอรับความช่วยเหลือ (บาท) *:
+                          วงเงินที่ขอรับ (บาท) *
                         </label>
                         <div className="relative">
                           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
@@ -1147,7 +1473,7 @@ export function AssistanceRequestWizardModal({
                       {/* วันที่ยื่นคำร้อง */}
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          วันที่ยื่นคำร้อง *:
+                          วันที่ยื่นคำร้อง *
                         </label>
                         <div className="relative">
                           <input
@@ -1160,10 +1486,11 @@ export function AssistanceRequestWizardModal({
                       </div>
                     </div>
 
-                    {/* วัตถุประสงค์ / หัวข้อคำร้อง */}
+                    {/* วัตถุประสงค์ */}
                     <div>
+                      {/* ส่วนที่ 5: วัตถุประสงค์ */}
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        วัตถุประสงค์ / หัวข้อคำร้อง *:
+                        วัตถุประสงค์ *
                       </label>
                       <input
                         type="text"
@@ -1174,10 +1501,10 @@ export function AssistanceRequestWizardModal({
                       />
                     </div>
 
-                    {/* รายละเอียดปัญหาและความจำเป็น */}
+                    {/* รายละเอียดความจำเป็น */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        รายละเอียดปัญหาและความจำเป็น * (อย่างน้อย 5 ตัวอักษร):
+                        รายละเอียดความจำเป็น *
                       </label>
                       <textarea
                         rows={3}
@@ -1188,10 +1515,10 @@ export function AssistanceRequestWizardModal({
                       />
                     </div>
 
-                    {/* เหตุผลที่ต้องการความช่วยเหลือ */}
+                    {/* เหตุผลเพิ่มเติม (ถ้ามี) */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        เหตุผลที่ต้องการความช่วยเหลือ:
+                        เหตุผลเพิ่มเติม (ถ้ามี)
                       </label>
                       <textarea
                         rows={2}
@@ -1204,6 +1531,7 @@ export function AssistanceRequestWizardModal({
 
                     {/* เอกสารประกอบคำร้อง */}
                     <div className="pt-2 border-t border-slate-200">
+                      {/* ส่วนที่ 7: เอกสารประกอบคำร้อง */}
                       <h4 className="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5">
                         <FolderOpen className="w-4 h-4 text-teal-700" />
                         <span>เอกสารประกอบคำร้อง</span>
@@ -1213,13 +1541,13 @@ export function AssistanceRequestWizardModal({
                         {/* Section A: เอกสารจากทะเบียนเดิม */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                           <div className="text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
-                            <span>เอกสารจากทะเบียนเดิม (อ้างอิง)</span>
+                            <span>เอกสารจากทะเบียนเดิม</span>
                             <span className="text-[10px] text-teal-700 font-semibold">
                               เลือก {selectedExistingDocIds.length} ฉบับ
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 mb-2">
-                            เลือกเอกสารที่ต้องการอ้างอิง (เอกสารหลักจะไม่ถูกลบหรือแก้ไข)
+                            เลือกเอกสารที่ต้องการอ้างอิงจากทะเบียน
                           </p>
 
                           {beneficiary.registryDocuments && beneficiary.registryDocuments.length > 0 ? (
@@ -1266,16 +1594,16 @@ export function AssistanceRequestWizardModal({
                           )}
                         </div>
 
-                        {/* Section B: แนบเอกสารใหม่เฉพาะคำร้อง */}
+                        {/* Section B: แนบเอกสารเพิ่มเติม */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                           <div className="text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
-                            <span>แนบเอกสารใหม่เฉพาะคำร้องนี้</span>
+                            <span>แนบเอกสารเพิ่มเติม</span>
                             <span className="text-[10px] text-slate-500">
                               {applicationDocs.length} ฉบับ
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 mb-2">
-                            เช่น ภาพถ่ายสภาพบ้าน, ใบรับรองแพทย์, ใบเสร็จค่าใช้จ่าย
+                            เช่น ภาพถ่ายสภาพบ้าน ใบรับรองแพทย์ หรือใบเสร็จค่าใช้จ่าย
                           </p>
 
                           <DocumentUploader
@@ -1296,19 +1624,20 @@ export function AssistanceRequestWizardModal({
                 {/* ======================================================== */}
                 {currentStep === 3 && (
                   <div className="space-y-4">
+                    {/* ส่วนที่ 8: สรุปก่อนส่งคำร้อง */}
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider pb-1 border-b border-slate-100">
                       <FileCheck className="w-4 h-4 text-teal-700" />
-                      <span>ตรวจสอบข้อมูลสรุปก่อนส่งคำร้อง</span>
+                      <span>ตรวจสอบและยืนยันคำร้อง</span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Summary Card 1: ผู้ยื่นและประเภทความช่วยเหลือ */}
+                      {/* Summary Card 1: ข้อมูลผู้ขอรับและประเภทการช่วยเหลือ */}
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs">
                         <h4 className="font-bold text-slate-800 text-xs border-b border-slate-200 pb-2">
-                          1. ข้อมูลผู้ยื่นและประเภทความช่วยเหลือ
+                          ข้อมูลผู้ขอรับและประเภทการช่วยเหลือ
                         </h4>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">ชื่อ-นามสกุล:</span>
+                          <span className="text-slate-500">ผู้ขอรับความช่วยเหลือ:</span>
                           <span className="font-semibold text-slate-900">
                             {beneficiary.fullName || `${beneficiary.firstName} ${beneficiary.lastName}`}
                           </span>
@@ -1320,29 +1649,27 @@ export function AssistanceRequestWizardModal({
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">รอบการประเมิน:</span>
+                          <span className="text-slate-500">อัสนัฟ:</span>
                           <span className="font-medium text-slate-800">
-                            {matchedAssessment
-                              ? `อ้างอิงการประเมินสิทธิ์ ปี ${registrationYearBe} (${matchedAssessment.assessmentNumber || 'รอบล่าสุด'})`
-                              : `ยังไม่มีข้อมูลการประเมินสิทธิ์ในปีที่อ้างอิง (อ้างอิงสถานะสมาชิกหลัก)`}
+                            {getCleanAsnafTitle(currentPrimaryGroup?.asnafName || selectedPrimaryCode)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">กลุ่มหลัก (Asnaf):</span>
-                          <span className="font-medium text-slate-800">
-                            {currentPrimaryGroup?.asnafName || selectedPrimaryCode}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">กองทุนเฉพาะ:</span>
+                          <span className="text-slate-500">กองทุน:</span>
                           <span className="font-medium text-slate-800">
                             {currentSpecificFund?.name}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">ประเภทความช่วยเหลือ:</span>
+                          <span className="text-slate-500">ประเภทการช่วยเหลือ:</span>
                           <span className="font-semibold text-teal-700">
                             {currentAssistanceType?.name}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">รูปแบบการช่วยเหลือ:</span>
+                          <span className="font-semibold text-teal-800">
+                            {getCleanFormatTitle(currentAssistanceFormat)}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1357,18 +1684,18 @@ export function AssistanceRequestWizardModal({
                             }`}
                           >
                             {urgencyLevel === 'urgent'
-                              ? 'เร่งด่วนมาก / ฉุกเฉิน'
+                              ? 'ฉุกเฉิน (ทันที)'
                               : urgencyLevel === 'high'
-                              ? 'เร่งด่วน'
+                              ? 'เร่งด่วน (ภายใน 7 วัน)'
                               : 'ปกติ'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Summary Card 2: รายละเอียดและเอกสาร */}
+                      {/* Summary Card 2: วงเงินและรายละเอียดคำร้อง */}
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs">
                         <h4 className="font-bold text-slate-800 text-xs border-b border-slate-200 pb-2">
-                          2. วงเงินและรายละเอียดคำร้อง
+                          วงเงินและรายละเอียดคำร้อง
                         </h4>
                         <div className="flex justify-between items-center py-1 bg-white px-3 rounded-lg border border-teal-200">
                           <span className="text-slate-600 font-semibold">วงเงินที่ขอรับ:</span>
@@ -1393,9 +1720,9 @@ export function AssistanceRequestWizardModal({
                           </p>
                         </div>
                         <div className="flex justify-between pt-1">
-                          <span className="text-slate-500">เอกสารแนบทั้งหมด:</span>
+                          <span className="text-slate-500">เอกสารประกอบ:</span>
                           <span className="font-semibold text-slate-800">
-                            {selectedExistingDocIds.length} ฉบับเดิม + {applicationDocs.length} ฉบับใหม่
+                            {selectedExistingDocIds.length} ฉบับเดิม + {applicationDocs.length} ฉบับเพิ่มเติม
                           </span>
                         </div>
                       </div>
@@ -1405,9 +1732,7 @@ export function AssistanceRequestWizardModal({
                     <div className="p-3.5 bg-teal-50/80 border border-teal-200 rounded-xl text-teal-900 text-xs flex items-start gap-2.5">
                       <Shield className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
                       <div>
-                        <strong>ข้อกำหนดสำคัญ:</strong> คำร้องนี้จะถูกสร้างเป็นคำร้องใหม่ภายใต้รหัสสมาชิก{' '}
-                        <span className="font-mono font-bold">{beneficiary.memberId}</span>{' '}
-                        โดยแยกสถานะคำร้องออกจากสถานะสมาชิกและสถานะการประเมินสิทธิ์ และจะได้รับเลขที่คำร้องตามลำดับ APP-2569-XXXXXX
+                        <strong>หมายเหตุ:</strong> ระบบจะบันทึกคำร้องและส่งต่อให้เจ้าหน้าที่พิจารณาตามขั้นตอนต่อไป
                       </div>
                     </div>
 
@@ -1449,7 +1774,9 @@ export function AssistanceRequestWizardModal({
                   <button
                     type="button"
                     onClick={handleGoToStep2}
-                    className="px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-semibold text-xs shadow-xs transition flex items-center gap-1.5"
+                    disabled={Boolean(duplicateCheck?.hasDuplicate)}
+                    className="px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-semibold text-xs shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={duplicateCheck?.hasDuplicate ? duplicateCheck.message : undefined}
                   >
                     <span>ถัดไป</span>
                     <ChevronRight className="w-4 h-4" />
@@ -1538,7 +1865,7 @@ export function AssistanceRequestWizardModal({
                   ยืนยันการส่งคำร้องขอความช่วยเหลือ
                 </h4>
                 <p className="text-xs text-center text-slate-500 mb-4">
-                  กรุณาตรวจสอบความถูกต้องของข้อมูลก่อนยืนยันการส่งคำร้องเข้าสู่ระบบ
+                  กรุณาตรวจสอบความถูกต้องของข้อมูลก่อนยืนยันการส่งคำร้อง
                 </p>
 
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs mb-5">
@@ -1553,11 +1880,11 @@ export function AssistanceRequestWizardModal({
                     <span className="font-mono font-bold text-teal-800">{beneficiary.memberId}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">ประเภทความช่วยเหลือ:</span>
+                    <span className="text-slate-500">ประเภทการช่วยเหลือ:</span>
                     <span className="font-semibold text-slate-800">{currentAssistanceType?.name}</span>
                   </div>
                   <div className="flex justify-between pt-1 border-t border-slate-200">
-                    <span className="text-slate-500">จำนวนเงินที่ร้องขอ:</span>
+                    <span className="text-slate-500">วงเงินที่ขอรับ:</span>
                     <span className="font-mono font-bold text-emerald-700 text-sm">
                       ฿{Number(requestedAmount).toLocaleString()}
                     </span>
@@ -1571,7 +1898,7 @@ export function AssistanceRequestWizardModal({
                     disabled={isSubmitting}
                     className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition"
                   >
-                    ยกเลิก / แก้ไขข้อมูล
+                    แก้ไขข้อมูล
                   </button>
                   <button
                     type="button"
@@ -1582,7 +1909,7 @@ export function AssistanceRequestWizardModal({
                     {isSubmitting && (
                       <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     )}
-                    <span>ยืนยันส่งคำร้องทันที</span>
+                    <span>ยืนยันส่งคำร้อง</span>
                   </button>
                 </div>
               </div>

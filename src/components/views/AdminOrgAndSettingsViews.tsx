@@ -32,6 +32,8 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   AlertTriangle,
   Info,
   Check,
@@ -65,7 +67,11 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
   const isSuperAdmin = currentUser.role === 'super_admin';
 
   // Main Tabs
-  const [activeTab, setActiveTab] = useState<'branches' | 'departments' | 'personnel'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'departments' | 'personnel' | 'tree'>('branches');
+
+  // Interactive Tree View State
+  const [expandedBranchIds, setExpandedBranchIds] = useState<Record<string, boolean>>({});
+  const [expandedDeptIds, setExpandedDeptIds] = useState<Record<string, boolean>>({});
 
   // Data States
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -287,7 +293,9 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
       ? branches.length
       : activeTab === 'departments'
       ? departments.length
-      : personnelList.length;
+      : activeTab === 'personnel'
+      ? personnelList.length
+      : branches.length;
 
   const totalPages = Math.max(1, Math.ceil(currentListLength / pageSize));
 
@@ -305,6 +313,33 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
     const start = (currentPage - 1) * pageSize;
     return personnelList.slice(start, start + pageSize);
   }, [personnelList, currentPage, pageSize]);
+
+  // Tree View Helper Handlers
+  const toggleBranchExpanded = (id: string) => {
+    setExpandedBranchIds((prev) => ({ ...prev, [id]: prev[id] === false ? true : false }));
+  };
+
+  const toggleDeptExpanded = (id: string) => {
+    setExpandedDeptIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleExpandAllTree = () => {
+    const allBranchesExpanded: Record<string, boolean> = {};
+    const allDeptsExpanded: Record<string, boolean> = {};
+    branches.forEach((b) => { allBranchesExpanded[b.id] = true; });
+    departments.forEach((d) => { allDeptsExpanded[d.id] = true; });
+    setExpandedBranchIds(allBranchesExpanded);
+    setExpandedDeptIds(allDeptsExpanded);
+  };
+
+  const handleCollapseAllTree = () => {
+    const allBranchesCollapsed: Record<string, boolean> = {};
+    const allDeptsCollapsed: Record<string, boolean> = {};
+    branches.forEach((b) => { allBranchesCollapsed[b.id] = false; });
+    departments.forEach((d) => { allDeptsCollapsed[d.id] = false; });
+    setExpandedBranchIds(allBranchesCollapsed);
+    setExpandedDeptIds(allDeptsCollapsed);
+  };
 
   // =========================================================================
   // Branch CRUD Handlers
@@ -903,6 +938,21 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
               }`}
             >
               รายชื่อบุคลากรตามสังกัด ({personnelList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('tree');
+                setOnlyInvalidPersonnel(false);
+              }}
+              className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'tree'
+                  ? 'bg-[#0b2545] text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              <GitBranch className="w-4 h-4" />
+              <span>ผังลำดับชั้นองค์กร (Tree View)</span>
             </button>
           </div>
 
@@ -1519,52 +1569,432 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
           )}
 
           {/* =============================================================== */}
+          {/* TAB 4: INTERACTIVE HIERARCHICAL TREE VIEW */}
+          {/* =============================================================== */}
+          {activeTab === 'tree' && (
+            <div className="space-y-6">
+              {/* Tree Controls Bar */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-800 flex items-center justify-center font-bold">
+                    <GitBranch className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">โครงสร้างลำดับชั้นองค์กร (Organization Hierarchy Tree)</h3>
+                    <p className="text-[11px] text-slate-500">สำนักงานใหญ่ → สำนักงานสาขาภูมิภาค/สาขาย่อย → แผนกปฏิบัติงาน → เจ้าหน้าที่ในสังกัด</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExpandAllTree}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    ขยายทั้งหมด (Expand All)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCollapseAllTree}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    ย่อทั้งหมด (Collapse All)
+                  </button>
+                </div>
+              </div>
+
+              {/* Tree Nodes Rendering */}
+              <div className="space-y-6">
+                {/* 1. Root / Headquarters Branches */}
+                {branches
+                  .filter((b) => b.isHeadquarters || !b.parentBranchId)
+                  .map((rootBranch) => {
+                    const isBranchExpanded = expandedBranchIds[rootBranch.id] !== false; // default open
+                    const childBranches = branches.filter((b) => b.parentBranchId === rootBranch.id && b.id !== rootBranch.id);
+                    const branchDepts = departments.filter((d) => d.branchId === rootBranch.id);
+                    const branchStaff = personnelList.filter((u) => u.branchId === rootBranch.id);
+
+                    return (
+                      <div key={rootBranch.id} className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+                        {/* Branch Node Header */}
+                        <div className="p-5 bg-gradient-to-r from-slate-900 to-[#0b2545] text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-start gap-3.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleBranchExpanded(rootBranch.id)}
+                              className="mt-0.5 w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer"
+                              title={isBranchExpanded ? 'ย่อสาขานี้' : 'ขยายสาขานี้'}
+                            >
+                              {isBranchExpanded ? (
+                                <ChevronUp className="w-5 h-5 text-amber-300" />
+                              ) : (
+                                <ChevronDown className="w-5 h-5 text-amber-300" />
+                              )}
+                            </button>
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-amber-400 text-slate-950">
+                                  {rootBranch.code}
+                                </span>
+                                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-teal-500/30 text-teal-200 border border-teal-400/30">
+                                  {(rootBranch.branchType && BRANCH_TYPE_LABELS[rootBranch.branchType]) || 'สำนักงานใหญ่'}
+                                </span>
+                                {rootBranch.status === 'inactive' && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/30 text-rose-200 border border-rose-400/30">
+                                    ปิดใช้งาน
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="text-lg font-black text-white mt-1">{rootBranch.name}</h3>
+                              {rootBranch.nameEn && <p className="text-xs text-slate-300">{rootBranch.nameEn}</p>}
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mt-2">
+                                <span>ผู้จัดการ: <strong className="text-white">{rootBranch.managerName || 'ยังไม่ได้กำหนด'}</strong></span>
+                                <span>แผนก: <strong className="text-amber-300">{branchDepts.length} แผนก</strong></span>
+                                <span>บุคลากร: <strong className="text-teal-300">{branchStaff.length} คน</strong></span>
+                                {childBranches.length > 0 && (
+                                  <span>สาขาย่อย: <strong className="text-sky-300">{childBranches.length} สาขา</strong></span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDetailBranch(rootBranch);
+                                setDetailBranchModalTab('info');
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>ดูสาขา</span>
+                            </button>
+                            {isSuperAdmin && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditBranchModal(rootBranch)}
+                                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                  <span>แก้ไข</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openCreateDeptModal(rootBranch.id)}
+                                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5 text-teal-200" />
+                                  <span>เพิ่มแผนก</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Collapsible Content: Departments & Child Branches */}
+                        {isBranchExpanded && (
+                          <div className="p-6 space-y-6 bg-slate-50/50">
+                            {/* Branch Departments Section */}
+                            <div>
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Briefcase className="w-4 h-4 text-teal-700" />
+                                  <span>แผนกปฏิบัติงานภายใต้สาขานี้ ({branchDepts.length})</span>
+                                </h4>
+                                {isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openCreateDeptModal(rootBranch.id)}
+                                    className="text-xs font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>เพิ่มแผนกในสาขานี้</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {branchDepts.length === 0 ? (
+                                <div className="p-4 bg-white rounded-2xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
+                                  ยังไม่มีแผนกงานที่สังกัดสาขานี้
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {branchDepts.map((dept) => {
+                                    const isDeptExpanded = Boolean(expandedDeptIds[dept.id]);
+                                    const deptStaff = personnelList.filter((u) => u.departmentId === dept.id);
+
+                                    return (
+                                      <div key={dept.id} className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                                        <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
+                                          <div className="flex items-start gap-3">
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleDeptExpanded(dept.id)}
+                                              className="mt-0.5 w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                                              title={isDeptExpanded ? 'ย่อบุคลากร' : 'ขยายดูบุคลากร'}
+                                            >
+                                              {isDeptExpanded ? (
+                                                <ChevronUp className="w-4 h-4 text-teal-700" />
+                                              ) : (
+                                                <ChevronDown className="w-4 h-4 text-teal-700" />
+                                              )}
+                                            </button>
+
+                                            <div>
+                                              <div className="flex items-center gap-2">
+                                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
+                                                  {dept.code}
+                                                </span>
+                                                <span className="font-bold text-sm text-slate-900">{dept.name}</span>
+                                                {dept.status === 'inactive' && (
+                                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                                                    ปิดใช้งาน
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mt-1">
+                                                <span>หัวหน้าแผนก: <strong className="text-slate-800">{dept.headName || 'ยังไม่ได้กำหนด'}</strong></span>
+                                                <span>สมาชิก: <strong className="text-teal-700">{deptStaff.length} คน</strong></span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setDetailDept(dept);
+                                                setDetailDeptModalTab('info');
+                                              }}
+                                              className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
+                                              title="ดูรายละเอียดแผนก"
+                                            >
+                                              <Eye className="w-4 h-4" />
+                                            </button>
+                                            {isSuperAdmin && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openEditDeptModal(dept)}
+                                                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
+                                                title="แก้ไขแผนก"
+                                              >
+                                                <Edit className="w-4 h-4" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Staff under this department */}
+                                        {isDeptExpanded && (
+                                          <div className="p-4 bg-slate-50/70 border-t border-slate-100 space-y-2">
+                                            <div className="text-[11px] font-bold text-slate-600 uppercase flex items-center justify-between">
+                                              <span>บุคลากรในแผนก ({deptStaff.length} คน)</span>
+                                            </div>
+
+                                            {deptStaff.length === 0 ? (
+                                              <div className="p-3 bg-white rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                                                ยังไม่มีเจ้าหน้าที่ในแผนกนี้
+                                              </div>
+                                            ) : (
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                {deptStaff.map((staff) => (
+                                                  <div
+                                                    key={staff.id}
+                                                    className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2 shadow-2xs"
+                                                  >
+                                                    <div className="min-w-0">
+                                                      <div className="font-bold text-xs text-slate-900 truncate">
+                                                        {staff.name}
+                                                      </div>
+                                                      <div className="text-[11px] text-teal-700 font-semibold truncate">
+                                                        {staff.roleTitleTh || staff.role}
+                                                      </div>
+                                                      <div className="text-[10px] text-slate-400 font-mono truncate">
+                                                        {staff.email}
+                                                      </div>
+                                                    </div>
+
+                                                    {isSuperAdmin && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => openReassignModal(staff)}
+                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors shrink-0"
+                                                        title="ย้ายสังกัดบุคลากร"
+                                                      >
+                                                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Child Branches Section */}
+                            {childBranches.length > 0 && (
+                              <div className="pt-4 border-t border-slate-200">
+                                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                  <MapPin className="w-4 h-4 text-sky-700" />
+                                  <span>สาขาภูมิภาค / สาขาย่อยในกำกับ ({childBranches.length} สาขา)</span>
+                                </h4>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {childBranches.map((child) => {
+                                    const childDepts = departments.filter((d) => d.branchId === child.id);
+                                    const childStaff = personnelList.filter((u) => u.branchId === child.id);
+
+                                    return (
+                                      <div key={child.id} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+                                                {child.code}
+                                              </span>
+                                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                                {(child.branchType && BRANCH_TYPE_LABELS[child.branchType]) || 'สาขา'}
+                                              </span>
+                                            </div>
+                                            <h5 className="font-bold text-sm text-slate-900 mt-1">{child.name}</h5>
+                                            <p className="text-xs text-slate-500 mt-0.5">ผู้จัดการ: {child.managerName || 'ยังไม่กำหนด'}</p>
+                                          </div>
+
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setDetailBranch(child);
+                                                setDetailBranchModalTab('info');
+                                              }}
+                                              className="p-1 rounded-lg text-slate-500 hover:bg-slate-100"
+                                              title="ดูรายละเอียดสาขา"
+                                            >
+                                              <Eye className="w-4 h-4" />
+                                            </button>
+                                            {isSuperAdmin && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openEditBranchModal(child)}
+                                                className="p-1 rounded-lg text-slate-500 hover:bg-slate-100"
+                                                title="แก้ไขสาขา"
+                                              >
+                                                <Edit className="w-4 h-4" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-xs text-slate-600 pt-2 border-t border-slate-100">
+                                          <span>แผนก: <strong>{childDepts.length} แผนก</strong></span>
+                                          <span>บุคลากร: <strong>{childStaff.length} คน</strong></span>
+                                          {isSuperAdmin && (
+                                            <button
+                                              type="button"
+                                              onClick={() => openCreateDeptModal(child.id)}
+                                              className="text-xs font-bold text-teal-700 hover:underline flex items-center gap-1"
+                                            >
+                                              <Plus className="w-3 h-3" /> เพิ่มแผนก
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {/* Unassigned Staff Alert Node if any */}
+                {summary.unassignedStaffCount > 0 && (
+                  <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5 space-y-3">
+                    <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
+                      <AlertTriangle className="w-5 h-5 text-amber-600" />
+                      <span>พบบัญชีผู้ใช้งานที่ยังไม่มีสังกัดสาขาหรือแผนก ({summary.unassignedStaffCount} บัญชี)</span>
+                    </div>
+                    <p className="text-xs text-amber-700">
+                      กรุณากำหนดสาขาและแผนกให้แก่เจ้าหน้าที่เพื่อความถูกต้องในการกำหนดขอบเขตข้อมูล (Data Scope) และการเข้าถึงระบบ
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('personnel');
+                        setOnlyInvalidPersonnel(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>ไปยังหน้ารายชื่อเพื่อระบุสังกัด</span>
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* =============================================================== */}
           {/* PAGINATION BAR */}
           {/* =============================================================== */}
-          <div className="bg-white px-5 py-3.5 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <span>
-                แสดงรายการที่{' '}
-                <strong>{Math.min((currentPage - 1) * pageSize + 1, currentListLength)}</strong> ถึง{' '}
-                <strong>{Math.min(currentPage * pageSize, currentListLength)}</strong> จากทั้งหมด{' '}
-                <strong>{currentListLength}</strong> รายการ
-              </span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 font-bold text-slate-800"
-              >
-                <option value={6}>6 รายการ/หน้า</option>
-                <option value={12}>12 รายการ/หน้า</option>
-                <option value={24}>24 รายการ/หน้า</option>
-              </select>
-            </div>
+          {activeTab !== 'tree' && (
+            <div className="bg-white px-5 py-3.5 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+              <div className="flex items-center gap-2">
+                <span>
+                  แสดงรายการที่{' '}
+                  <strong>{Math.min((currentPage - 1) * pageSize + 1, currentListLength)}</strong> ถึง{' '}
+                  <strong>{Math.min(currentPage * pageSize, currentListLength)}</strong> จากทั้งหมด{' '}
+                  <strong>{currentListLength}</strong> รายการ
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 font-bold text-slate-800"
+                >
+                  <option value={6}>6 รายการ/หน้า</option>
+                  <option value={12}>12 รายการ/หน้า</option>
+                  <option value={24}>24 รายการ/หน้า</option>
+                </select>
+              </div>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" /> ก่อนหน้า
-              </button>
-              <span className="px-3 py-1.5 font-bold text-slate-800">
-                หน้า {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                ถัดไป <ChevronRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" /> ก่อนหน้า
+                </button>
+                <span className="px-3 py-1.5 font-bold text-slate-800">
+                  หน้า {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  ถัดไป <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
 

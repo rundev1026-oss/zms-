@@ -71,14 +71,22 @@ export function ManualPermissionModal({
   const [highRiskChanges, setHighRiskChanges] = useState<string[]>([]);
 
   // Fetch User Permissions from BFF
+  const getHeaders = useCallback(() => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authToken && authToken !== 'cookie-session') {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return headers;
+  }, [authToken]);
+
   const loadUserPermissions = useCallback(async () => {
     if (!user?.id) return;
     try {
       setIsLoading(true);
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch(`/api/admin/users/${user.id}/permissions`, { headers });
+      const res = await fetch(`/api/admin/users/${user.id}/permissions`, {
+        headers: getHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
 
       if (json.success && json.data) {
@@ -118,10 +126,10 @@ export function ManualPermissionModal({
     if (!user?.id) return;
     try {
       setIsLoadingAudit(true);
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch(`/api/admin/permissions/audit-logs?targetUserId=${user.id}`, { headers });
+      const res = await fetch(`/api/admin/permissions/audit-logs?targetUserId=${user.id}`, {
+        headers: getHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       const logs = json.items || json.data;
       if (json.success && Array.isArray(logs)) {
@@ -274,14 +282,10 @@ export function ManualPermissionModal({
         reason: reason.trim() || 'กำหนดสิทธิ์เฉพาะบุคคล (Manual Override)',
       };
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
       const res = await fetch(`/api/admin/users/${user.id}/permissions`, {
         method: 'PUT',
-        headers,
+        headers: getHeaders(),
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 

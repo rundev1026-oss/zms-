@@ -61,6 +61,7 @@ interface AppContextType {
   logoutUser: () => Promise<boolean>;
   checkSession: () => Promise<void>;
   switchUserRole: (role: UserRole) => void;
+  getAuthHeaders: (additionalHeaders?: Record<string, string>) => Record<string, string>;
   applications: AssistanceApplication[];
   registries: BeneficiaryRegistryItem[];
   dashboardStats: DashboardSeparatedStats | null;
@@ -279,11 +280,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'Content-Type': 'application/json',
       ...additionalHeaders,
     };
-    if (token) {
+    if (token && token !== 'cookie-session') {
       headers['Authorization'] = `Bearer ${token}`;
     }
+    if (currentUser && currentUser.id && currentUser.id !== 'guest') {
+      headers['x-actor-id'] = currentUser.id;
+      headers['x-actor-role'] = currentUser.role;
+    }
     return headers;
-  }, [authToken]);
+  }, [authToken, currentUser]);
 
   // Fetch real data from database via APIs
   const refreshData = useCallback(async () => {
@@ -1238,6 +1243,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         logoutUser,
         checkSession,
         switchUserRole,
+        getAuthHeaders,
         applications,
         registries,
         dashboardStats,

@@ -31,7 +31,7 @@ import { RoleManagementModal, RoleItem } from '../../users/RoleManagementModal';
 import { ManualPermissionModal } from '../../users/ManualPermissionModal';
 
 export function RolesAndPermissionsTab() {
-  const { showToast, authToken, currentUser } = useApp();
+  const { showToast, authToken, currentUser, getAuthHeaders } = useApp();
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedRole, setSelectedRole] = useState<RoleItem | null>(null);
@@ -58,9 +58,8 @@ export function RolesAndPermissionsTab() {
     try {
       setIsLoading(true);
       const res = await fetch('/api/admin/roles', {
-        headers: {
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers: getAuthHeaders(),
+        credentials: 'include',
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -114,10 +113,8 @@ export function RolesAndPermissionsTab() {
       setIsSavingMatrix(true);
       const res = await fetch(`/api/admin/roles/${selectedRole.id}/permissions`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           permissions: Array.from(matrixRolePermissions),
         }),

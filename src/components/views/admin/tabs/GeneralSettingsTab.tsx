@@ -34,7 +34,7 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
   if (initialSubSection === 'backup') {
     return <DatabaseBackupTab />;
   }
-  const { showToast, authToken, currentUser } = useApp();
+  const { showToast, authToken, currentUser, getAuthHeaders } = useApp();
   const [activeSubSection, setActiveSubSection] = useState<'org' | 'system' | 'docs' | 'notifications' | 'security' | 'backup'>(initialSubSection);
 
   useEffect(() => {
@@ -97,7 +97,10 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/settings');
+      const res = await fetch('/api/settings', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (res.ok && json.success) {
         const d = json.data;
@@ -188,10 +191,8 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
 
       const res = await fetch('/api/settings', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -211,7 +212,11 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
   const handleTriggerBackup = async () => {
     try {
       setIsBackingUp(true);
-      const res = await fetch('/api/system/backup', { method: 'POST' });
+      const res = await fetch('/api/system/backup', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (res.ok && json.success) {
         setBackupResult({

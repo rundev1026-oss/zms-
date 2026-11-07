@@ -253,6 +253,17 @@ export class ApprovalsService {
           ],
         },
       });
+
+      if (subFund) {
+        const remainingSubFund = Number(subFund.remainingAmount || 0);
+        if (remainingSubFund < dto.approvedAmount) {
+          throw new AppException(
+            HttpStatus.BAD_REQUEST,
+            'INSUFFICIENT_SUB_FUND_BALANCE',
+            `ยอดงบประมาณคงเหลือในกองทุนเฉพาะเจาะจง "${subFund.name}" ไม่เพียงพอ (คงเหลือ: ฿${remainingSubFund.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ยอดที่ขออนุมัติ: ฿${dto.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`,
+          );
+        }
+      }
     }
 
     const approvedDecimal = new Prisma.Decimal(dto.approvedAmount);

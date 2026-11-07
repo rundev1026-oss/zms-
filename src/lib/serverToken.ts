@@ -1,12 +1,12 @@
 import crypto from 'crypto';
 
-const DEFAULT_JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me-zms-enterprise-2026';
-const SYSTEM_ADMIN_ID = 'fb5ffe28-f8a4-4a51-884f-3c4de9c34a6d';
+const DEFAULT_JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me';
+const SYSTEM_ADMIN_ID = 'dffb49d1-7cf3-4593-bb58-a82b25f5bff4';
 
 /**
  * Resolves a Bearer token from the incoming Request.
  * 1. Checks Authorization header ('Bearer <token>')
- * 2. Checks 'zms_session' or 'zms_auth_token' cookie
+ * 2. Checks 'zms_session', 'zms_auth_token', or 'zms_access_token' cookie
  * 3. If none found, gracefully mints a valid system fallback token for development/fallback mode
  */
 export function resolveServerToken(req: Request): string {
@@ -14,25 +14,19 @@ export function resolveServerToken(req: Request): string {
   const authHeader = req.headers.get('authorization') || '';
   if (authHeader.startsWith('Bearer ')) {
     const raw = authHeader.replace('Bearer ', '').trim();
-    if (raw && raw !== 'null' && raw !== 'undefined') {
+    if (raw && raw !== 'null' && raw !== 'undefined' && raw !== 'cookie-session') {
       return raw;
     }
   }
 
   // 2. Cookie header
   const cookieHeader = req.headers.get('cookie') || '';
-  const sessionMatch = cookieHeader.match(/zms_session=([^;]+)/);
+  const sessionMatch = cookieHeader.match(/zms_session=([^;]+)/) ||
+                       cookieHeader.match(/zms_auth_token=([^;]+)/) ||
+                       cookieHeader.match(/zms_access_token=([^;]+)/);
   if (sessionMatch) {
     const raw = decodeURIComponent(sessionMatch[1]).trim();
-    if (raw && raw !== 'null' && raw !== 'undefined') {
-      return raw;
-    }
-  }
-
-  const tokenMatch = cookieHeader.match(/zms_auth_token=([^;]+)/);
-  if (tokenMatch) {
-    const raw = decodeURIComponent(tokenMatch[1]).trim();
-    if (raw && raw !== 'null' && raw !== 'undefined') {
+    if (raw && raw !== 'null' && raw !== 'undefined' && raw !== 'cookie-session') {
       return raw;
     }
   }

@@ -20,8 +20,26 @@ export interface AsnafMasterItem {
   updatedAt?: string;
 }
 
+export const CANONICAL_8_ASNAFS: Array<{
+  id: string;
+  code: string;
+  nameTh: string;
+  sortOrder: number;
+  isActive: boolean;
+}> = [
+  { id: 'asnaf-faqir', code: 'faqir', nameTh: 'ฟากีร (ผู้ยากไร้)', sortOrder: 1, isActive: true },
+  { id: 'asnaf-miskin', code: 'miskin', nameTh: 'มิสกีน (คนขัดสน)', sortOrder: 2, isActive: true },
+  { id: 'asnaf-amil', code: 'amil', nameTh: 'อามิล (เจ้าหน้าที่บริหารซะกาต)', sortOrder: 3, isActive: true },
+  { id: 'asnaf-muallaf', code: 'muallaf', nameTh: 'มุอัลลัฟ (ผู้มีจิตโน้มสู่ศรัทธา)', sortOrder: 4, isActive: true },
+  { id: 'asnaf-riqab', code: 'riqab', nameTh: 'ริกอบ (การปลดปล่อยพันธนาการ)', sortOrder: 5, isActive: true },
+  { id: 'asnaf-gharimin', code: 'gharimin', nameTh: 'อัล-ฆอรีมีน (ผู้มีหนี้สินจำเป็น)', sortOrder: 6, isActive: true },
+  { id: 'asnaf-fisabilillah', code: 'fisabilillah', nameTh: 'ฟีสะบีลิลลาฮ์ (ในหนทางของอัลลอฮ์)', sortOrder: 7, isActive: true },
+  { id: 'asnaf-ibnsabil', code: 'ibnsabil', nameTh: 'อิบนุสสะบีล (ผู้เดินทางตกยาก)', sortOrder: 8, isActive: true },
+];
+
 const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
   faqir: {
+    nameTh: 'ฟากีร (ผู้ยากไร้)',
     nameAr: 'الفقراء (Al-Fuqara)',
     nameEn: 'The Destitute (Faqir)',
     description: 'ผู้ยากไร้ที่ไม่มีทรัพย์สินและไม่มีรายได้ หรือมีรายได้ไม่ถึงกึ่งหนึ่งของความจำเป็นขั้นพื้นฐานในการดำรงชีพ',
@@ -39,6 +57,7 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
     allowedFormats: ['เงินสงเคราะห์และการเงิน', 'สิ่งของและถุงยังชีพ', 'ซ่อมแซมและจัดสร้างที่อยู่อาศัย'],
   },
   miskin: {
+    nameTh: 'มิสกีน (คนขัดสน)',
     nameAr: 'المساكين (Al-Masakin)',
     nameEn: 'The Needy (Miskin)',
     description: 'คนขัดสนที่มีรายได้หรือทรัพย์สินบ้างแต่เกินกึ่งหนึ่ง แต่ยังไม่เพียงพอต่อค่าครองชีพพื้นฐานตามความจำเป็น',
@@ -56,6 +75,7 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
     allowedFormats: ['เงินสงเคราะห์และการเงิน', 'ส่งเสริมอาชีพและเครื่องมือทำกิน', 'ทุนการศึกษาและพัฒนาเยาวชน'],
   },
   amil: {
+    nameTh: 'อามิล (เจ้าหน้าที่บริหารซะกาต)',
     nameAr: 'العاملين عليها (Al-Amilina Alayha)',
     nameEn: 'Zakat Administrators (Amil)',
     description: 'เจ้าหน้าที่ผู้ได้รับการแต่งตั้งให้ทำหน้าที่รวบรวม ตรวจสอบ บริหารจัดการ และจัดสรรเงินซะกาตตามหลักการ',
@@ -70,6 +90,7 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
     allowedFormats: ['ค่าบริหารจัดการและดำเนินงานซะกาต'],
   },
   muallaf: {
+    nameTh: 'มุอัลลัฟ (ผู้มีจิตโน้มสู่ศรัทธา)',
     nameAr: 'المؤلفة قلوبهم (Al-Muallafatu Qulubuhum)',
     nameEn: 'Those Inclined Toward Islam (Mu’allaf)',
     description: 'ผู้มีจิตโน้มสู่ความศรัทธา ผู้เข้ารับอิสลามใหม่ หรือผู้ที่ควรได้รับการเสริมสร้างความสัมพันธ์อันดีในสังคม',
@@ -84,6 +105,7 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
     allowedFormats: ['เงินสงเคราะห์และการเงิน', 'ส่งเสริมอาชีพและเครื่องมือทำกิน', 'ทุนการศึกษาและพัฒนาเยาวชน'],
   },
   riqab: {
+    nameTh: 'ริกอบ (การปลดปล่อยพันธนาการ)',
     nameAr: 'في الرقاب (Fi Ar-Riqab)',
     nameEn: 'Emancipation & Liberation (Riqab)',
     description: 'การปลดปล่อยพันธนาการ การช่วยเหลือผู้ตกเป็นเหยื่อการค้ามนุษย์ หรือผู้ถูกลิดรอนอิสรภาพอย่างไม่เป็นธรรม',
@@ -98,6 +120,7 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
     allowedFormats: ['ช่วยเหลือทางกฎหมายและมนุษยธรรม'],
   },
   gharimin: {
+    nameTh: 'อัล-ฆอรีมีน (ผู้มีหนี้สินจำเป็น)',
     nameAr: 'الغارمين (Al-Gharimin)',
     nameEn: 'Debtors in Need (Gharimin)',
     description: 'ผู้มีหนี้สินล้นพ้นตัวที่เกิดจากความจำเป็นในการดำรงชีพ การรักษาพยาบาล หรือภัยพิบัติ มิได้เกิดจากอบายมุข',
@@ -114,6 +137,7 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
     allowedFormats: ['ชำระหนี้สินจำเป็นโดยตรงแก่เจ้าหนี้'],
   },
   fisabilillah: {
+    nameTh: 'ฟีสะบีลิลลาฮ์ (ในหนทางของอัลลอฮ์)',
     nameAr: 'في سبيل الله (Fi Sabilillah)',
     nameEn: 'In the Cause of Allah (Fisabilillah)',
     description: 'กิจกรรมและโครงการเพื่อวิถีทางของศาสนา การศึกษาศาสนา และสาธารณประโยชน์ต่อชุมชนมุสลิม',
@@ -128,6 +152,7 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
     allowedFormats: ['ทุนการศึกษาและพัฒนาเยาวชน', 'มนุษยธรรมและสาธารณประโยชน์'],
   },
   ibnsabil: {
+    nameTh: 'อิบนุสสะบีล (ผู้เดินทางตกยาก)',
     nameAr: 'ابن السبيل (Ibn As-Sabil)',
     nameEn: 'Stranded Wayfarers (Ibn Sabil)',
     description: 'ผู้เดินทางตกยากที่ขาดแคลนทุนทรัพย์ในการเดินทางกลับภูมิลำเนาหรือไปยังจุดหมายที่จำเป็น',
@@ -145,16 +170,32 @@ const DEFAULT_ASNAF_METADATA: Record<string, Partial<AsnafMasterItem>> = {
 
 export async function GET(request: NextRequest) {
   try {
-    // 1. Fetch raw asnaf categories from NestJS / PostgreSQL
-    const res = await proxyToNest('/asnaf/categories', request, { method: 'GET' });
-    const rawCategories = await res.json();
-    const categoriesList = Array.isArray(rawCategories) ? rawCategories : rawCategories?.data || [];
+    await initDb();
+    const db = getDb();
+
+    // 1. Fetch raw asnaf categories from NestJS / PostgreSQL if available
+    let categoriesList: any[] = [];
+    try {
+      const res = await proxyToNest('/asnaf/categories', request, { method: 'GET' });
+      if (res && res.ok) {
+        const rawCategories = await res.json();
+        const list = Array.isArray(rawCategories) ? rawCategories : rawCategories?.data;
+        if (Array.isArray(list) && list.length > 0) {
+          categoriesList = list;
+        }
+      }
+    } catch {
+      // NestJS service offline or unauthenticated proxy
+    }
+
+    // Canonical 8 Asnafs fallback if NestJS is empty or not accessible
+    if (!categoriesList || categoriesList.length === 0) {
+      categoriesList = CANONICAL_8_ASNAFS;
+    }
 
     // 2. Load custom enriched metadata from system_settings
     let enrichedStore: Record<string, any> = {};
     try {
-      await initDb();
-      const db = getDb();
       const storeRow = await db.execute({
         sql: `SELECT value FROM system_settings WHERE key = ?`,
         args: ['asnaf_master_metadata_catalog'],
@@ -167,8 +208,6 @@ export async function GET(request: NextRequest) {
     // 3. Count linked assistance types per Asnaf
     const typeCounts: Record<string, number> = {};
     try {
-      await initDb();
-      const db = getDb();
       const typeRows = await db.execute(`
         SELECT primary_group_code, COUNT(*) as count 
         FROM assistance_types 
@@ -191,20 +230,22 @@ export async function GET(request: NextRequest) {
       }
 
       return {
-        id: String(r.id),
+        id: String(r.id || `asnaf-${code}`),
         code,
-        nameTh: custom.nameTh || String(r.nameTh || r.name_th || ''),
+        nameTh: custom.nameTh || String(r.nameTh || r.name_th || defaults.nameTh || code),
         nameAr: custom.nameAr || defaults.nameAr || '',
         nameEn: custom.nameEn || defaults.nameEn || '',
         description: custom.description || defaults.description || '',
         criteria: custom.criteria || defaults.criteria || [],
         requiredDocuments: custom.requiredDocuments || defaults.requiredDocuments || [],
         allowedFormats: custom.allowedFormats || defaults.allowedFormats || [],
-        sortOrder: Number(r.sortOrder || r.sort_order || 0),
-        isActive: r.isActive !== undefined ? Boolean(r.isActive) : true,
+        sortOrder: custom.sortOrder !== undefined ? Number(custom.sortOrder) : Number(r.sortOrder || r.sort_order || 0),
+        isActive: custom.isActive !== undefined ? Boolean(custom.isActive) : (r.isActive !== undefined ? Boolean(r.isActive) : true),
         linkedTypeCount: linkedCount,
       };
     });
+
+    result.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
@@ -224,7 +265,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'กรุณาเข้าสู่ระบบก่อนดำเนินการ' }, { status: 401 });
     }
 
-    const { code, nameTh, nameAr, nameEn, description, criteria, requiredDocuments, allowedFormats } = body;
+    const { code, nameTh, nameAr, nameEn, description, criteria, requiredDocuments, allowedFormats, isActive, sortOrder } = body;
 
     if (!code) {
       return NextResponse.json({ success: false, error: 'กรุณาระบุรหัสอัสนัฟ (code)' }, { status: 400 });
@@ -245,6 +286,9 @@ export async function PUT(request: NextRequest) {
       }
     } catch {}
 
+    const prevActive = enrichedStore[code]?.isActive !== undefined ? enrichedStore[code].isActive : true;
+    const nextActive = isActive !== undefined ? Boolean(isActive) : prevActive;
+
     enrichedStore[code] = {
       ...(enrichedStore[code] || {}),
       nameTh: nameTh !== undefined ? String(nameTh).trim() : enrichedStore[code]?.nameTh,
@@ -254,6 +298,8 @@ export async function PUT(request: NextRequest) {
       criteria: Array.isArray(criteria) ? criteria : enrichedStore[code]?.criteria,
       requiredDocuments: Array.isArray(requiredDocuments) ? requiredDocuments : enrichedStore[code]?.requiredDocuments,
       allowedFormats: Array.isArray(allowedFormats) ? allowedFormats : enrichedStore[code]?.allowedFormats,
+      isActive: nextActive,
+      sortOrder: sortOrder !== undefined ? Number(sortOrder) : (enrichedStore[code]?.sortOrder !== undefined ? enrichedStore[code].sortOrder : 0),
       updatedAt: new Date().toISOString(),
     };
 
@@ -263,6 +309,25 @@ export async function PUT(request: NextRequest) {
             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
       args: ['asnaf-cat-meta', 'asnaf_master_metadata_catalog', JSON.stringify(enrichedStore)],
     });
+
+    // Record audit log
+    try {
+      await db.execute({
+        sql: `INSERT INTO asnaf_relationship_audit_logs (
+                id, relationship_type, record_id, action, actor_id, actor_name, actor_role, changes_summary, created_at
+              ) VALUES (?, 'asnaf_master_data', ?, 'UPDATE_ASNAF', ?, ?, ?, ?, datetime('now'))`,
+        args: [
+          `aral-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          code,
+          actor.id || null,
+          actor.name || null,
+          actor.role || null,
+          `แก้ไขข้อมูลหมวดหมู่อัสนัฟ "${nameTh || enrichedStore[code]?.nameTh || code}" (สถานะ: ${nextActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'})`,
+        ],
+      });
+    } catch (auditErr) {
+      console.warn('Failed to insert audit log for asnaf update:', auditErr);
+    }
 
     return NextResponse.json({ success: true, message: 'บันทึกข้อมูลหมวดหมู่อัสนัฟสำเร็จ' });
   } catch (error: any) {

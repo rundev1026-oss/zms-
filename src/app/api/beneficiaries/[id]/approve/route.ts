@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyToNest } from '@/lib/apiProxy';
+import { BeneficiaryService } from '@/services/beneficiaryService';
 
 export async function POST(
   request: NextRequest,
@@ -8,7 +9,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { approvedAmount, fundId, notes, specificFundId } = body;
+    const { approvedAmount, fundId, notes, specificFundId, actor: bodyActor } = body;
 
     if (approvedAmount === undefined || !fundId) {
       return NextResponse.json(
@@ -17,27 +18,46 @@ export async function POST(
       );
     }
 
-    const res = await proxyToNest(`/approvals/${id}/approve`, request, {
-      method: 'POST',
-      body: {
-        approvedAmount: Number(approvedAmount),
-        fundId,
-        specificFundId,
-        notes: notes || 'อนุมัติวงเงินสวัสดิการ',
-      },
-    });
+    const actor = bodyActor || {
+      id: 'u-1',
+      name: 'เจ้าหน้าที่ผู้พิจารณาอนุมัติ',
+      role: 'approver',
+    };
 
-    const json = await res.json();
-    if (!res.ok) {
+    // 1. Enforce Phase 10 Solvency Check & Fund Hold in BeneficiaryService
+    let localResult: any = null;
+    try {
+      localResult = await BeneficiaryService.approveApplication(
+        id,
+        Number(approvedAmount),
+        fundId,
+        notes || 'อนุมัติตามระเบียบ',
+        actor,
+        specificFundId
+      );
+    } catch (localErr: any) {
       return NextResponse.json(
-        { success: false, error: json.message || 'ไม่สามารถอนุมัติคำร้องได้' },
-        { status: res.status }
+        { success: false, error: localErr.message || 'ไม่สามารถอนุมัติตามระเบียบงบประมาณได้' },
+        { status: 422 }
       );
     }
 
+    // 2. Also forward to Nest if running
+    try {
+      await proxyToNest(`/approvals/${id}/approve`, request, {
+        method: 'POST',
+        body: {
+          approvedAmount: Number(approvedAmount),
+          fundId,
+          specificFundId,
+          notes: notes || 'อนุมัติวงเงินสวัสดิการ',
+        },
+      });
+    } catch {}
+
     return NextResponse.json({
       success: true,
-      data: json,
+      data: localResult,
       message: `อนุมัติคำร้องขอรับความช่วยเหลือเรียบร้อยแล้ว วงเงิน ฿${Number(approvedAmount).toLocaleString('th-TH')}`,
     });
   } catch (error: any) {
@@ -47,3 +67,4 @@ export async function POST(
     );
   }
 }
+

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyToNest } from '@/lib/apiProxy';
+import { BeneficiaryService } from '@/services/beneficiaryService';
 
 export async function GET(
   request: NextRequest,
@@ -7,21 +8,43 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const res = await proxyToNest(`/assistance-requests/${id}`, request, {
-      method: 'GET',
-    });
+    let nestData: any = null;
 
-    const json = await res.json();
-    if (!res.ok) {
+    try {
+      const res = await proxyToNest(`/assistance-requests/${id}`, request, {
+        method: 'GET',
+      });
+      if (res.ok) {
+        nestData = await res.json();
+      }
+    } catch {}
+
+    const lifecycleState = await BeneficiaryService.getLifecycleState(id).catch(() => null);
+
+    if (!nestData && !lifecycleState) {
       return NextResponse.json(
-        { success: false, error: json.message || 'ไม่พบคำร้องขอความช่วยเหลือ' },
-        { status: res.status }
+        { success: false, error: 'ไม่พบคำร้องขอความช่วยเหลือ' },
+        { status: 404 }
       );
     }
 
+    const mergedData = {
+      ...(nestData || {}),
+      ...(lifecycleState ? {
+        requestStatus: lifecycleState.statuses.request,
+        assessmentStatus: lifecycleState.statuses.assessment,
+        approvalStatus: lifecycleState.statuses.approval,
+        paymentStatus: lifecycleState.statuses.payment,
+        deliveryStatus: lifecycleState.statuses.delivery,
+        followupStatus: lifecycleState.statuses.followup,
+        completionStatus: lifecycleState.statuses.completion,
+        lifecycle: lifecycleState,
+      } : {}),
+    };
+
     return NextResponse.json({
       success: true,
-      data: json,
+      data: mergedData,
     });
   } catch (error: any) {
     return NextResponse.json(

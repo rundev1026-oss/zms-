@@ -2,6 +2,11 @@ import { createClient, Client } from '@libsql/client';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import {
+  LEVEL_3_ASSISTANCE_FORMATS,
+  NORMALIZED_ASSISTANCE_TYPES,
+  resolveAsnafGroupCode,
+} from './constants/asnafRelationshipCatalog';
 
 // Database file stored locally in project data folder
 const dbDir = path.join(process.cwd(), 'data');
@@ -2637,6 +2642,18 @@ export async function initDb(): Promise<void> {
     }
   }
 
+  // System settings key-value store for configurations and master metadata catalogs
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      id TEXT PRIMARY KEY,
+      key TEXT UNIQUE NOT NULL,
+      value TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // Budget Adjustments Ledger Table (Approved budget additions / reductions)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS fund_budget_adjustments (
@@ -2937,6 +2954,31 @@ export async function initDb(): Promise<void> {
     ['approved_specific_fund_id', 'TEXT'],
     ['classification_snapshot', 'TEXT'],
     ['fiscal_year', "TEXT DEFAULT '2569'"],
+    ['assistance_format_id', 'TEXT'],
+    ['assistance_format_code', 'TEXT'],
+    ['assistance_format_name', 'TEXT'],
+    ['delivery_method', 'TEXT'],
+    ['request_status', "TEXT NOT NULL DEFAULT 'submitted'"],
+    ['assessment_status', "TEXT NOT NULL DEFAULT 'pending'"],
+    ['approval_status', "TEXT NOT NULL DEFAULT 'pending'"],
+    ['payment_status', "TEXT NOT NULL DEFAULT 'pending'"],
+    ['delivery_status', "TEXT NOT NULL DEFAULT 'pending'"],
+    ['followup_status', "TEXT NOT NULL DEFAULT 'pending_schedule'"],
+    ['completion_status', "TEXT NOT NULL DEFAULT 'active'"],
+    ['request_date', 'TEXT'],
+    ['assessment_date', 'TEXT'],
+    ['assessed_by_id', 'TEXT'],
+    ['assessed_by_name', 'TEXT'],
+    ['delivery_date', 'TEXT'],
+    ['delivered_by_id', 'TEXT'],
+    ['delivered_by_name', 'TEXT'],
+    ['delivery_ref', 'TEXT'],
+    ['delivery_proof_url', 'TEXT'],
+    ['delivery_notes', 'TEXT'],
+    ['closed_date', 'TEXT'],
+    ['closed_by_id', 'TEXT'],
+    ['closed_by_name', 'TEXT'],
+    ['closing_notes', 'TEXT'],
   ];
   for (const [col, colType] of appFundCols) {
     if (!appColNames3.includes(col)) {
@@ -2945,6 +2987,15 @@ export async function initDb(): Promise<void> {
   }
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_specific_fund ON assistance_applications(specific_fund_id);`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_primary_group ON assistance_applications(primary_group_code);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_format_id ON assistance_applications(assistance_format_id);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_format_code ON assistance_applications(assistance_format_code);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_req_status ON assistance_applications(request_status);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_asm_status ON assistance_applications(assessment_status);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_apr_status ON assistance_applications(approval_status);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_pay_status ON assistance_applications(payment_status);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_del_status ON assistance_applications(delivery_status);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_fol_status ON assistance_applications(followup_status);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_app_cmp_status ON assistance_applications(completion_status);`);
 
   const assCols = await db.execute(`PRAGMA table_info(beneficiary_assessments)`);
   const assColNames = assCols.rows.map((c) => String(c.name));
@@ -3070,6 +3121,486 @@ export async function initDb(): Promise<void> {
     }
   } catch (err) {
     console.error('3-tier application backfill warning:', err);
+  }
+
+  // =========================================================================
+  // PHASE 3: 3-LEVEL RELATIONSHIP SCHEMA & BACKFILL
+  // (Asnaf ↔ Assistance Types ↔ Assistance Formats & Beneficiary Asnaf)
+  // =========================================================================
+
+  // 1. Table: assistance_formats (Master Data Level 3)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS assistance_formats (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      name_en TEXT,
+      description TEXT,
+      delivery_method TEXT NOT NULL,
+      delivery_method_label_th TEXT NOT NULL,
+      requires_receipt INTEGER DEFAULT 1,
+      requires_inspection INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_af_code ON assistance_formats(code);`);
+
+  // 2. Table: asnaf_assistance_types (Level 1 ↔ Level 2 Many-to-Many)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS asnaf_assistance_types (
+      id TEXT PRIMARY KEY,
+      asnaf_code TEXT NOT NULL,
+      assistance_type_id TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      effective_date TEXT,
+      created_by TEXT DEFAULT 'system',
+      updated_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (assistance_type_id) REFERENCES assistance_types (id) ON DELETE CASCADE,
+      UNIQUE(asnaf_code, assistance_type_id)
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_aat_asnaf ON asnaf_assistance_types(asnaf_code);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_aat_type ON asnaf_assistance_types(assistance_type_id);`);
+
+  // 3. Table: assistance_type_formats (Level 2 ↔ Level 3 Many-to-Many)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS assistance_type_formats (
+      id TEXT PRIMARY KEY,
+      assistance_type_id TEXT NOT NULL,
+      format_id TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_by TEXT DEFAULT 'system',
+      updated_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (assistance_type_id) REFERENCES assistance_types (id) ON DELETE CASCADE,
+      FOREIGN KEY (format_id) REFERENCES assistance_formats (id) ON DELETE CASCADE,
+      UNIQUE(assistance_type_id, format_id)
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_atf_type ON assistance_type_formats(assistance_type_id);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_atf_format ON assistance_type_formats(format_id);`);
+
+  // 4. Table: beneficiary_asnaf (Beneficiary ↔ Asnaf Many-to-Many)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS beneficiary_asnaf (
+      id TEXT PRIMARY KEY,
+      beneficiary_id TEXT NOT NULL,
+      asnaf_code TEXT NOT NULL,
+      is_primary INTEGER DEFAULT 1,
+      qualification_date TEXT,
+      qualification_notes TEXT,
+      qualified_by_id TEXT,
+      qualified_by_name TEXT,
+      is_active INTEGER DEFAULT 1,
+      effective_date TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (beneficiary_id) REFERENCES beneficiaries (id) ON DELETE CASCADE,
+      UNIQUE(beneficiary_id, asnaf_code)
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ba_beneficiary ON beneficiary_asnaf(beneficiary_id);`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ba_asnaf ON beneficiary_asnaf(asnaf_code);`);
+
+  // 5. Table: asnaf_relationship_audit_logs (Audit History for all relationship modifications)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS asnaf_relationship_audit_logs (
+      id TEXT PRIMARY KEY,
+      relationship_type TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      actor_id TEXT,
+      actor_name TEXT,
+      actor_role TEXT,
+      changes_summary TEXT,
+      previous_state TEXT,
+      new_state TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_aral_rel_rec ON asnaf_relationship_audit_logs(relationship_type, record_id);`);
+
+  // 6. Seed Level 3: assistance_formats (9 Formats)
+  for (const fmt of LEVEL_3_ASSISTANCE_FORMATS) {
+    await db.execute({
+      sql: `INSERT INTO assistance_formats (
+              id, code, name, name_en, description, delivery_method,
+              delivery_method_label_th, requires_receipt, requires_inspection,
+              is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(code) DO UPDATE SET
+              name = excluded.name,
+              name_en = excluded.name_en,
+              description = excluded.description,
+              delivery_method = excluded.delivery_method,
+              delivery_method_label_th = excluded.delivery_method_label_th,
+              requires_receipt = excluded.requires_receipt,
+              requires_inspection = excluded.requires_inspection,
+              sort_order = excluded.sort_order,
+              updated_at = datetime('now')`,
+      args: [
+        fmt.id,
+        fmt.code,
+        fmt.name,
+        fmt.nameEn || '',
+        fmt.description || '',
+        fmt.deliveryMethod,
+        fmt.deliveryMethodLabelTh,
+        fmt.requiresReceipt ? 1 : 0,
+        fmt.requiresInspection ? 1 : 0,
+        fmt.isActive ? 1 : 0,
+        fmt.sortOrder,
+      ],
+    });
+  }
+
+  // 7. Seed Level 2: Normalized Assistance Types (23 Types)
+  for (const nat of NORMALIZED_ASSISTANCE_TYPES) {
+    const existingType = await db.execute({
+      sql: `SELECT id FROM assistance_types WHERE code = ? OR name = ? LIMIT 1`,
+      args: [nat.code, nat.name],
+    });
+
+    const targetId = existingType.rows.length > 0 ? String(existingType.rows[0].id) : nat.id;
+    const resolvedSpecificFundId = nat.code.startsWith('AMIL_')
+      ? 'subf-amil-1'
+      : nat.code.startsWith('FISABILILLAH_')
+      ? 'subf-fisabilillah-1'
+      : nat.code === 'GHARIMUN_DEBT'
+      ? 'subf-gharimin-1'
+      : nat.code === 'IBN_SABIL'
+      ? 'subf-ibnsabil-1'
+      : nat.code.startsWith('HUMANITARIAN_') || nat.code === 'OTHER_AID'
+      ? 'subf-humanitarian-1'
+      : nat.code === 'MUALLAF_SUPPORT'
+      ? 'subf-muallaf-1'
+      : nat.category === 'housing'
+      ? 'subf-2'
+      : nat.code === 'CAREER_SUPPORT' || nat.code === 'CAREER_EQUIPMENT'
+      ? 'subf-3'
+      : nat.code === 'EDUCATION_GRANT' || nat.code === 'EDUCATION_SUPPLIES'
+      ? 'subf-4'
+      : nat.code === 'EMERGENCY_AID' || nat.code === 'MEDICAL_AID' || nat.code === 'DISASTER_RELIEF'
+      ? 'subf-5'
+      : 'subf-1';
+
+    if (existingType.rows.length === 0) {
+      await db.execute({
+        sql: `INSERT INTO assistance_types (
+                id, code, name, category, description, type_group,
+                conditions_text, required_docs, default_min_amount, default_max_amount,
+                specific_fund_id, primary_group_code,
+                order_index, is_active, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, 'core', ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`,
+        args: [
+          targetId,
+          nat.code,
+          nat.name,
+          nat.category,
+          nat.description,
+          nat.conditionsText,
+          JSON.stringify(nat.requiredDocuments),
+          nat.defaultMinAmount || null,
+          nat.defaultMaxAmount || null,
+          resolvedSpecificFundId,
+          nat.allowedAsnafCodes[0],
+          nat.sortOrder,
+        ],
+      });
+    } else {
+      await db.execute({
+        sql: `UPDATE assistance_types
+              SET conditions_text = COALESCE(conditions_text, ?),
+                  description = COALESCE(description, ?),
+                  required_docs = COALESCE(required_docs, ?),
+                  default_min_amount = COALESCE(default_min_amount, ?),
+                  default_max_amount = COALESCE(default_max_amount, ?),
+                  specific_fund_id = COALESCE(specific_fund_id, ?),
+                  primary_group_code = ?,
+                  updated_at = datetime('now')
+              WHERE id = ?`,
+        args: [
+          nat.conditionsText,
+          nat.description,
+          JSON.stringify(nat.requiredDocuments),
+          nat.defaultMinAmount || null,
+          nat.defaultMaxAmount || null,
+          resolvedSpecificFundId,
+          nat.allowedAsnafCodes[0],
+          targetId,
+        ],
+      });
+    }
+
+    // 8. Seed asnaf_assistance_types for this normalized type
+    for (let i = 0; i < nat.allowedAsnafCodes.length; i++) {
+      const ac = nat.allowedAsnafCodes[i];
+      const linkId = `aat-${ac}-${nat.code}`;
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO asnaf_assistance_types (
+                id, asnaf_code, assistance_type_id, is_active, sort_order,
+                effective_date, created_by
+              ) VALUES (?, ?, ?, 1, ?, datetime('now'), 'system')`,
+        args: [linkId, ac, targetId, i + 1],
+      });
+    }
+
+    // 9. Seed assistance_type_formats for this normalized type
+    for (let j = 0; j < nat.supportedFormatCodes.length; j++) {
+      const fc = nat.supportedFormatCodes[j];
+      const fmtRow = await db.execute({
+        sql: `SELECT id FROM assistance_formats WHERE code = ? LIMIT 1`,
+        args: [fc],
+      });
+      if (fmtRow.rows.length > 0) {
+        const fmtId = String(fmtRow.rows[0].id);
+        const atfId = `atf-${nat.code}-${fc}`;
+        await db.execute({
+          sql: `INSERT OR IGNORE INTO assistance_type_formats (
+                  id, assistance_type_id, format_id, is_default, is_active, sort_order, created_by
+                ) VALUES (?, ?, ?, ?, 1, ?, 'system')`,
+          args: [atfId, targetId, fmtId, j === 0 ? 1 : 0, j + 1],
+        });
+      }
+    }
+  }
+
+  // Purge any spurious backfill links for normalized types that already have canonical system links
+  try {
+    await db.execute(`
+      DELETE FROM asnaf_assistance_types 
+      WHERE created_by = 'backfill' 
+        AND assistance_type_id IN (SELECT DISTINCT assistance_type_id FROM asnaf_assistance_types WHERE created_by = 'system')
+    `);
+  } catch {}
+
+  // 10. Backfill remaining unmapped active assistance_types rows into asnaf_assistance_types and formats
+  try {
+    const unmappedAst = await db.execute(`
+      SELECT id, code, name, category, primary_group_code, assistance_format 
+      FROM assistance_types 
+      WHERE is_active = 1 
+        AND id NOT IN (SELECT DISTINCT assistance_type_id FROM asnaf_assistance_types WHERE is_active = 1)
+    `);
+    for (const aRow of unmappedAst.rows) {
+      const astId = String(aRow.id);
+      const rawPg = String(aRow.primary_group_code || 'faqir_miskin');
+      const asnafCode = resolveAsnafGroupCode(rawPg);
+
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO asnaf_assistance_types (id, asnaf_code, assistance_type_id, is_active, sort_order, created_by)
+              VALUES (?, ?, ?, 1, 99, 'backfill')`,
+        args: [`aat-backfill-${asnafCode}-${astId}`, asnafCode, astId],
+      });
+
+      // Default format link if none exists
+      const existingAtf = await db.execute({
+        sql: `SELECT COUNT(*) as cnt FROM assistance_type_formats WHERE assistance_type_id = ?`,
+        args: [astId],
+      });
+      if (Number(existingAtf.rows[0]?.cnt || 0) === 0) {
+        const defaultFormatCode = aRow.category === 'in_kind' ? 'in_kind' : aRow.category === 'housing' ? 'materials' : 'bank_transfer';
+        const fRow = await db.execute({
+          sql: `SELECT id FROM assistance_formats WHERE code = ? LIMIT 1`,
+          args: [defaultFormatCode],
+        });
+        if (fRow.rows.length > 0) {
+          await db.execute({
+            sql: `INSERT OR IGNORE INTO assistance_type_formats (id, assistance_type_id, format_id, is_default, is_active, sort_order, created_by)
+                  VALUES (?, ?, ?, 1, 1, 1, 'backfill')`,
+            args: [`atf-backfill-${astId}`, astId, String(fRow.rows[0].id)],
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('asnaf_assistance_types backfill warning:', err);
+  }
+
+  // 11. Backfill beneficiary_asnaf from existing beneficiaries.asnaf_category
+  try {
+    const benRows = await db.execute(`SELECT id, asnaf_category, registered_date, qualified_by_id, qualified_by_name FROM beneficiaries`);
+    for (const b of benRows.rows) {
+      const benId = String(b.id);
+      const rawCategory = String(b.asnaf_category || 'miskin');
+      const resolvedAsnaf = resolveAsnafGroupCode(rawCategory);
+      const qualDate = b.registered_date ? String(b.registered_date) : null;
+      const qById = b.qualified_by_id ? String(b.qualified_by_id) : null;
+      const qByName = b.qualified_by_name ? String(b.qualified_by_name) : null;
+
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO beneficiary_asnaf (
+                id, beneficiary_id, asnaf_code, is_primary, qualification_date,
+                qualified_by_id, qualified_by_name, is_active, created_at, updated_at
+              ) VALUES (?, ?, ?, 1, ?, ?, ?, 1, datetime('now'), datetime('now'))`,
+        args: [`ba-${benId}-${resolvedAsnaf}`, benId, resolvedAsnaf, qualDate, qById, qByName],
+      });
+    }
+  } catch (err) {
+    console.error('beneficiary_asnaf backfill warning:', err);
+  }
+
+  // =========================================================================
+  // PHASE 7: MULTI-LIFECYCLE SEPARATED STATUS TRANSITIONS & BACKFILL
+  // =========================================================================
+  try {
+    // 1. Table: assistance_lifecycle_transitions
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS assistance_lifecycle_transitions (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT NOT NULL,
+        action TEXT NOT NULL,
+        actor_id TEXT,
+        actor_name TEXT,
+        actor_role TEXT,
+        notes TEXT,
+        metadata TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (application_id) REFERENCES assistance_applications (id) ON DELETE CASCADE
+      );
+    `);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_alt_app ON assistance_lifecycle_transitions(application_id);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_alt_stage ON assistance_lifecycle_transitions(stage);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_alt_created_at ON assistance_lifecycle_transitions(created_at);`);
+
+    // 2. Backfill existing applications with accurate separated statuses
+    const existingApps = await db.execute(`
+      SELECT id, status, requested_amount, approved_amount, disbursed_amount,
+             approved_date, disbursement_date, evaluator_checklist, delivery_method,
+             request_status, assessment_status, approval_status, payment_status, delivery_status, followup_status, completion_status
+      FROM assistance_applications
+    `);
+    for (const app of existingApps.rows) {
+      const st = String(app.status || 'submitted');
+      const delivMethod = String(app.delivery_method || 'bank_transfer');
+      const hasAssessment = app.evaluator_checklist !== null || ['pending_approval', 'approved', 'wait_disbursement', 'disbursed', 'followup', 'closed'].includes(st);
+      const isApproved = ['approved', 'wait_disbursement', 'disbursed', 'followup', 'closed'].includes(st);
+      const isDisbursed = ['disbursed', 'followup', 'closed'].includes(st) || Number(app.disbursed_amount || 0) > 0;
+      const isFollowupDone = ['followup', 'closed'].includes(st);
+      const isClosed = st === 'closed';
+      const isRejected = st === 'rejected';
+      const isCanceled = st === 'canceled' || st === 'cancelled';
+
+      let reqSt = 'submitted';
+      if (st === 'draft') reqSt = 'draft';
+      else if (st === 'need_info') reqSt = 'need_info';
+      else if (isCanceled) reqSt = 'canceled';
+
+      let asmSt = 'pending';
+      if (isApproved || isDisbursed || hasAssessment) asmSt = 'completed';
+      else if (st === 'assessment' || st === 'field_inspection' || st === 'assessing') asmSt = 'in_assessment';
+      else if (isRejected) asmSt = 'rejected';
+
+      let aprSt = 'pending';
+      if (isApproved) aprSt = 'approved';
+      else if (st === 'in_review') aprSt = 'in_review';
+      else if (isRejected) aprSt = 'rejected';
+
+      let paySt = 'pending';
+      if (delivMethod === 'in_kind') paySt = 'not_applicable';
+      else if (isDisbursed) paySt = 'paid';
+      else if (isApproved) paySt = 'wait_disbursement';
+      else if (isRejected || isCanceled) paySt = 'not_applicable';
+
+      let delivSt = 'pending';
+      if (['bank_transfer', 'cash'].includes(delivMethod) && isDisbursed) delivSt = 'delivered';
+      else if (['bank_transfer', 'cash'].includes(delivMethod) && !isDisbursed) delivSt = 'not_applicable';
+      else if (isDisbursed || isFollowupDone) delivSt = 'delivered';
+      else if (isRejected || isCanceled) delivSt = 'not_applicable';
+
+      let folSt = 'pending_schedule';
+      if (isFollowupDone) folSt = 'completed';
+      else if (isDisbursed) folSt = 'scheduled';
+      else if (isRejected || isCanceled) folSt = 'not_required';
+
+      let compSt = 'active';
+      if (isClosed) compSt = 'closed';
+      else if (isRejected || isCanceled) compSt = 'terminated';
+
+      await db.execute({
+        sql: `UPDATE assistance_applications
+              SET request_status = COALESCE(NULLIF(request_status, ''), ?),
+                  assessment_status = COALESCE(NULLIF(assessment_status, ''), ?),
+                  approval_status = COALESCE(NULLIF(approval_status, ''), ?),
+                  payment_status = COALESCE(NULLIF(payment_status, ''), ?),
+                  delivery_status = COALESCE(NULLIF(delivery_status, ''), ?),
+                  followup_status = COALESCE(NULLIF(followup_status, ''), ?),
+                  completion_status = COALESCE(NULLIF(completion_status, ''), ?)
+              WHERE id = ?`,
+        args: [reqSt, asmSt, aprSt, paySt, delivSt, folSt, compSt, String(app.id)],
+      });
+    }
+  } catch (err) {
+    console.error('Phase 7 lifecycle status backfill warning:', err);
+  }
+
+  // =========================================================================
+  // PHASE 10: FINANCIAL ACCOUNTING & GENERAL LEDGER ENTRIES
+  // =========================================================================
+  try {
+    // 1. Table: general_ledger_entries (Double-entry journal records)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS general_ledger_entries (
+        id TEXT PRIMARY KEY,
+        journal_no TEXT NOT NULL,
+        transaction_id TEXT,
+        application_id TEXT NOT NULL,
+        beneficiary_id TEXT NOT NULL,
+        entry_date TEXT NOT NULL,
+        account_code TEXT NOT NULL,
+        account_name TEXT NOT NULL,
+        account_category TEXT NOT NULL,
+        entry_type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'THB',
+        asnaf_code TEXT,
+        assistance_type_id TEXT,
+        assistance_format_id TEXT,
+        description TEXT,
+        created_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (application_id) REFERENCES assistance_applications (id) ON DELETE CASCADE,
+        FOREIGN KEY (beneficiary_id) REFERENCES beneficiaries (id) ON DELETE CASCADE
+      );
+    `);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_gl_journal_no ON general_ledger_entries(journal_no);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_gl_application_id ON general_ledger_entries(application_id);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_gl_account_code ON general_ledger_entries(account_code);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_gl_asnaf_code ON general_ledger_entries(asnaf_code);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_gl_entry_date ON general_ledger_entries(entry_date);`);
+
+    // 2. Safe Column Additions for financial_transactions & assistance_applications
+    const ftTableInfo = await db.execute(`PRAGMA table_info(financial_transactions)`);
+    const ftCols = ftTableInfo.rows.map((r: any) => String(r.name));
+    if (!ftCols.includes('journal_no')) {
+      try { await db.execute(`ALTER TABLE financial_transactions ADD COLUMN journal_no TEXT;`); } catch {}
+    }
+    if (!ftCols.includes('assistance_format_code')) {
+      try { await db.execute(`ALTER TABLE financial_transactions ADD COLUMN assistance_format_code TEXT;`); } catch {}
+    }
+    if (!ftCols.includes('delivery_method')) {
+      try { await db.execute(`ALTER TABLE financial_transactions ADD COLUMN delivery_method TEXT;`); } catch {}
+    }
+
+    const aaTableInfo = await db.execute(`PRAGMA table_info(assistance_applications)`);
+    const aaCols = aaTableInfo.rows.map((r: any) => String(r.name));
+    if (!aaCols.includes('journal_no')) {
+      try { await db.execute(`ALTER TABLE assistance_applications ADD COLUMN journal_no TEXT;`); } catch {}
+    }
+  } catch (err) {
+    console.error('Phase 10 financial schema initialization warning:', err);
   }
 
   })();

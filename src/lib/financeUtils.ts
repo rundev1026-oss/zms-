@@ -79,7 +79,7 @@ export const CENTRAL_ASNAF_GROUPS: CentralAsnafDefinition[] = [
 export function normalizePrimaryGroupCode(code?: string | null): string {
   if (!code) return 'faqir_miskin';
   const cleaned = code.trim().toLowerCase();
-  if (cleaned === 'faqir' || cleaned === 'miskin' || cleaned === 'faqir_miskin') return 'faqir_miskin';
+  if (cleaned === 'faqir' || cleaned === 'fakir' || cleaned === 'miskin' || cleaned === 'faqir_miskin' || cleaned === 'fakir_miskin') return 'faqir_miskin';
   if (cleaned === 'amil' || cleaned === 'amilin') return 'amil';
   if (cleaned === 'muallaf') return 'muallaf';
   if (cleaned === 'riqab' || cleaned === 'al_riqab' || cleaned === 'humanitarian') return 'humanitarian';

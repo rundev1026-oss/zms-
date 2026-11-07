@@ -19,6 +19,7 @@ import {
   Search, 
   Filter, 
   Plus, 
+  ArrowRightLeft,
   Eye, 
   FileCheck2, 
   CheckCircle, 
@@ -367,6 +368,68 @@ export function AssistanceRequestsView({
   const [rejectionReason, setRejectionReason] = useState<string>('');
   const [paymentRef, setPaymentRef] = useState<string>('');
   const [proofUrl, setProofUrl] = useState<string>('/receipts/slip-demo.pdf');
+
+  // Phase 10: Fund Solvency Pre-check & GL Details State
+  const [solvencyCheck, setSolvencyCheck] = useState<any>(null);
+  const [isCheckingSolvency, setIsCheckingSolvency] = useState<boolean>(false);
+  const [appLedgerDetails, setAppLedgerDetails] = useState<any>(null);
+
+  // Live Solvency Pre-Check when approval dialog opens or amounts change
+  useEffect(() => {
+    if (!showApprovalDialog || !selectedApp) {
+      setSolvencyCheck(null);
+      return;
+    }
+    let isCancelled = false;
+    setIsCheckingSolvency(true);
+    fetch('/api/assistance-requests/check-fund-solvency', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        applicationId: selectedApp.id,
+        approvedAmount: approvalAmount,
+        fundId: selectedFundId,
+        specificFundId: selectedApp.specificFundId,
+      }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!isCancelled && json.success) {
+          setSolvencyCheck(json.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!isCancelled) setIsCheckingSolvency(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [showApprovalDialog, selectedApp, approvalAmount, selectedFundId]);
+
+  // Fetch full Financial Ledger Details when application detail opens
+  useEffect(() => {
+    if (!selectedApp) {
+      setAppLedgerDetails(null);
+      return;
+    }
+    let isCancelled = false;
+    fetch(`/api/assistance-requests/${encodeURIComponent(selectedApp.id)}/financial-ledger`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (!isCancelled && json.success) {
+          setAppLedgerDetails(json.data);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) setAppLedgerDetails(null);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedApp]);
 
   // Lock body scroll cleanly whenever any modal in this view is active
   const isAnyModalOpen = Boolean(
@@ -756,6 +819,15 @@ export function AssistanceRequestsView({
 
       {/* 4. Requests Data Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="md:hidden text-[11px] text-slate-500 flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
+          <span className="flex items-center gap-1.5 font-medium">
+            <ArrowRightLeft className="w-3.5 h-3.5 text-teal-700" />
+            เลื่อนในแนวนอนเพื่อดูข้อมูลคำร้องทั้งหมด
+          </span>
+          <span className="text-[10px] text-teal-800 font-bold bg-teal-100/70 px-2 py-0.5 rounded">
+            Swipe ↔
+          </span>
+        </div>
         <div className="overflow-x-auto touch-scroll">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
@@ -855,12 +927,32 @@ export function AssistanceRequestsView({
                         ) : null}
                       </td>
 
-                      {/* Status */}
+                      {/* Multi-Lifecycle Statuses */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusMeta.bg} ${statusMeta.color} ${statusMeta.border}`}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          <span>{statusMeta.label}</span>
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusMeta.bg} ${statusMeta.color} ${statusMeta.border}`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                            <span>{statusMeta.label}</span>
+                          </span>
+                          <div className="flex items-center gap-1 text-[9px] text-slate-500 font-mono">
+                            {app.assessmentStatus && (
+                              <span className={`px-1.5 py-0.5 rounded ${
+                                app.assessmentStatus === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                app.assessmentStatus === 'in_assessment' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                ประเมิน: {app.assessmentStatus}
+                              </span>
+                            )}
+                            {app.paymentStatus && app.paymentStatus !== 'not_applicable' && (
+                              <span className={`px-1.5 py-0.5 rounded ${
+                                app.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' :
+                                app.paymentStatus === 'wait_disbursement' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                จ่าย: {app.paymentStatus}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
                       {/* Submission Date */}
@@ -1021,43 +1113,114 @@ export function AssistanceRequestsView({
               </button>
             </div>
 
-            {/* Stepper Header in Modal */}
+            {/* Multi-Lifecycle 7-Stage Status Header in Modal (Phase 7 Mandate) */}
             <div className="p-4 bg-slate-50 border-b border-slate-200">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2">
-                <span>ความคืบหน้า Workflow 7 ขั้นตอน</span>
-                <span className="text-teal-800">
-                  สถานะปัจจุบัน: {APPLICATION_STATUS_MAP[selectedApp.status]?.label || selectedApp.status}
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2.5">
+                <span className="flex items-center gap-1.5 text-slate-800">
+                  <ShieldCheck className="w-4 h-4 text-teal-700" />
+                  วงจรชีวิตคำร้อง 7 มิติ (Multi-Lifecycle Architecture)
+                </span>
+                <span className="text-teal-800 font-mono text-[11px] px-2 py-0.5 rounded bg-teal-50 border border-teal-200">
+                  {selectedApp.completionStatus === 'closed' ? 'ปิดคำร้องสมบูรณ์ (Closed)' :
+                   selectedApp.completionStatus === 'terminated' ? 'ยุติคำร้อง (Terminated)' : 'กำลังดำเนินการ (Active)'}
                 </span>
               </div>
-              <div className="grid grid-cols-7 gap-1">
-                {WORKFLOW_STEPS.map((ws) => {
-                  let isDone = false;
-                  let isCurrent = false;
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                {/* 1. Request Status */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">1. คำขอ (Request)</span>
+                  <span className={`text-[11px] font-bold block mt-0.5 truncate ${
+                    selectedApp.requestStatus === 'submitted' ? 'text-sky-700' :
+                    selectedApp.requestStatus === 'need_info' ? 'text-amber-700' :
+                    selectedApp.requestStatus === 'canceled' ? 'text-red-700' : 'text-slate-600'
+                  }`}>
+                    {selectedApp.requestStatus === 'submitted' ? 'ยื่นคำร้องแล้ว' :
+                     selectedApp.requestStatus === 'need_info' ? 'ขอข้อมูลเพิ่ม' :
+                     selectedApp.requestStatus === 'canceled' ? 'ยกเลิกคำขอ' : 'ฉบับร่าง'}
+                  </span>
+                </div>
 
-                  const currentIdx = WORKFLOW_STEPS.findIndex((s) => s.status === selectedApp.status);
-                  const thisIdx = ws.step - 1;
+                {/* 2. Assessment Status */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">2. ประเมินสิทธิ์</span>
+                  <span className={`text-[11px] font-bold block mt-0.5 truncate ${
+                    selectedApp.assessmentStatus === 'completed' ? 'text-emerald-700' :
+                    selectedApp.assessmentStatus === 'in_assessment' ? 'text-purple-700' :
+                    selectedApp.assessmentStatus === 'rejected' ? 'text-red-700' : 'text-slate-500'
+                  }`}>
+                    {selectedApp.assessmentStatus === 'completed' ? 'ประเมินผ่านแล้ว' :
+                     selectedApp.assessmentStatus === 'in_assessment' ? 'กำลังลงพื้นที่' :
+                     selectedApp.assessmentStatus === 'rejected' ? 'ไม่ผ่านเกณฑ์' : 'รอการประเมิน'}
+                  </span>
+                </div>
 
-                  if (selectedApp.status === 'rejected') {
-                    isDone = false;
-                  } else if (thisIdx < currentIdx || selectedApp.status === 'closed') {
-                    isDone = true;
-                  } else if (thisIdx === currentIdx) {
-                    isCurrent = true;
-                  }
+                {/* 3. Approval Status */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">3. พิจารณาอนุมัติ</span>
+                  <span className={`text-[11px] font-bold block mt-0.5 truncate ${
+                    selectedApp.approvalStatus === 'approved' ? 'text-emerald-700' :
+                    selectedApp.approvalStatus === 'in_review' ? 'text-indigo-700' :
+                    selectedApp.approvalStatus === 'rejected' ? 'text-red-700' : 'text-slate-500'
+                  }`}>
+                    {selectedApp.approvalStatus === 'approved' ? 'อนุมัติวงเงิน' :
+                     selectedApp.approvalStatus === 'in_review' ? 'อยู่ระหว่างพิจารณา' :
+                     selectedApp.approvalStatus === 'rejected' ? 'ไม่อนุมัติ' : 'รอเสนออนุมัติ'}
+                  </span>
+                </div>
 
-                  return (
-                    <div key={ws.step} className="text-center">
-                      <div className={`h-2 rounded-full mb-1 transition-all ${
-                        isDone ? 'bg-emerald-600' : isCurrent ? 'bg-amber-500 animate-pulse' : 'bg-slate-200'
-                      }`} />
-                      <span className={`text-[9px] block font-semibold leading-tight truncate ${
-                        isCurrent ? 'text-amber-800 font-bold' : isDone ? 'text-emerald-800' : 'text-slate-400'
-                      }`}>
-                        {ws.label.split('. ')[1]}
-                      </span>
-                    </div>
-                  );
-                })}
+                {/* 4. Payment Status */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">4. การจ่ายเงิน</span>
+                  <span className={`text-[11px] font-bold block mt-0.5 truncate ${
+                    selectedApp.paymentStatus === 'paid' ? 'text-emerald-700' :
+                    selectedApp.paymentStatus === 'wait_disbursement' ? 'text-amber-700' :
+                    selectedApp.paymentStatus === 'not_applicable' ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
+                    {selectedApp.paymentStatus === 'paid' ? 'จ่ายเงินแล้ว' :
+                     selectedApp.paymentStatus === 'wait_disbursement' ? 'รอฝ่ายการเงินจ่าย' :
+                     selectedApp.paymentStatus === 'not_applicable' ? 'ไม่ต้องจ่ายเงิน' : 'รอเบิกจ่าย'}
+                  </span>
+                </div>
+
+                {/* 5. Delivery Status */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">5. การส่งมอบ</span>
+                  <span className={`text-[11px] font-bold block mt-0.5 truncate ${
+                    selectedApp.deliveryStatus === 'delivered' ? 'text-emerald-700' :
+                    selectedApp.deliveryStatus === 'dispatched' ? 'text-blue-700' :
+                    selectedApp.deliveryStatus === 'not_applicable' ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
+                    {selectedApp.deliveryStatus === 'delivered' ? 'ส่งมอบเรียบร้อย' :
+                     selectedApp.deliveryStatus === 'dispatched' ? 'กำลังจัดส่ง' :
+                     selectedApp.deliveryStatus === 'not_applicable' ? 'ส่งมอบพร้อมโอน' : 'รอส่งมอบ'}
+                  </span>
+                </div>
+
+                {/* 6. Follow-up Status */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">6. ติดตามผล</span>
+                  <span className={`text-[11px] font-bold block mt-0.5 truncate ${
+                    selectedApp.followupStatus === 'completed' ? 'text-emerald-700' :
+                    selectedApp.followupStatus === 'scheduled' ? 'text-purple-700' :
+                    selectedApp.followupStatus === 'not_required' ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
+                    {selectedApp.followupStatus === 'completed' ? 'ติดตามผลแล้ว' :
+                     selectedApp.followupStatus === 'scheduled' ? 'นัดหมายแล้ว' :
+                     selectedApp.followupStatus === 'not_required' ? 'ไม่ต้องติดตาม' : 'รอนัดหมาย'}
+                  </span>
+                </div>
+
+                {/* 7. Completion Status */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">7. ปิดคำร้อง</span>
+                  <span className={`text-[11px] font-bold block mt-0.5 truncate ${
+                    selectedApp.completionStatus === 'closed' ? 'text-emerald-700' :
+                    selectedApp.completionStatus === 'terminated' ? 'text-red-700' : 'text-amber-700'
+                  }`}>
+                    {selectedApp.completionStatus === 'closed' ? 'ปิดคำร้องแล้ว' :
+                     selectedApp.completionStatus === 'terminated' ? 'ยุติคำร้อง' : 'อยู่ระหว่างดำเนินการ'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1376,6 +1539,99 @@ export function AssistanceRequestsView({
                 </div>
               )}
 
+              {/* Phase 10: Financial & General Ledger Double-Entry Card */}
+              {appLedgerDetails && (appLedgerDetails.glEntries?.length > 0 || appLedgerDetails.holdHistory?.length > 0) && (
+                <div className="p-4 rounded-xl bg-gradient-to-br from-slate-50 to-blue-50/30 border border-blue-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-200/80 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-700" />
+                      <h4 className="font-bold text-blue-950 text-xs">บันทึกบัญชีแยกประเภททั่วไป (General Ledger & Double-Entry)</h4>
+                      {appLedgerDetails.journalNo && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 text-blue-900 border border-blue-200">
+                          {appLedgerDetails.journalNo}
+                        </span>
+                      )}
+                    </div>
+                    {appLedgerDetails.isBalanced && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> ยอดดุลบัญชีสมบูรณ์ (Debit = Credit)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* GL Entries Table */}
+                  {appLedgerDetails.glEntries?.length > 0 && (
+                    <div className="overflow-x-auto rounded-lg border border-blue-100 bg-white">
+                      <table className="w-full text-[11px] text-left">
+                        <thead className="bg-slate-50 text-slate-500 font-medium border-b border-blue-100">
+                          <tr>
+                            <th className="py-1.5 px-3">ประเภท</th>
+                            <th className="py-1.5 px-3">รหัสผังบัญชี</th>
+                            <th className="py-1.5 px-3">ชื่อบัญชี</th>
+                            <th className="py-1.5 px-3 text-right">เดบิต (Dr.)</th>
+                            <th className="py-1.5 px-3 text-right">เครดิต (Cr.)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                          {appLedgerDetails.glEntries.map((entry: any) => (
+                            <tr key={entry.id} className="hover:bg-slate-50/50">
+                              <td className="py-1.5 px-3 font-sans font-bold">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                                  entry.entryType === 'debit' ? 'bg-emerald-100 text-emerald-800' : 'bg-teal-100 text-teal-800'
+                                }`}>
+                                  {entry.entryType.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="py-1.5 px-3 font-bold text-slate-800">{entry.accountCode}</td>
+                              <td className="py-1.5 px-3 font-sans text-slate-700">{entry.accountName}</td>
+                              <td className="py-1.5 px-3 text-right text-emerald-700 font-bold">
+                                {entry.entryType === 'debit' ? `฿${Number(entry.amount).toLocaleString()}` : '-'}
+                              </td>
+                              <td className="py-1.5 px-3 text-right text-teal-700 font-bold">
+                                {entry.entryType === 'credit' ? `฿${Number(entry.amount).toLocaleString()}` : '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-slate-50 font-mono font-bold text-[11px] border-t border-blue-100 text-slate-800">
+                          <tr>
+                            <td colSpan={3} className="py-1.5 px-3 font-sans text-right">รวมยอดทั้งสิ้น:</td>
+                            <td className="py-1.5 px-3 text-right text-emerald-800">฿{appLedgerDetails.totalDebit.toLocaleString()}</td>
+                            <td className="py-1.5 px-3 text-right text-teal-800">฿{appLedgerDetails.totalCredit.toLocaleString()}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Fund Hold / Release audit events */}
+                  {appLedgerDetails.holdHistory?.length > 0 && (
+                    <div className="pt-1 space-y-1.5 text-[11px]">
+                      <span className="text-slate-500 font-bold text-[10px] block">ประวัติการจองและปลดงบประมาณ (Fund Hold & Release):</span>
+                      <div className="space-y-1">
+                        {appLedgerDetails.holdHistory.map((h: any) => (
+                          <div key={h.id} className="p-2 rounded bg-white/70 border border-slate-200/80 flex items-center justify-between text-[11px]">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                h.action === 'HOLD_FUND_BALANCE' || h.action === 'APPROVE'
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                  : h.action === 'RELEASE_FUND_HOLD'
+                                  ? 'bg-rose-100 text-rose-900 border border-rose-200'
+                                  : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                              }`}>
+                                {h.action}
+                              </span>
+                              <span className="text-slate-700">{h.notes}</span>
+                            </div>
+                            <div className="text-slate-400 text-[10px] shrink-0 ml-2">{h.createdAt?.slice(0, 16)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Attached Documents in Modal (Separated Request Documents vs Master Registry Documents) */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
@@ -1607,13 +1863,64 @@ export function AssistanceRequestsView({
               <div>
                 <label className="font-bold text-slate-800 block mb-1">มติ / ข้อกำหนดการอนุมัติ:</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={approvalNotes}
                   onChange={(e) => setApprovalNotes(e.target.value)}
                   placeholder="ระบุมติที่ประชุมหรือเงื่อนไขการเบิกจ่าย..."
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />
               </div>
+
+              {/* Phase 10: Solvency Check Live Banner */}
+              {isCheckingSolvency ? (
+                <div className="p-3 rounded-xl bg-slate-100 text-slate-600 text-xs flex items-center gap-2">
+                  <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                  <span>กำลังตรวจสอบความเพียงพอของงบประมาณ 3 ระดับ...</span>
+                </div>
+              ) : solvencyCheck ? (
+                <div className="space-y-2">
+                  {solvencyCheck.isSolvent ? (
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>งบประมาณเพียงพอสำหรับการอนุมัติ (ระบบจะกันยอดจองงบประมาณ)</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div className="bg-white/80 p-2 rounded-lg border border-emerald-100">
+                          <span className="text-slate-500 block">กองทุนหลัก (Tier 1):</span>
+                          <strong className="text-slate-800 truncate block">{solvencyCheck.fundAccount.name}</strong>
+                          <div className="text-emerald-700 font-mono font-bold">คงเหลือ: ฿{solvencyCheck.fundAccount.availableAmount.toLocaleString()}</div>
+                        </div>
+                        <div className="bg-white/80 p-2 rounded-lg border border-emerald-100">
+                          <span className="text-slate-500 block">กองทุนย่อย (Tier 2):</span>
+                          <strong className="text-slate-800 truncate block">{solvencyCheck.specificSubFund.name}</strong>
+                          <div className="text-emerald-700 font-mono font-bold">คงเหลือ: ฿{solvencyCheck.specificSubFund.remainingAmount.toLocaleString()}</div>
+                        </div>
+                      </div>
+                      {/* Chart of Accounts Double-Entry Preview */}
+                      {solvencyCheck.chartOfAccountsPreview && (
+                        <div className="p-2 bg-white/90 rounded-lg border border-emerald-100 text-[10px] space-y-0.5 font-mono">
+                          <div className="text-slate-500 font-sans font-bold text-[10px]">บันทึกผังบัญชีอัตโนมัติ (Journal Preview):</div>
+                          <div className="text-emerald-800 truncate">
+                            [Dr. ค่าใช้จ่ายซะกาต] {solvencyCheck.chartOfAccountsPreview.debit.code} - {solvencyCheck.chartOfAccountsPreview.debit.name}: ฿{solvencyCheck.chartOfAccountsPreview.debit.amount.toLocaleString()}
+                          </div>
+                          <div className="text-teal-800 truncate">
+                            [Cr. ตัดจ่ายตามรูปแบบ] {solvencyCheck.chartOfAccountsPreview.credit.code} - {solvencyCheck.chartOfAccountsPreview.credit.name}: ฿{solvencyCheck.chartOfAccountsPreview.credit.amount.toLocaleString()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-rose-800">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>ไม่อนุญาตให้อนุมัติ: งบประมาณไม่เพียงพอ</span>
+                      </div>
+                      <p className="text-[11px] text-rose-700">{solvencyCheck.reason}</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
 
             <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 text-xs">
@@ -1625,9 +1932,10 @@ export function AssistanceRequestsView({
               </button>
               <button
                 onClick={handleConfirmApproval}
-                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold transition-colors shadow-xs"
+                disabled={Boolean(solvencyCheck && !solvencyCheck.isSolvent)}
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold transition-colors shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ยืนยันอนุมัติ
+                {solvencyCheck && !solvencyCheck.isSolvent ? 'งบประมาณไม่เพียงพอ' : 'ยืนยันอนุมัติ'}
               </button>
             </div>
           </div>
@@ -1744,6 +2052,17 @@ export function AssistanceRequestsView({
                   onChange={(e) => setProofUrl(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />
+              </div>
+
+              {/* Automated Journal Voucher Notice */}
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs space-y-1">
+                <div className="font-bold text-teal-900 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-teal-700 shrink-0" />
+                  <span>การลงบัญชีอัตโนมัติ (Automated Double-Entry Ledger)</span>
+                </div>
+                <p className="text-[11px] text-teal-800">
+                  ระบบจะออกใบสำคัญจ่าย (JV-2569-XXXXX) เดบิตบัญชีค่าใช้จ่ายซะกาตตามอัสนัฟ และเครดิตบัญชีการเงินตามรูปแบบการช่วยเหลือ พร้อมปลดการจองงบประมาณ (Fund Hold Release) โดยอัตโนมัติ
+                </p>
               </div>
             </div>
 

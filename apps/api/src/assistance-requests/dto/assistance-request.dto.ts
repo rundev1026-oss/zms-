@@ -138,6 +138,26 @@ export class CreateAssistanceRequestDto {
   @IsString()
   fiscalYear?: string;
 
+  @ApiPropertyOptional({ description: 'Assistance Format ID (Level 3 Delivery Format)' })
+  @IsOptional()
+  @IsString()
+  assistanceFormatId?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance Format Code (e.g. bank_transfer, cash, materials)' })
+  @IsOptional()
+  @IsString()
+  assistanceFormatCode?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance Format Name' })
+  @IsOptional()
+  @IsString()
+  assistanceFormatName?: string;
+
+  @ApiPropertyOptional({ description: 'Delivery Method (direct_transfer, physical_delivery, vendor_payment, service)' })
+  @IsOptional()
+  @IsString()
+  deliveryMethod?: string;
+
   @ApiPropertyOptional({ description: 'Branch ID' })
   @IsOptional()
   @IsString()
@@ -319,6 +339,26 @@ export class UpdateAssistanceRequestDto {
   @IsOptional()
   @IsString()
   fiscalYear?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance Format ID (Level 3 Delivery Format)' })
+  @IsOptional()
+  @IsString()
+  assistanceFormatId?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance Format Code (e.g. bank_transfer, cash, materials)' })
+  @IsOptional()
+  @IsString()
+  assistanceFormatCode?: string;
+
+  @ApiPropertyOptional({ description: 'Assistance Format Name' })
+  @IsOptional()
+  @IsString()
+  assistanceFormatName?: string;
+
+  @ApiPropertyOptional({ description: 'Delivery Method (direct_transfer, physical_delivery, vendor_payment, service)' })
+  @IsOptional()
+  @IsString()
+  deliveryMethod?: string;
 
   @ApiPropertyOptional({ description: 'Status (draft or submitted)' })
   @IsOptional()

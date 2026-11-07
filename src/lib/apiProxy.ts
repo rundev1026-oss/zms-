@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:4000/api/v1';
-const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me-zms-enterprise-2026';
-const SYSTEM_ADMIN_ID = process.env.SYSTEM_ADMIN_ID || '0b4b3ae1-b1d6-49cb-a947-3ce94ff24516';
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me';
+const SYSTEM_ADMIN_ID = process.env.SYSTEM_ADMIN_ID || 'dffb49d1-7cf3-4593-bb58-a82b25f5bff4';
 
 export function createServiceToken(userId = SYSTEM_ADMIN_ID): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -34,12 +34,17 @@ export async function proxyToNest(
 
     // Forward incoming authorization or inject service token
     let authHeader = request.headers.get('authorization');
+    if (authHeader && (authHeader.includes('cookie-session') || authHeader.includes('null') || authHeader.includes('undefined'))) {
+      authHeader = null;
+    }
     if (!authHeader) {
       // Check cookies for token
       const cookieHeader = request.headers.get('cookie') || '';
-      const match = cookieHeader.match(/zms_access_token=([^;]+)/);
+      const match = cookieHeader.match(/zms_session=([^;]+)/) ||
+                    cookieHeader.match(/zms_access_token=([^;]+)/) ||
+                    cookieHeader.match(/zms_auth_token=([^;]+)/);
       if (match) {
-        authHeader = `Bearer ${match[1]}`;
+        authHeader = `Bearer ${decodeURIComponent(match[1])}`;
       }
     }
 

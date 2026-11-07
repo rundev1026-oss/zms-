@@ -8,6 +8,7 @@ import {
   Search, 
   Filter, 
   Edit, 
+  Eye,
   Trash2, 
   Layers, 
   ShieldCheck, 
@@ -28,7 +29,7 @@ interface AssistanceTypesTabProps {
 }
 
 export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTabProps) {
-  const { showToast, currentUser, authToken } = useApp();
+  const { showToast, currentUser, authToken, getAuthHeaders } = useApp();
   const [types, setTypes] = useState<AssistanceTypeItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -37,6 +38,7 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
   const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Modal State
+  const [detailType, setDetailType] = useState<AssistanceTypeItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingType, setEditingType] = useState<AssistanceTypeItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -64,17 +66,33 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
   const [newDocText, setNewDocText] = useState<string>('');
   const [formOrderIndex, setFormOrderIndex] = useState<number>(0);
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
+  const [formAllowedAsnafs, setFormAllowedAsnafs] = useState<string[]>(['faqir', 'miskin']);
+  const [formAllowedFormats, setFormAllowedFormats] = useState<string[]>(['fmt-bank-transfer']);
+  const [availableFormats, setAvailableFormats] = useState<any[]>([]);
 
   const fetchTypes = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/beneficiaries/assistance-types?includeInactive=true');
-      const json = await res.json();
-      if (res.ok && json.success) {
-        setTypes(json.data || []);
-      } else {
-        throw new Error(json.error || 'ไม่สามารถโหลดประเภทความช่วยเหลือได้');
+      const [resTypes, resFormats] = await Promise.all([
+        fetch('/api/beneficiaries/assistance-types?includeInactive=true', {
+          headers: getAuthHeaders(),
+          credentials: 'include',
+        }),
+        fetch('/api/admin/assistance-formats', {
+          headers: getAuthHeaders(),
+          credentials: 'include',
+        }),
+      ]);
+      const jsonTypes = await resTypes.json();
+      if (resTypes.ok && jsonTypes.success) {
+        setTypes(jsonTypes.data || []);
       }
+      try {
+        const jsonFormats = await resFormats.json();
+        if (resFormats.ok && jsonFormats.success) {
+          setAvailableFormats(jsonFormats.data || []);
+        }
+      } catch {}
     } catch (err: any) {
       showToast(err.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล', 'error');
     } finally {
@@ -108,6 +126,8 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
     setNewDocText('');
     setFormOrderIndex(types.length + 1);
     setFormIsActive(true);
+    setFormAllowedAsnafs(['faqir', 'miskin']);
+    setFormAllowedFormats(['fmt-bank-transfer']);
     setIsModalOpen(true);
   };
 
@@ -127,6 +147,16 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
     setNewDocText('');
     setFormOrderIndex(item.orderIndex || 0);
     setFormIsActive(item.isActive);
+    setFormAllowedAsnafs(
+      item.allowedAsnafCodes && item.allowedAsnafCodes.length > 0
+        ? [...item.allowedAsnafCodes]
+        : [item.primaryGroupCode || 'faqir']
+    );
+    setFormAllowedFormats(
+      item.formats && item.formats.length > 0
+        ? item.formats.map((f: any) => f.id)
+        : ['fmt-cash-one-time']
+    );
     setIsModalOpen(true);
   };
 
@@ -166,7 +196,10 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
         requiredDocuments: formRequiredDocs,
         orderIndex: Number(formOrderIndex) || 0,
         isActive: formIsActive,
-        actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role },
+        allowedAsnafCodes: formAllowedAsnafs,
+        allowedFormatIds: formAllowedFormats,
+        formatIds: formAllowedFormats,
+        actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role, email: currentUser.email },
       };
 
       const endpoint = '/api/beneficiaries/assistance-types';
@@ -174,10 +207,8 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
 
       const res = await fetch(endpoint, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -203,15 +234,13 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
       setIsProcessingAction(true);
       const res = await fetch('/api/beneficiaries/assistance-types', {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           id: deactivateModalTarget.id,
           mode,
           reason: deactivateReason.trim() || undefined,
-          actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role },
+          actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role, email: currentUser.email },
         }),
       });
 
@@ -392,6 +421,42 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
                             {t.description}
                           </div>
                         )}
+
+                        {/* Supported Asnafs & Formats Tags */}
+                        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                          {t.allowedAsnafCodes && t.allowedAsnafCodes.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1">
+                              <span className="text-[10px] text-teal-800 font-bold bg-teal-100/60 px-1 rounded">อัสนัฟ:</span>
+                              {t.allowedAsnafCodes.map((ac: string) => {
+                                const labelMap: Record<string, string> = {
+                                  faqir: 'ฟากีร',
+                                  miskin: 'มิสกีน',
+                                  amil: 'อามิลีน',
+                                  muallaf: 'มุอัลลัฟ',
+                                  riqab: 'ริกอบ',
+                                  gharimin: 'หนี้สิน',
+                                  fisabilillah: 'ฟีสะบีลฯ',
+                                  ibnsabil: 'ผู้เดินทาง',
+                                };
+                                return (
+                                  <span key={ac} className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                                    {labelMap[ac] || ac}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {t.formats && t.formats.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 ml-1 pl-1 border-l border-slate-200">
+                              <span className="text-[10px] text-sky-800 font-bold bg-sky-100/60 px-1 rounded">รูปแบบ:</span>
+                              {t.formats.map((f: any) => (
+                                <span key={f.code || f.id} className="px-1.5 py-0.2 rounded text-[10px] bg-sky-50 text-sky-700 border border-sky-200">
+                                  {f.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-4 whitespace-nowrap">
@@ -443,6 +508,15 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
 
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setDetailType(t)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:bg-teal-50 hover:text-teal-700 transition-colors"
+                            title="ดูรายละเอียดประเภทการช่วยเหลือ"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+
                           <button
                             onClick={() => openEditModal(t)}
                             className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
@@ -628,6 +702,114 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
                 </div>
               </div>
 
+              {/* Supported Asnafs (Multi-select) */}
+              <div className="p-3 bg-teal-50/50 rounded-xl border border-teal-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-teal-900">
+                    หมวดหมู่อัสนัฟที่รองรับ (Supported Asnafs) <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-teal-700 font-medium">
+                    เลือกอย่างน้อย 1 หมวดหมู่ (Level 1 ↔ Level 2)
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { code: 'faqir', label: 'ฟากีร (ผู้ยากไร้)' },
+                    { code: 'miskin', label: 'มิสกีน (คนขัดสน)' },
+                    { code: 'amil', label: 'อามิลีน' },
+                    { code: 'muallaf', label: 'มุอัลลัฟ' },
+                    { code: 'riqab', label: 'ริกอบ / มนุษยธรรม' },
+                    { code: 'gharimin', label: 'ผู้มีหนี้สินล้นตัว' },
+                    { code: 'fisabilillah', label: 'ฟีสะบีลิลลาฮ์' },
+                    { code: 'ibnsabil', label: 'อิบนุสสะบีล (ผู้เดินทาง)' },
+                  ].map((asnaf) => {
+                    const isChecked = formAllowedAsnafs.includes(asnaf.code);
+                    return (
+                      <label
+                        key={asnaf.code}
+                        className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                          isChecked
+                            ? 'bg-teal-700 text-white border-teal-700 font-bold shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormAllowedAsnafs([...formAllowedAsnafs, asnaf.code]);
+                            } else {
+                              if (formAllowedAsnafs.length <= 1) {
+                                showToast('ต้องมีหมวดหมู่อัสนัฟรองรับอย่างน้อย 1 หมวด', 'error');
+                                return;
+                              }
+                              setFormAllowedAsnafs(formAllowedAsnafs.filter((c) => c !== asnaf.code));
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                        <span className="text-[11px] truncate">{asnaf.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Supported Delivery Formats (Multi-select) */}
+              <div className="p-3 bg-sky-50/50 rounded-xl border border-sky-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-sky-950">
+                    รูปแบบการส่งมอบที่รองรับ (Supported Delivery Formats)
+                  </label>
+                  <span className="text-[10px] text-sky-800 font-medium">
+                    Level 2 ↔ Level 3 Assistance Formats
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(availableFormats.length > 0
+                    ? availableFormats
+                    : [
+                        { id: 'fmt-bank-transfer', name: 'โอนเงินผ่านระบบธนาคาร' },
+                        { id: 'fmt-cash', name: 'เงินสดพร้อมใบสำคัญ' },
+                        { id: 'fmt-in-kind', name: 'มอบสิ่งของ/ถุงยังชีพ' },
+                        { id: 'fmt-materials', name: 'จัดซื้อวัสดุอุปกรณ์' },
+                        { id: 'fmt-vendor-direct', name: 'จ่ายตรงผู้ขาย/เจ้าหนี้' },
+                        { id: 'fmt-contractor', name: 'จ้างเหมาผู้รับเหมา' },
+                        { id: 'fmt-scholarship', name: 'มอบทุนการศึกษา' },
+                        { id: 'fmt-training', name: 'จัดอบรมพัฒนาทักษะ' },
+                        { id: 'fmt-career-equipment', name: 'อุปกรณ์ประกอบอาชีพ' },
+                      ]
+                  ).map((fmt: any) => {
+                    const isChecked = formAllowedFormats.includes(fmt.id);
+                    return (
+                      <label
+                        key={fmt.id}
+                        className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                          isChecked
+                            ? 'bg-sky-800 text-white border-sky-800 font-bold shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormAllowedFormats([...formAllowedFormats, fmt.id]);
+                            } else {
+                              setFormAllowedFormats(formAllowedFormats.filter((id) => id !== fmt.id));
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                        <span className="text-[11px] truncate">{fmt.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Required Documents */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">เอกสารที่ต้องแนบ</label>
@@ -790,6 +972,179 @@ export function AssistanceTypesTab({ initialFilterCategory }: AssistanceTypesTab
                   เปิดใช้งาน (Activate)
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Detail Modal */}
+      {detailType && (
+        <div className="fixed inset-0 z-50 bg-[#0B2545]/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden animate-scaleUp my-8">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-800 text-white flex items-center justify-center shadow-xs">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+                      {detailType.code}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        detailType.isActive
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border border-rose-200'
+                      }`}
+                    >
+                      {detailType.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                      {detailType.category}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 mt-1">{detailType.name}</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailType(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">วงเงินช่วยเหลือ</div>
+                  <div className="text-sm font-black text-emerald-700 mt-1">
+                    {detailType.defaultMinAmount != null || detailType.defaultMaxAmount != null ? (
+                      <>
+                        {detailType.defaultMinAmount ? `${detailType.defaultMinAmount.toLocaleString()} - ` : 'สูงสุด '}
+                        {detailType.defaultMaxAmount ? `${detailType.defaultMaxAmount.toLocaleString()} บาท` : 'ไม่จำกัด'}
+                      </>
+                    ) : (
+                      'ตามการพิจารณา'
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">งบประมาณต่อคำร้อง</div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">กลุ่มอัสนัฟหลัก</div>
+                  <div className="text-xs font-bold text-slate-800 mt-1 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-teal-600 inline-block" />
+                    <span>{detailType.primaryGroupName || detailType.primaryGroupCode || (detailType as any).primaryAsnafGroup || 'faqir_miskin'}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">กองทุน: {detailType.specificFundName || detailType.specificFundId || 'subf-1'}</div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">คำร้องที่เกี่ยวข้อง</div>
+                  <div className="text-sm font-black text-sky-800 mt-1">
+                    {detailType.linkedApplicationCount || 0} รายการ
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">ลำดับแสดงผล: {detailType.orderIndex || 0}</div>
+                </div>
+              </div>
+
+              {/* Allowed Asnafs */}
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 mb-1.5">หมวดหมู่อัสนัฟที่ได้รับสิทธิ์ (Level 1)</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(detailType.allowedAsnafs || (detailType as any).allowedAsnafCodes || []).map((asnaf: string) => (
+                    <span
+                      key={asnaf}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    >
+                      {asnaf}
+                    </span>
+                  ))}
+                  {(!detailType.allowedAsnafs || detailType.allowedAsnafs.length === 0) && (
+                    <span className="text-xs text-slate-400">ยังไม่ได้กำหนดอัสนัฟ</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Allowed Formats */}
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 mb-1.5">รูปแบบการส่งมอบที่อนุญาต (Level 3 Formats)</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {((detailType as any).allowedFormats || detailType.supportedFormats?.map(f => f.name || f.code) || detailType.formats?.map(f => f.name || f.code) || []).map((fmt: string) => (
+                    <span
+                      key={fmt}
+                      className="px-2.5 py-1 rounded-lg text-xs font-mono font-medium bg-sky-50 text-sky-800 border border-sky-200"
+                    >
+                      {fmt}
+                    </span>
+                  ))}
+                  {!((detailType as any).allowedFormats?.length || detailType.supportedFormats?.length || detailType.formats?.length) && (
+                    <span className="text-xs text-slate-400">ยังไม่ได้ผูกรูปแบบการส่งมอบ</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Description & Conditions */}
+              {detailType.description && (
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 mb-1">คำอธิบายและวัตถุประสงค์</div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 leading-relaxed">
+                    {detailType.description}
+                  </div>
+                </div>
+              )}
+
+              {(detailType.conditionsText || (detailType as any).conditions) && (
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 mb-1">เงื่อนไขและเกณฑ์การพิจารณา</div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 leading-relaxed">
+                    {detailType.conditionsText || (detailType as any).conditions}
+                  </div>
+                </div>
+              )}
+
+              {/* Required Documents */}
+              {detailType.requiredDocuments && detailType.requiredDocuments.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 mb-1.5">เอกสารประกอบที่ต้องแนบ</div>
+                  <div className="space-y-1.5">
+                    {detailType.requiredDocuments.map((doc, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 font-medium"
+                      >
+                        <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                        <span>{doc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = detailType;
+                    setDetailType(null);
+                    openEditModal(target);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1.5"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>แก้ไขข้อมูลนี้</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailType(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+                >
+                  ปิดหน้าต่าง
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -169,7 +169,10 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
   // Load Organization Structure (Branches & Departments)
   const fetchOrgStructure = useCallback(async () => {
     try {
-      const res = await fetch('/api/organization/structure');
+      const res = await fetch('/api/organization/structure', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (json.success && json.data) {
         const loadedBranches: Branch[] = json.data.branches || [];
@@ -204,6 +207,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
 
       const res = await fetch(`/api/admin/users?${params.toString()}`, {
         headers: getAuthHeaders(),
+        credentials: 'include',
       });
       const json = await res.json();
 
@@ -224,7 +228,10 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
 
   const fetchRolesCount = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/roles', { headers: getAuthHeaders() });
+      const res = await fetch('/api/admin/roles', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setRolesCount(json.data.length);
@@ -376,6 +383,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
       const res = await fetch(`/api/admin/users/${selectedUser.id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           firstName: editFirstName.trim(),
           lastName: editLastName.trim(),
@@ -409,6 +417,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
       const res = await fetch(`/api/admin/users/${user.id}/invite`, {
         method: 'POST',
         headers: getAuthHeaders(),
+        credentials: 'include',
       });
       const json = await res.json();
 
@@ -455,6 +464,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
       const res = await fetch(`/api/admin/users/${selectedUser.id}/reset-password`, {
         method: 'POST',
         headers: getAuthHeaders(),
+        credentials: 'include',
       });
       const json = await res.json();
 
@@ -499,6 +509,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
       const res = await fetch(`/api/admin/users/${user.id}/revoke-session`, {
         method: 'POST',
         headers: getAuthHeaders(),
+        credentials: 'include',
       });
       const json = await res.json();
 
@@ -524,6 +535,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
     try {
       const res = await fetch(`/api/admin/users/${user.id}/audit-logs`, {
         headers: getAuthHeaders(),
+        credentials: 'include',
       });
       const json = await res.json();
       if (json.success && json.data) {
@@ -554,6 +566,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
       const res = await fetch(`/api/admin/users/${user.id}/status`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({ status: newStatus }),
       });
       const json = await res.json();
@@ -584,6 +597,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           firstName: newFirstName.trim(),
           lastName: newLastName.trim(),

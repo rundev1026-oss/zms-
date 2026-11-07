@@ -91,13 +91,21 @@ export function RoleManagementModal({
   const [editRoleStatus, setEditRoleStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
 
   // Load Roles
+  const getHeaders = useCallback(() => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authToken && authToken !== 'cookie-session') {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return headers;
+  }, [authToken]);
+
   const fetchRoles = useCallback(async () => {
     try {
       setIsLoading(true);
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch('/api/admin/roles', { headers });
+      const res = await fetch('/api/admin/roles', {
+        headers: getHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setRoles(json.data);
@@ -110,7 +118,7 @@ export function RoleManagementModal({
     } finally {
       setIsLoading(false);
     }
-  }, [authToken, showToast]);
+  }, [getHeaders, showToast]);
 
   useEffect(() => {
     if (isOpen) {
@@ -128,10 +136,10 @@ export function RoleManagementModal({
     setExpandedModules(initExpanded);
 
     try {
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch(`/api/admin/roles/${role.id}/permissions`, { headers });
+      const res = await fetch(`/api/admin/roles/${role.id}/permissions`, {
+        headers: getHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setRolePermissions(new Set(json.data));
@@ -184,12 +192,10 @@ export function RoleManagementModal({
     if (!activeRoleForPerms) return;
     try {
       setIsSubmitting(true);
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
       const res = await fetch(`/api/admin/roles/${activeRoleForPerms.id}/permissions`, {
         method: 'PUT',
-        headers,
+        headers: getHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           permissions: Array.from(rolePermissions),
           reason: permReason.trim() || undefined,
@@ -222,12 +228,10 @@ export function RoleManagementModal({
 
     try {
       setIsSubmitting(true);
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
       const res = await fetch('/api/admin/roles', {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           code: newRoleCode.trim().toUpperCase(),
           name: newRoleName.trim(),
@@ -264,12 +268,10 @@ export function RoleManagementModal({
 
     try {
       setIsSubmitting(true);
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
       const res = await fetch(`/api/admin/roles/${cloneSourceRole.id}/clone`, {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           code: cloneRoleCode.trim().toUpperCase(),
           name: cloneRoleName.trim(),
@@ -307,12 +309,10 @@ export function RoleManagementModal({
 
     try {
       setIsSubmitting(true);
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
       const res = await fetch(`/api/admin/roles/${editingRole.id}`, {
         method: 'PATCH',
-        headers,
+        headers: getHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           name: editRoleName.trim(),
           description: editRoleDesc.trim() || undefined,

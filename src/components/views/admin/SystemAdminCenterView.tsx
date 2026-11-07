@@ -12,6 +12,8 @@ import { RolesAndPermissionsTab } from './tabs/RolesAndPermissionsTab';
 import { AssistanceModelsTab } from './tabs/AssistanceModelsTab';
 import { AssistanceTypesTab } from './tabs/AssistanceTypesTab';
 import { AsnafManagementTab } from './tabs/AsnafManagementTab';
+import { AssistanceFormatsTab } from './tabs/AssistanceFormatsTab';
+import { RelationshipMatrixTab } from './tabs/RelationshipMatrixTab';
 import { GeneralSettingsTab } from './tabs/GeneralSettingsTab';
 import { DatabaseBackupTab } from './tabs/DatabaseBackupTab';
 
@@ -19,9 +21,11 @@ export type AdminCenterTab =
   | 'users' 
   | 'roles' 
   | 'org' 
-  | 'models' 
-  | 'types' 
+  | 'matrix'
   | 'asnaf' 
+  | 'types' 
+  | 'formats'
+  | 'models' 
   | 'general'
   | 'backup';
 
@@ -37,8 +41,10 @@ export function SystemAdminCenterView({ initialTab = 'users', onNavigate }: Syst
     if (t === 'users' || t === 'admin-users') return 'users';
     if (t === 'roles' || t === 'roles-permissions' || t === 'admin-roles') return 'roles';
     if (t === 'branches-depts' || t === 'org' || t === 'admin-org') return 'org';
+    if (t === 'matrix' || t === 'relationship-matrix' || t === 'admin-matrix') return 'matrix';
     if (t === 'models' || t === 'assistance-models' || t === 'admin-models') return 'models';
     if (t === 'types' || t === 'assistance-types' || t === 'admin-types') return 'types';
+    if (t === 'formats' || t === 'assistance-formats' || t === 'admin-formats') return 'formats';
     if (t === 'asnaf' || t === 'asnaf-categories' || t === 'admin-asnaf') return 'asnaf';
     if (t === 'backup') return 'backup';
     if (t === 'settings' || t === 'general-settings' || t === 'general' || t === 'admin-settings') return 'general';
@@ -68,10 +74,14 @@ export function SystemAdminCenterView({ initialTab = 'users', onNavigate }: Syst
         return { group: 'การบริหารระบบ', title: 'บทบาทและสิทธิ์การเข้าถึง (Roles & Permissions)' };
       case 'org':
         return { group: 'การบริหารระบบ', title: 'โครงสร้างองค์กรและหน่วยงาน (Organization Structure)' };
+      case 'matrix':
+        return { group: 'การตั้งค่าข้อมูลพื้นฐาน', title: 'เมทริกซ์ความสัมพันธ์ 3 ระดับ (Relationship Matrix)' };
       case 'models':
         return { group: 'การตั้งค่าข้อมูลพื้นฐาน', title: 'รูปแบบการช่วยเหลือ (Assistance Models)' };
       case 'types':
         return { group: 'การตั้งค่าข้อมูลพื้นฐาน', title: 'ประเภทความช่วยเหลือ (Assistance Types)' };
+      case 'formats':
+        return { group: 'การตั้งค่าข้อมูลพื้นฐาน', title: 'รูปแบบและวิธีการส่งมอบ (Assistance Formats)' };
       case 'asnaf':
         return { group: 'การตั้งค่าข้อมูลพื้นฐาน', title: 'หมวดหมู่อัสนัฟ (Asnaf Management)' };
       case 'general':
@@ -129,6 +139,109 @@ export function SystemAdminCenterView({ initialTab = 'users', onNavigate }: Syst
             </p>
           </div>
         </div>
+
+        {/* Tab Navigation Bar with Clear Functional Groupings (Group A & Group B) */}
+        <div className="mt-6 pt-4 border-t border-slate-100 space-y-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+            {/* Group A: System Administration */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 shrink-0">
+                การบริหารระบบ:
+              </span>
+              {[
+                { id: 'users', label: 'จัดการผู้ใช้งาน' },
+                { id: 'roles', label: 'บทบาทและสิทธิ์' },
+                { id: 'org', label: 'โครงสร้างองค์กร' },
+              ].map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as AdminCenterTab)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      isActive
+                        ? 'bg-teal-800 text-white shadow-xs'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/60'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="h-4 w-px bg-slate-200 hidden lg:block" />
+
+            {/* Group B: Master Data Configuration */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 shrink-0">
+                ข้อมูลพื้นฐาน:
+              </span>
+              {[
+                { id: 'formats', label: 'รูปแบบการส่งมอบ' },
+                { id: 'models', label: 'แผนการช่วยเหลือ' },
+                { id: 'types', label: 'ประเภทความช่วยเหลือ' },
+                { id: 'asnaf', label: 'หมวดหมู่อัสนัฟ' },
+                { id: 'general', label: 'ตั้งค่าทั่วไป' },
+              ].map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as AdminCenterTab)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      isActive
+                        ? 'bg-teal-800 text-white shadow-xs'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/60'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="h-4 w-px bg-slate-200 hidden lg:block" />
+
+            {/* Support & Governance Tools */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 shrink-0">
+                กำกับดูแล:
+              </span>
+              {[
+                { id: 'matrix', label: 'เมทริกซ์ 3 ระดับ', badge: 'เชื่อมโยง' },
+                { id: 'backup', label: 'สำรองข้อมูล' },
+              ].map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as AdminCenterTab)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      isActive
+                        ? 'bg-teal-800 text-white shadow-xs'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/60'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.badge && (
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[9px] font-extrabold uppercase ${
+                          isActive ? 'bg-amber-400 text-teal-950' : 'bg-teal-100 text-teal-800'
+                        }`}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Render Active Tab Sub-view */}
@@ -145,6 +258,10 @@ export function SystemAdminCenterView({ initialTab = 'users', onNavigate }: Syst
           <BranchesAndDepartmentsView onNavigate={onNavigate} />
         )}
 
+        {activeTab === 'matrix' && (
+          <RelationshipMatrixTab />
+        )}
+
         {activeTab === 'models' && (
           <AssistanceModelsTab onNavigateToTypes={navigateToTypesWithFilter} />
         )}
@@ -153,8 +270,15 @@ export function SystemAdminCenterView({ initialTab = 'users', onNavigate }: Syst
           <AssistanceTypesTab initialFilterCategory={selectedTypeModelFilter} />
         )}
 
+        {activeTab === 'formats' && (
+          <AssistanceFormatsTab />
+        )}
+
         {activeTab === 'asnaf' && (
-          <AsnafManagementTab onNavigateToTypes={navigateToTypesWithFilter} />
+          <AsnafManagementTab 
+            onNavigateToTypes={navigateToTypesWithFilter} 
+            onNavigateToMatrix={() => setActiveTab('matrix')}
+          />
         )}
 
         {activeTab === 'general' && (

@@ -26,6 +26,77 @@ export type ApplicationStatus =
   | 'wait_disbursement'   // รอจ่ายเงิน (legacy alias of approved)
   | 'followup';           // ติดตามผลหลังช่วยเหลือ
 
+// Multi-Lifecycle Separated Statuses (Phase 7 Independent Life Cycle Workflow)
+export type RequestLifecycleStatus = 'draft' | 'submitted' | 'need_info' | 'canceled';
+export type AssessmentLifecycleStatus = 'pending' | 'in_assessment' | 'completed' | 'rejected';
+export type ApprovalLifecycleStatus = 'pending' | 'in_review' | 'approved' | 'rejected';
+export type PaymentLifecycleStatus = 'not_applicable' | 'pending' | 'wait_disbursement' | 'paid' | 'failed';
+export type DeliveryLifecycleStatus = 'not_applicable' | 'pending' | 'dispatched' | 'delivered' | 'failed';
+export type FollowupLifecycleStatus = 'not_required' | 'pending_schedule' | 'scheduled' | 'in_progress' | 'completed';
+export type CompletionLifecycleStatus = 'active' | 'closed' | 'terminated';
+
+export interface AssistanceLifecycleTransition {
+  id: string;
+  applicationId: string;
+  stage: 'request' | 'assessment' | 'approval' | 'payment' | 'delivery' | 'followup' | 'completion';
+  fromStatus?: string | null;
+  toStatus: string;
+  action: string;
+  actorId?: string | null;
+  actorName?: string | null;
+  actorRole?: string | null;
+  notes?: string | null;
+  metadata?: any;
+  createdAt: string;
+}
+
+// Category-Specific Duplicate Prevention Rules (Phase 8)
+export type DuplicateRuleCode =
+  | 'MONTHLY_LIVING_SAME_MONTH'       // ปัจจัยยังชีพรายเดือน: ห้ามขอซ้ำในเดือนเดียวกัน
+  | 'EDUCATION_SAME_ACADEMIC_YEAR'    // ทุนการศึกษา: ห้ามขอซ้ำในปีการศึกษาเดียวกัน
+  | 'HOUSING_ONGOING_PROJECT'         // ซ่อม/สร้างที่อยู่อาศัย: ห้ามขอซ้ำหากยังมีโครงการเดิมที่ยังไม่เสร็จสิ้น
+  | 'EMERGENCY_WITHIN_30_DAYS'        // ช่วยเหลือฉุกเฉิน: ตรวจสอบเหตุการณ์เดียวกันภายใน 30 วัน
+  | 'CAREER_GRANT_COOLDOWN';          // สนับสนุนอาชีพ: ตรวจสอบประวัติการรับทุนและเงื่อนไขระยะเวลา
+
+export interface DuplicateCheckParams {
+  beneficiaryId?: string;
+  nationalId?: string;
+  assistanceTypeId?: string;
+  assistanceTypeCode?: string;
+  assistanceTypeName?: string;
+  fiscalYear?: string;
+  requestDate?: string;
+  excludeApplicationId?: string;
+}
+
+export interface ExistingApplicationSummary {
+  id: string;
+  applicationNo: string;
+  appliedDate: string;
+  requestedAmount: number;
+  approvedAmount: number;
+  disbursedAmount: number;
+  currentStatus: string;
+  statusLabelTh: string;
+  assistanceTypeName: string;
+  assistanceTypeCode?: string;
+  specificFundName?: string;
+  daysElapsed?: number;
+  fiscalYear?: string;
+  completionStatus?: string;
+  approvalStatus?: string;
+  paymentStatus?: string;
+  deliveryStatus?: string;
+}
+
+export interface DuplicateCheckResult {
+  hasDuplicate: boolean;
+  ruleCode?: DuplicateRuleCode;
+  ruleNameTh?: string;
+  message?: string;
+  existingApplication?: ExistingApplicationSummary;
+}
+
 // สถานะการขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต (Zakat Eligibility Registration Status)
 export type RegistrationStatus =
   | 'draft'                  // 1. ร่างทะเบียน
@@ -191,6 +262,97 @@ export interface AssistanceTypeItem {
   deactivatedReason?: string | null;
   orderIndex?: number;
   isActive: boolean;
+  supportedFormats?: Array<{
+    id: string;
+    code: string;
+    name: string;
+    deliveryMethod: string;
+    deliveryMethodLabelTh: string;
+    isDefault: boolean;
+    sortOrder: number;
+  }>;
+  allowedAsnafs?: string[];
+  allowedAsnafCodes?: string[];
+  formats?: Array<{
+    id: string;
+    code: string;
+    name: string;
+    isDefault?: boolean;
+    sortOrder?: number;
+  }>;
+}
+
+// =========================================================================
+// ZMS 3-Level Asnaf - Assistance Type - Assistance Format Relationship Types
+// =========================================================================
+
+export interface AsnafMasterGroup {
+  id: string;
+  code: string; // faqir_miskin, amil, muallaf, humanitarian, gharimin, fisabilillah, ibnsabil
+  nameTh: string;
+  nameAr?: string;
+  nameEn?: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+  linkedTypeCount?: number;
+}
+
+export interface AssistanceFormatDefinition {
+  id: string;
+  code: string;
+  name: string;
+  nameEn?: string;
+  description?: string;
+  deliveryMethod: string;
+  deliveryMethodLabelTh: string;
+  requiresReceipt: boolean;
+  requiresInspection: boolean;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface AsnafAssistanceTypeLink {
+  id: string;
+  asnafCode: string;
+  assistanceTypeId: string;
+  assistanceTypeCode: string;
+  assistanceTypeName: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface AssistanceTypeFormatLink {
+  id: string;
+  assistanceTypeId: string;
+  assistanceTypeCode: string;
+  formatId: string;
+  formatCode: string;
+  formatName: string;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
+export interface ThreeTierRelationshipMatrix {
+  asnafs: AsnafMasterGroup[];
+  assistanceTypes: any[];
+  assistanceFormats: AssistanceFormatDefinition[];
+  asnafTypeLinks: AsnafAssistanceTypeLink[];
+  typeFormatLinks: AssistanceTypeFormatLink[];
+}
+
+export interface RelationshipAuditLogEntry {
+  id: string;
+  relationshipType: string;
+  recordId: string;
+  action: string;
+  actorId?: string;
+  actorName?: string;
+  actorRole?: string;
+  changesSummary: string;
+  previousState?: any;
+  newState?: any;
+  createdAt: string;
 }
 
 // ส่วน D: ประวัติการช่วยเหลือจากหน่วยงานอื่น
@@ -443,6 +605,29 @@ export interface AssistanceApplication {
     changedBy: string;
     notes: string;
   }[];
+  // 7-Stage Multi-Lifecycle Statuses (Phase 7)
+  requestStatus?: RequestLifecycleStatus;
+  assessmentStatus?: AssessmentLifecycleStatus;
+  approvalStatus?: ApprovalLifecycleStatus;
+  paymentStatus?: PaymentLifecycleStatus;
+  deliveryStatus?: DeliveryLifecycleStatus;
+  followupStatus?: FollowupLifecycleStatus;
+  completionStatus?: CompletionLifecycleStatus;
+  requestDate?: string;
+  assessmentDate?: string;
+  assessedById?: string;
+  assessedByName?: string;
+  deliveryDate?: string;
+  deliveredById?: string;
+  deliveredByName?: string;
+  deliveryRef?: string;
+  deliveryProofUrl?: string;
+  deliveryNotes?: string;
+  closedDate?: string;
+  closedById?: string;
+  closedByName?: string;
+  closingNotes?: string;
+  lifecycleTransitions?: AssistanceLifecycleTransition[];
 }
 
 export interface FundAccount {
@@ -2001,3 +2186,78 @@ export interface BeneficiaryPeriodicAssessment {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// =========================================================================
+// PHASE 10: FINANCIAL ACCOUNTING & GENERAL LEDGER INTERFACES
+// =========================================================================
+
+export interface GeneralLedgerEntry {
+  id: string;
+  journalNo: string;
+  transactionId?: string;
+  applicationId: string;
+  beneficiaryId: string;
+  entryDate: string;
+  accountCode: string;
+  accountName: string;
+  accountCategory: 'expense' | 'asset' | 'liability';
+  entryType: 'debit' | 'credit';
+  amount: number;
+  currency: string;
+  asnafCode?: string;
+  assistanceTypeId?: string;
+  assistanceFormatId?: string;
+  description?: string;
+  createdBy?: string;
+  createdAt: string;
+}
+
+export interface FundSolvencyCheckResult {
+  isSolvent: boolean;
+  applicationId?: string;
+  approvedAmount: number;
+  fundAccount: {
+    id: string;
+    code: string;
+    name: string;
+    availableAmount: number;
+    committedAmount: number;
+  };
+  specificSubFund: {
+    id: string;
+    code: string;
+    name: string;
+    remainingAmount: number;
+    committedAmount: number;
+  };
+  asnafAllocation?: {
+    asnafCode: string;
+    asnafName: string;
+    remainingAmount: number;
+  };
+  chartOfAccountsPreview: {
+    debit: { code: string; name: string; category: string; amount: number };
+    credit: { code: string; name: string; category: string; amount: number };
+  };
+  reason?: string;
+}
+
+export interface FinancialLedgerDetails {
+  applicationId: string;
+  applicationNo: string;
+  beneficiaryId: string;
+  beneficiaryName: string;
+  approvedAmount: number;
+  disbursedAmount: number;
+  status: string;
+  journalNo?: string;
+  fundName?: string;
+  specificSubFundName?: string;
+  transactions: FinancialTransaction[];
+  glEntries: GeneralLedgerEntry[];
+  totalDebit: number;
+  totalCredit: number;
+  isBalanced: boolean;
+  holdHistory: any[];
+}
+

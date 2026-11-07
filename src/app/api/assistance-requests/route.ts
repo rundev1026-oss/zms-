@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyToNest } from '@/lib/apiProxy';
+import { BeneficiaryService } from '@/services/beneficiaryService';
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +57,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Category-Specific Duplicate Prevention Rules (Phase 8)
+    try {
+      const dupCheck = await BeneficiaryService.checkDuplicateAssistanceRules({
+        beneficiaryId: String(beneficiaryId),
+        nationalId: rawInput.nationalId || body.nationalId,
+        assistanceTypeId: rawInput.assistanceTypeId,
+        assistanceTypeCode: rawInput.assistanceTypeCode || rawInput.assistanceType,
+        assistanceTypeName: rawInput.assistanceType,
+        fiscalYear: rawInput.fiscalYear || body.fiscalYear,
+      });
+
+      if (dupCheck.hasDuplicate && !rawInput.allowDuplicateOverride && !body.allowDuplicateOverride) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: dupCheck.message,
+            ruleCode: dupCheck.ruleCode,
+            ruleNameTh: dupCheck.ruleNameTh,
+            existingApplication: dupCheck.existingApplication,
+          },
+          { status: 422 }
+        );
+      }
+    } catch {}
+
     const rawDocs = Array.isArray(rawInput.documents)
       ? rawInput.documents
       : Array.isArray(body.documents)
@@ -80,6 +106,10 @@ export async function POST(request: NextRequest) {
       specificFundCode: rawInput.specificFundCode || body.specificFundCode || undefined,
       specificFundName: rawInput.specificFundName || body.specificFundName || undefined,
       fiscalYear: rawInput.fiscalYear || body.fiscalYear || undefined,
+      assistanceFormatId: rawInput.assistanceFormatId || body.assistanceFormatId || undefined,
+      assistanceFormatCode: rawInput.assistanceFormatCode || rawInput.assistanceFormat || body.assistanceFormatCode || body.assistanceFormat || undefined,
+      assistanceFormatName: rawInput.assistanceFormatName || body.assistanceFormatName || undefined,
+      deliveryMethod: rawInput.deliveryMethod || body.deliveryMethod || undefined,
       branchId: rawInput.branchId,
       branchName: rawInput.branchName,
       status: rawInput.status || body.status || undefined,
@@ -109,6 +139,30 @@ export async function POST(request: NextRequest) {
         { success: false, error: json.message || 'เกิดข้อผิดพลาดในการยื่นคำร้อง' },
         { status: res.status }
       );
+    }
+
+    if (json.id && (payload.assistanceFormatId || payload.assistanceFormatCode)) {
+      try {
+        const { initDb, getDb } = await import('@/lib/db');
+        await initDb();
+        const db = getDb();
+        await db.execute({
+          sql: `UPDATE assistance_applications 
+                SET assistance_format_id = COALESCE(assistance_format_id, ?),
+                    assistance_format_code = COALESCE(assistance_format_code, ?),
+                    assistance_format_name = COALESCE(assistance_format_name, ?),
+                    delivery_method = COALESCE(delivery_method, ?)
+                WHERE id = ? OR application_no = ?`,
+          args: [
+            payload.assistanceFormatId || null,
+            payload.assistanceFormatCode || null,
+            payload.assistanceFormatName || null,
+            payload.deliveryMethod || null,
+            json.id,
+            json.applicationNo || json.id,
+          ],
+        });
+      } catch {}
     }
 
     return NextResponse.json({

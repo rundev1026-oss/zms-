@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyToNest } from '@/lib/apiProxy';
+import { BeneficiaryService } from '@/services/beneficiaryService';
 
 export async function POST(
   request: NextRequest,
@@ -8,7 +9,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { paymentRef, proofUrl, notes, amount, bankAccountId, paymentMethod } = body;
+    const { paymentRef, proofUrl, notes, amount, bankAccountId, paymentMethod, actor: bodyActor } = body;
 
     if (!paymentRef || !paymentRef.trim()) {
       return NextResponse.json(
@@ -17,31 +18,49 @@ export async function POST(
       );
     }
 
-    const res = await proxyToNest('/finance/disburse', request, {
-      method: 'POST',
-      body: {
-        applicationId: id,
-        paymentRef: paymentRef.trim(),
-        proofUrl: proofUrl || '/slips/default-slip.jpg',
-        notes: notes || 'โอนเงินสวัสดิการสำเร็จ',
-        amount: amount ? Number(amount) : undefined,
-        bankAccountId,
-        paymentMethod: paymentMethod || 'bank_transfer',
-      },
-    });
+    const actor = bodyActor || {
+      id: 'u-finance-1',
+      name: 'ฝ่ายการเงินและบัญชี',
+      role: 'finance',
+    };
 
-    const json = await res.json();
-    if (!res.ok) {
+    // 1. Enforce Phase 10 GL Double-Entry & Release Commitment in BeneficiaryService
+    let localResult: any = null;
+    try {
+      localResult = await BeneficiaryService.recordDisbursement(
+        id,
+        paymentRef.trim(),
+        proofUrl || '/slips/default-slip.jpg',
+        notes || 'โอนเงินสวัสดิการสำเร็จ',
+        actor
+      );
+    } catch (localErr: any) {
       return NextResponse.json(
-        { success: false, error: json.message || 'ไม่สามารถบันทึกการเบิกจ่ายเงินได้' },
-        { status: res.status }
+        { success: false, error: localErr.message || 'ไม่สามารถบันทึกการเบิกจ่ายเงินได้' },
+        { status: 422 }
       );
     }
 
+    // 2. Also forward to Nest if running
+    try {
+      await proxyToNest('/finance/disburse', request, {
+        method: 'POST',
+        body: {
+          applicationId: id,
+          paymentRef: paymentRef.trim(),
+          proofUrl: proofUrl || '/slips/default-slip.jpg',
+          notes: notes || 'โอนเงินสวัสดิการสำเร็จ',
+          amount: amount ? Number(amount) : undefined,
+          bankAccountId,
+          paymentMethod: paymentMethod || 'bank_transfer',
+        },
+      });
+    } catch {}
+
     return NextResponse.json({
       success: true,
-      data: json,
-      message: `เบิกจ่ายเงินสงเคราะห์สำเร็จ เลขที่ธุรกรรม ${json.transactionNo}`,
+      data: localResult,
+      message: `เบิกจ่ายเงินสงเคราะห์สำเร็จ ใบสำคัญเลขที่ ${localResult.journalNo} เลขอ้างอิง ${paymentRef.trim()}`,
     });
   } catch (error: any) {
     return NextResponse.json(
@@ -50,3 +69,4 @@ export async function POST(
     );
   }
 }
+

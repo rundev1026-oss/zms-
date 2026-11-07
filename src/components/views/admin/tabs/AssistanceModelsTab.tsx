@@ -51,7 +51,7 @@ interface AssistanceModelsTabProps {
 }
 
 export function AssistanceModelsTab({ onNavigateToTypes }: AssistanceModelsTabProps) {
-  const { showToast, currentUser, authToken } = useApp();
+  const { showToast, currentUser, authToken, getAuthHeaders } = useApp();
   const [models, setModels] = useState<AssistanceModelItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -79,7 +79,10 @@ export function AssistanceModelsTab({ onNavigateToTypes }: AssistanceModelsTabPr
   const fetchModels = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/admin/assistance-models?includeInactive=true');
+      const res = await fetch('/api/admin/assistance-models?includeInactive=true', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const json = await res.json();
       if (res.ok && json.success) {
         setModels(json.data || []);
@@ -158,7 +161,7 @@ export function AssistanceModelsTab({ onNavigateToTypes }: AssistanceModelsTabPr
         minFollowUpCount: formRequiresFollowUp ? Number(formMinFollowUp) : 0,
         followUpIntervalDays: formRequiresFollowUp ? Number(formIntervalDays) : 0,
         isActive: formIsActive,
-        actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role },
+        actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role, email: currentUser.email },
       };
 
       const endpoint = '/api/admin/assistance-models';
@@ -166,10 +169,8 @@ export function AssistanceModelsTab({ onNavigateToTypes }: AssistanceModelsTabPr
 
       const res = await fetch(endpoint, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -192,15 +193,13 @@ export function AssistanceModelsTab({ onNavigateToTypes }: AssistanceModelsTabPr
     try {
       const res = await fetch('/api/admin/assistance-models', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           id: item.id,
           code: item.code,
           isActive: !item.isActive,
-          actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role },
+          actor: { id: currentUser.id, name: currentUser.name, role: currentUser.role, email: currentUser.email },
         }),
       });
       const json = await res.json();

@@ -1,32 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyToNest } from '@/lib/apiProxy';
+import { FinancialService } from '@/services/financialService';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const queryString = searchParams.toString();
-    const endpoint = `/finance/transactions${queryString ? `?${queryString}` : ''}`;
-
-    const res = await proxyToNest(endpoint, request, { method: 'GET' });
-    const json = await res.json();
-
-    if (!res.ok) {
-      return NextResponse.json(
-        { success: false, error: json.message || 'เกิดข้อผิดพลาดในการดึงรายการธุรกรรม' },
-        { status: res.status }
-      );
-    }
+    const data = await FinancialService.getTransactions({
+      fundId: searchParams.get('fundId') || undefined,
+      type: searchParams.get('type') || undefined,
+      status: searchParams.get('status') || undefined,
+      search: searchParams.get('search') || undefined,
+      moneyType: searchParams.get('moneyType') || undefined,
+      bankAccountId: searchParams.get('bankAccountId') || undefined,
+      asnaf: searchParams.get('asnaf') || undefined,
+      year: searchParams.get('year') || searchParams.get('zakatYear') || undefined,
+    });
 
     return NextResponse.json({
       success: true,
-      data: json.items,
-      pagination: {
-        total: json.total,
-        page: json.page,
-        limit: json.limit,
-        totalPages: json.totalPages,
-      },
-      ...json,
+      data,
+      total: data.length,
     });
   } catch (error: any) {
     return NextResponse.json(

@@ -1,22 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { proxyToNest } from '@/lib/apiProxy';
+import { NextResponse } from 'next/server';
+import { FinancialService } from '@/services/financialService';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const res = await proxyToNest('/finance/funds', request, { method: 'GET' });
-    const json = await res.json();
-
-    if (!res.ok) {
-      return NextResponse.json(
-        { success: false, error: json.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลกองทุน' },
-        { status: res.status }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: json,
-    });
+    const funds = await FinancialService.getFunds();
+    return NextResponse.json({ success: true, data: funds });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลกองทุน' },

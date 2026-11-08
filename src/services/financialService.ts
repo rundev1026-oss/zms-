@@ -81,6 +81,7 @@ export interface RecordIncomeInput {
   isAnonymous?: boolean;
   usageRestriction?: string;
   receiptNo?: string;
+  receivedDate?: string;
 }
 
 export interface RecordExpenseInput {
@@ -313,6 +314,58 @@ export function toSatang(num: number): number {
 
 export function fromSatang(satang: number): number {
   return Math.round(satang) / 100;
+}
+
+const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+export function parseStoredFinanceDate(value: string): { year: number; month: number; day: number } | null {
+  const text = String(value || '').trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };
+  }
+  const numeric = text.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (numeric) {
+    let year = Number(numeric[3]);
+    if (year > 2400) year -= 543;
+    return { year, month: Number(numeric[2]), day: Number(numeric[1]) };
+  }
+  const month = THAI_MONTHS.findIndex((label) => text.includes(label));
+  const dayMatch = text.match(/(\d{1,2})/);
+  const yearMatch = text.match(/(\d{4})/);
+  if (month >= 0 && dayMatch && yearMatch) {
+    let year = Number(yearMatch[1]);
+    if (year > 2400) year -= 543;
+    return { year, month: month + 1, day: Number(dayMatch[1]) };
+  }
+  return null;
+}
+
+function financeDayNumber(parts: { year: number; month: number; day: number }) {
+  return parts.year * 10000 + parts.month * 100 + parts.day;
+}
+
+export function financeDateWithinRange(value: string, from?: string, to?: string) {
+  if (!from && !to) return true;
+  const current = parseStoredFinanceDate(value);
+  if (!current) return false;
+  const currentDay = financeDayNumber(current);
+  if (from) {
+    const start = parseStoredFinanceDate(from);
+    if (start && currentDay < financeDayNumber(start)) return false;
+  }
+  if (to) {
+    const end = parseStoredFinanceDate(to);
+    if (end && currentDay > financeDayNumber(end)) return false;
+  }
+  return true;
+}
+
+export function formatIncomeReceivedDate(value: string) {
+  const parsed = parseStoredFinanceDate(value);
+  if (!parsed) return new Date().toLocaleString('th-TH', { hour12: false });
+  const buddhistYear = parsed.year < 2400 ? parsed.year + 543 : parsed.year;
+  return `${parsed.day}/${parsed.month}/${buddhistYear}`;
 }
 
 export function maskAccountNumber(accNo: string): string {
@@ -580,6 +633,7 @@ export class FinancialService {
     }
 
     const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const recordedDate = input.receivedDate ? formatIncomeReceivedDate(input.receivedDate) : timestampNow;
     const receiptNo = input.receiptNo || `REC-2569-${Date.now().toString().slice(-5)}`;
     const txnNo = `TXN-REV-2569-${Date.now().toString().slice(-5)}`;
     const txnId = `txn-${Date.now()}`;
@@ -627,7 +681,7 @@ export class FinancialService {
       args: [
         txnId,
         txnNo,
-        timestampNow,
+        recordedDate,
         input.fundId,
         String(fund.name),
         input.category,
@@ -680,6 +734,140 @@ export class FinancialService {
       fundName: String(fund.name),
       newAvailable,
     };
+  }
+
+  static async updateIncome(id: string, input: RecordIncomeInput, actor: ActorContext) {
+    await initDb();
+    const db = getDb();
+
+    if (!['finance', 'super_admin'].includes(actor.role)) {
+      throw new Error(`การละเมิดสิทธิ์: บทบาท "${actor.role}" ไม่มีสิทธิ์แก้ไขรายรับ`);
+    }
+
+    const txnRes = await db.execute({
+      sql: 'SELECT * FROM financial_transactions WHERE id = ? OR transaction_no = ?',
+      args: [id, id],
+    });
+    if (txnRes.rows.length === 0) throw new Error('ไม่พบรายการรับเงินที่ต้องการแก้ไข');
+    const orig = txnRes.rows[0];
+    if (String(orig.type) !== 'income') throw new Error('แก้ไขได้เฉพาะรายการรับเงิน');
+    if (String(orig.status) === 'reversed' || String(orig.status) === 'cancelled') {
+      throw new Error('รายการนี้ถูกยกเลิกแล้ว จึงแก้ไขไม่ได้');
+    }
+
+    const amount = round2(Number(input.amount));
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('จำนวนเงินรายรับต้องมากกว่า 0 บาท');
+    const referenceNo = String(input.referenceNo || '').trim();
+    if (!referenceNo) throw new Error('กรุณาระบุหมายเลขอ้างอิงการชำระเงิน');
+
+    const dup = await db.execute({
+      sql: 'SELECT transaction_no FROM financial_transactions WHERE reference_no = ? AND id != ? AND status != ?',
+      args: [referenceNo, String(orig.id), 'reversed'],
+    });
+    if (dup.rows.length > 0) {
+      throw new Error(`ตรวจพบธุรกรรมซ้ำ! หมายเลขอ้างอิง "${referenceNo}" ถูกใช้ในรายการ ${dup.rows[0].transaction_no}`);
+    }
+
+    const fundRes = await db.execute({
+      sql: 'SELECT id, name, category, total_received, available_amount FROM fund_accounts WHERE id = ?',
+      args: [input.fundId],
+    });
+    if (fundRes.rows.length === 0) throw new Error('ไม่พบบัญชีกองทุน');
+    const fund = fundRes.rows[0];
+    const moneyType = input.moneyType || String(orig.money_type || 'zakat');
+    if (moneyType === 'operational_admin' && fund.category === 'zakat') {
+      throw new Error('เงินบริจาคสำหรับค่าใช้จ่ายบริหาร ไม่สามารถเข้ากองทุนซะกาตได้');
+    }
+
+    const oldAmount = round2(Number(orig.amount));
+    const oldFundId = String(orig.fund_id);
+    const paymentMethod = input.paymentMethod;
+    const nextBankId = paymentMethod === 'cash' ? null : (input.bankAccountId || null);
+    const oldBankId = orig.bank_account_id ? String(orig.bank_account_id) : null;
+    const oldCreditsBank = Boolean(oldBankId) && String(orig.payment_method) !== 'cash';
+    const nextCreditsBank = Boolean(nextBankId);
+
+    const applyFund = async (fundId: string, delta: number) => {
+      const row = await db.execute({
+        sql: 'SELECT total_received, available_amount, name FROM fund_accounts WHERE id = ?',
+        args: [fundId],
+      });
+      if (row.rows.length === 0) throw new Error('ไม่พบบัญชีกองทุน');
+      const received = fromSatang(toSatang(Number(row.rows[0].total_received)) + toSatang(delta));
+      const available = fromSatang(toSatang(Number(row.rows[0].available_amount)) + toSatang(delta));
+      if (available < 0) {
+        throw new Error(`ไม่สามารถลดยอดรับในกองทุน "${row.rows[0].name}" ได้ เพราะเงินส่วนนี้ถูกใช้ไปแล้ว`);
+      }
+      await db.execute({
+        sql: 'UPDATE fund_accounts SET total_received = ?, available_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        args: [received, available, fundId],
+      });
+    };
+
+    const applyBank = async (bankId: string, delta: number) => {
+      const row = await db.execute({
+        sql: 'SELECT current_balance, account_name FROM bank_accounts WHERE id = ?',
+        args: [bankId],
+      });
+      if (row.rows.length === 0) throw new Error('ไม่พบบัญชีธนาคาร');
+      const next = fromSatang(toSatang(Number(row.rows[0].current_balance)) + toSatang(delta));
+      if (next < 0) throw new Error(`ยอดบัญชี "${row.rows[0].account_name}" ไม่พอสำหรับแก้ไขรายการนี้`);
+      await db.execute({
+        sql: 'UPDATE bank_accounts SET current_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        args: [next, bankId],
+      });
+    };
+
+    if (oldFundId === String(fund.id)) {
+      await applyFund(oldFundId, round2(amount - oldAmount));
+    } else {
+      await applyFund(oldFundId, -oldAmount);
+      await applyFund(String(fund.id), amount);
+    }
+    if (oldCreditsBank && oldBankId) await applyBank(oldBankId, -oldAmount);
+    if (nextCreditsBank && nextBankId) await applyBank(nextBankId, amount);
+
+    const payer = (input.donorName || input.payer || String(orig.payer_or_payee)).trim();
+    await db.execute({
+      sql: `UPDATE financial_transactions
+            SET fund_id = ?, fund_name = ?, category = ?, amount = ?, payment_method = ?,
+                payer_or_payee = ?, reference_no = ?, notes = ?, bank_account_id = ?,
+                money_type = ?, donor_name = ?, usage_restriction = ?
+            WHERE id = ?`,
+      args: [
+        String(fund.id),
+        String(fund.name),
+        input.category,
+        amount,
+        paymentMethod,
+        payer,
+        referenceNo,
+        input.notes || '',
+        nextBankId,
+        moneyType,
+        payer,
+        input.usageRestriction || null,
+        String(orig.id),
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}`,
+        new Date().toLocaleString('th-TH', { hour12: false }),
+        actor.id,
+        actor.name,
+        actor.role,
+        'FINANCIAL_INCOME_UPDATED',
+        'financial_transaction',
+        String(orig.transaction_no),
+        `แก้ไขรายรับ ${orig.transaction_no} จาก ฿${oldAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} เป็น ฿${amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
+      ],
+    });
+
+    return { transactionId: String(orig.id), transactionNo: String(orig.transaction_no), amount, fundName: String(fund.name) };
   }
 
   /**
@@ -1232,6 +1420,10 @@ export class FinancialService {
       lastReconciledBy: r.last_reconciled_by ? String(r.last_reconciled_by) : undefined,
       status: String(r.status) as any,
       isDefault: Boolean(r.is_default),
+      promptpayId: r.promptpay_id ? String(r.promptpay_id) : undefined,
+      accountType: r.account_type ? String(r.account_type) as any : undefined,
+      moneyTypes: r.money_types ? String(r.money_types).split(',').map((item) => item.trim()).filter(Boolean) : undefined,
+      effectiveDate: r.effective_date ? String(r.effective_date) : undefined,
       createdAt: r.created_at ? String(r.created_at) : undefined,
       updatedAt: r.updated_at ? String(r.updated_at) : undefined,
     }));
@@ -1409,8 +1601,11 @@ export class FinancialService {
 
     // กฎเหล็ก: ห้ามลบบัญชีที่มีธุรกรรมแล้วเด็ดขาด ให้เปลี่ยนสถานะเป็น closed แทน
     const txnCountRes = await db.execute({
-      sql: 'SELECT COUNT(*) as cnt FROM financial_transactions WHERE bank_account_id = ?',
-      args: [id],
+      sql: `SELECT
+              (SELECT COUNT(*) FROM financial_transactions WHERE bank_account_id = ?)
+              + (SELECT COUNT(*) FROM bank_reconciliations WHERE bank_account_id = ?)
+              AS cnt`,
+      args: [id, id],
     });
 
     const txnCount = Number(txnCountRes.rows[0]?.cnt || 0);
@@ -9801,8 +9996,8 @@ export class FinancialService {
 
     for (const t of transactions) {
       if (t.status !== 'completed' && t.paymentStatus !== 'PAID') continue;
-      // Extract month name from date string (e.g., '14 ต.ค. 2569')
-      const matchedMonth = months.find((m) => t.date.includes(m));
+      const parsed = parseStoredFinanceDate(t.date);
+      const matchedMonth = parsed ? months[parsed.month - 1] : months.find((m) => t.date.includes(m));
       if (matchedMonth && monthlyIncomeExpenseMap.has(matchedMonth)) {
         const item = monthlyIncomeExpenseMap.get(matchedMonth)!;
         if (t.type === 'income') item.income += t.amount;
@@ -13646,14 +13841,13 @@ export class FinancialService {
       throw new Error('คำขอนี้ได้รับการจ่ายเงินช่วยเหลือเรียบร้อยแล้ว (ไม่สามารถสร้างใบสำคัญจ่ายซ้ำได้)');
     }
 
-    if (!['approved', 'wait_disbursement'].includes(String(app.status))) {
+    if (!['approved', 'wait_disbursement', 'partially_disbursed'].includes(String(app.status))) {
       throw new Error(`คำร้องต้องได้รับการอนุมัติก่อนสร้างใบสำคัญจ่าย (สถานะปัจจุบัน: ${app.status})`);
     }
 
-    // Check duplicate pending/active voucher
     const existingVoucherRes = await db.execute({
-      sql: `SELECT id, voucher_no, status FROM payment_vouchers 
-            WHERE application_id = ? AND status IN ('pending_approval', 'approved', 'disbursed')`,
+      sql: `SELECT id, voucher_no, status FROM payment_vouchers
+            WHERE application_id = ? AND status IN ('draft', 'pending_approval', 'approved')`,
       args: [input.applicationId],
     });
 
@@ -13664,18 +13858,19 @@ export class FinancialService {
 
     // Amount & Budget validation
     const approvedAmount = round2(Number(app.approved_amount) || 0);
-    const amount = round2(Number(input.amount || approvedAmount));
+    const paidBefore = round2(Number(app.disbursed_amount) || 0);
+    const remainingAmount = round2(approvedAmount - paidBefore);
+    const amount = round2(Number(input.amount || remainingAmount));
 
     if (amount <= 0) {
       throw new Error('ยอดเงินในใบสำคัญจ่ายต้องมากกว่า 0 บาท');
     }
 
-    if (amount > approvedAmount) {
-      throw new Error(`ยอดจ่าย (฿${amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) เกินกว่ายอดที่ได้รับการอนุมัติ (฿${approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})`);
+    if (amount > remainingAmount) {
+      throw new Error(`ยอดจ่าย (฿${amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) เกินยอดคงเหลือที่จ่ายได้ (฿${remainingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})`);
     }
 
-    // Fund validation
-    const fundId = input.fundId || (app.fund_id ? String(app.fund_id) : 'fund-1');
+    const fundId = input.fundId || (app.approved_fund_id ? String(app.approved_fund_id) : app.specific_fund_id ? String(app.specific_fund_id) : app.fund_id ? String(app.fund_id) : 'fund-1');
     const fundRes = await db.execute({
       sql: 'SELECT id, name, available_amount FROM fund_accounts WHERE id = ?',
       args: [fundId],
@@ -13734,14 +13929,21 @@ export class FinancialService {
     const nationalId = String(app.b_nid || app.national_id || '-');
     const asnafCategory = String(app.asnaf_category || 'fakir');
 
+    const typeFormat = app.assistance_type_id
+      ? await db.execute({ sql: 'SELECT assistance_format FROM assistance_types WHERE id = ?', args: [String(app.assistance_type_id)] })
+      : { rows: [] as { assistance_format?: unknown }[] };
+    const assistanceFormat = typeFormat.rows[0]?.assistance_format ? String(typeFormat.rows[0].assistance_format) : null;
+    const voucherStatus = input.submitForReview === false ? 'draft' : 'pending_approval';
+
     await db.execute({
       sql: `INSERT INTO payment_vouchers (
         id, voucher_no, voucher_type, application_id, beneficiary_id, beneficiary_name, national_id,
         asnaf_category, fund_id, fund_name, bank_account_id, bank_account_name, bank_account_number,
         amount, payment_method, recipient_bank_name, recipient_account_number, recipient_account_name,
         cheque_number, cheque_date, cash_receiver_name, cash_receiver_position, status,
-        created_by_id, created_by_name, created_by_role, notes
-      ) VALUES (?, ?, 'aid_disbursement', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_approval', ?, ?, ?, ?)`,
+        created_by_id, created_by_name, created_by_role, notes,
+        assistance_type_id, assistance_format, approved_amount_satang, paid_before_satang, money_type
+      ) VALUES (?, ?, 'aid_disbursement', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${voucherStatus}', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         voucherId,
         voucherNo,
@@ -13768,10 +13970,14 @@ export class FinancialService {
         actor.name,
         actor.role,
         input.notes || `ใบสำคัญจ่ายเงินช่วยเหลือคำร้อง ${app.application_no || input.applicationId}`,
+        app.assistance_type_id ? String(app.assistance_type_id) : null,
+        assistanceFormat,
+        toSatang(approvedAmount),
+        toSatang(paidBefore),
+        'zakat',
       ],
     });
 
-    // Audit Log
     await db.execute({
       sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -13812,7 +14018,7 @@ export class FinancialService {
       chequeDate: input.chequeDate,
       cashReceiverName: input.cashReceiverName,
       cashReceiverPosition: input.cashReceiverPosition,
-      status: 'pending_approval',
+      status: voucherStatus,
       createdById: actor.id,
       createdByName: actor.name,
       createdByRole: actor.role,
@@ -13948,6 +14154,15 @@ export class FinancialService {
       sql: 'SELECT id, name, available_amount, disbursed_amount FROM fund_accounts WHERE id = ?',
       args: [fundId],
     });
+    const appBefore = await db.execute({
+      sql: 'SELECT approved_amount, disbursed_amount FROM assistance_applications WHERE id = ?',
+      args: [String(v.application_id)],
+    });
+    const approvedBefore = round2(Number(appBefore.rows[0]?.approved_amount) || 0);
+    const paidBefore = round2(Number(appBefore.rows[0]?.disbursed_amount) || 0);
+    if (paidBefore + amount > approvedBefore + 0.001) {
+      throw new Error(`ยอดจ่ายนี้จะทำให้เกินวงเงินที่อนุมัติ (อนุมัติ ฿${approvedBefore.toLocaleString('th-TH', { minimumFractionDigits: 2 })}, จ่ายแล้ว ฿${paidBefore.toLocaleString('th-TH', { minimumFractionDigits: 2 })})`);
+    }
     if (fundRes.rows.length === 0) {
       throw new Error(`ไม่พบกองทุนเป้าหมายรหัส ${fundId}`);
     }
@@ -13997,15 +14212,16 @@ export class FinancialService {
     await db.execute({
       sql: `INSERT INTO financial_transactions (
         id, transaction_no, date, type, fund_id, fund_name, category, amount, payment_method,
-        payer_or_payee, reference_no, slip_url, status, payment_status, recorded_by_id, recorded_by_name, notes, bank_account_id
-      ) VALUES (?, ?, ?, 'disbursement', ?, ?, 'เงินจ่ายเพื่อการสงเคราะห์/ช่วยเหลือ', ?, ?, ?, ?, ?, 'completed', 'PAID', ?, ?, ?, ?)`,
+        payer_or_payee, reference_no, slip_url, status, payment_status, recorded_by_id, recorded_by_name, notes, bank_account_id,
+        asnaf_category, beneficiary_id, application_id, assistance_type_id, money_type
+      ) VALUES (?, ?, ?, 'disbursement', ?, ?, 'เงินจ่ายเพื่อการสงเคราะห์/ช่วยเหลือ', ?, ?, ?, ?, ?, 'completed', 'PAID', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         txnId,
         txnNo,
         timestampNow,
         fundId,
         String(v.fund_name),
-        -amount,
+        amount,
         String(v.payment_method),
         String(v.beneficiary_name),
         String(v.voucher_no),
@@ -14014,39 +14230,34 @@ export class FinancialService {
         actor.name,
         input.notes || `โอนจ่ายตามใบสำคัญจ่าย ${v.voucher_no} ให้แก่ ${v.beneficiary_name}`,
         bankAccountId,
+        v.asnaf_category ? String(v.asnaf_category) : null,
+        v.beneficiary_id ? String(v.beneficiary_id) : null,
+        v.application_id ? String(v.application_id) : null,
+        v.assistance_type_id ? String(v.assistance_type_id) : null,
+        v.money_type ? String(v.money_type) : 'zakat',
       ],
     });
 
-    // 5. Update Payment Voucher Status
     await db.execute({
-      sql: `UPDATE payment_vouchers 
+      sql: `UPDATE payment_vouchers
             SET status = 'disbursed', disbursed_by_id = ?, disbursed_by_name = ?, disbursed_at = ?,
-                proof_url = ?, proof_name = ?, cheque_clearing_date = ?, updated_at = CURRENT_TIMESTAMP 
+                proof_url = ?, proof_name = ?, cheque_clearing_date = ?, ledger_transaction_id = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
-      args: [
-        actor.id,
-        actor.name,
-        timestampNow,
-        input.proofUrl || null,
-        input.proofName || null,
-        input.chequeClearingDate || null,
-        v.id,
-      ],
+      args: [actor.id, actor.name, timestampNow, input.proofUrl || null, input.proofName || null, input.chequeClearingDate || null, txnId, v.id],
     });
 
-    // 6. Update Assistance Application Status to 'disbursed'
+    const nextPaid = round2(paidBefore + amount);
+    const nextStatus = nextPaid + 0.001 >= approvedBefore ? 'disbursed' : 'partially_disbursed';
     await db.execute({
-      sql: `UPDATE assistance_applications 
-            SET status = 'disbursed', disbursed_amount = ?, disbursement_ref = ?, updated_at = CURRENT_TIMESTAMP 
+      sql: `UPDATE assistance_applications
+            SET status = ?, disbursed_amount = ?, disbursement_ref = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
-      args: [amount, String(v.voucher_no), String(v.application_id)],
+      args: [nextStatus, nextPaid, String(v.voucher_no), String(v.application_id)],
     });
 
-    // 7. Record Application History
     await db.execute({
-      sql: `INSERT INTO application_history (
-        id, application_id, status, timestamp, changed_by_id, changed_by_name, notes
-      ) VALUES (?, ?, 'disbursed', ?, ?, ?, ?)`,
+      sql: `INSERT INTO application_history (id, application_id, status, timestamp, changed_by_id, changed_by_name, notes)
+            VALUES (?, ?, 'disbursed', ?, ?, ?, ?)`,
       args: [
         `hist-disb-${Date.now()}`,
         String(v.application_id),

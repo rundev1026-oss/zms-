@@ -269,6 +269,7 @@ export class FinancialWorkflowService {
         d.this_disbursement_amount,
         d.remaining_balance,
         d.status as disbursement_status,
+        c.id as clearance_id,
         c.category_name as admin_category_name,
         c.description as admin_expense_desc,
         c.receipt_url as admin_receipt_url
@@ -304,9 +305,16 @@ export class FinancialWorkflowService {
         itemStatus = 'รอจ่าย';
       }
 
+      const rowUniqueId = row.disbursement_id
+        ? `${row.withdrawal_id}-disb-${row.disbursement_id}`
+        : row.clearance_id
+        ? `${row.withdrawal_id}-clr-${row.clearance_id}`
+        : `${row.withdrawal_id}-${index}`;
+
       const item = {
         index: index++,
-        id: String(row.withdrawal_id),
+        id: rowUniqueId,
+        withdrawalId: String(row.withdrawal_id),
         date: String(row.withdrawal_datetime || row.created_at || '').slice(0, 10),
         documentNo: String(row.withdrawal_no || '-'),
         staffName: String(row.withdrawer_name || 'เจ้าหน้าที่'),

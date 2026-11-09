@@ -206,8 +206,8 @@ export function CashCycle({ workflow, actor, onChanged }: { workflow: CashFlowWo
         {(workflow.withdrawals || []).some((item) => item.voucherType === 'office_expense' && item.status !== 'cancelled') ? <button type="button" onClick={() => { setError(''); setDialog('clear'); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">ตรวจค่าบริหารและคืนเงิน</button> : null}
         {workflow.overallStatus !== 'completed' ? <button type="button" onClick={openClose} className="rounded-xl bg-[#0B2545] px-3 py-2 text-xs font-bold text-white">ตรวจยอดและปิดรอบ</button> : null}
       </div>
-      {(workflow.withdrawals || []).slice(0, 6).map((item) => (
-        <div key={item.id} className="flex justify-between gap-2 text-xs text-slate-500">
+      {(workflow.withdrawals || []).slice(0, 6).map((item, idx) => (
+        <div key={`cw-${item.id}-${idx}`} className="flex justify-between gap-2 text-xs text-slate-500">
           <span>{item.withdrawalNo} · {item.voucherType === 'office_expense' ? 'ค่าบริหาร' : 'ช่วยเหลือ'} · {item.withdrawerName}</span>
           <span className="font-semibold text-slate-700">{baht(item.amount)} · {item.status === 'draft' ? 'แบบร่าง' : item.status === 'completed' || item.status === 'disbursed' ? 'จ่ายแล้ว' : item.status}</span>
         </div>

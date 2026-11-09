@@ -244,7 +244,7 @@ export function FinanceCashControlRegister({
               </tr>
             ) : (
               items.map((it, idx) => (
-                <tr key={`${it.id}-${it.index || idx}`} className="transition hover:bg-slate-50/80">
+                <tr key={`reg-${it.id}-${it.index ?? idx}`} className="transition hover:bg-slate-50/80">
                   <td className="py-3 pl-4 pr-2 font-medium text-slate-400">{it.index}</td>
                   <td className="px-2 py-3 text-slate-600">{it.date}</td>
                   <td className="px-2 py-3 font-semibold text-slate-900">{it.documentNo}</td>

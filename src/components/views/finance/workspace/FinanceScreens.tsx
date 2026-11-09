@@ -791,11 +791,11 @@ export function MovementScreen({
                   ) : visibleFlows.length === 0 ? (
                     <div className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีคำขอถอนตามเงื่อนไข</div>
                   ) : (
-                    visibleFlows.map((wf) => {
+                    visibleFlows.map((wf, wfIdx) => {
                       const badge = workflowBadge(wf);
                       return (
                         <button
-                          key={wf.id}
+                          key={`wf-${wf.id}-${wfIdx}`}
                           type="button"
                           onClick={() => setWorkflowId(wf.id)}
                           className={`block w-full border-t border-slate-100 px-4 py-3 text-left ${
@@ -821,9 +821,9 @@ export function MovementScreen({
                 ) : visible.length === 0 ? (
                   <div className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีรายการตามเงื่อนไข</div>
                 ) : (
-                  visible.map((tx) => (
+                  visible.map((tx, txIdx) => (
                     <button
-                      key={tx.id}
+                      key={`tx-${tx.id}-${txIdx}`}
                       type="button"
                       onClick={() => setSelectedId(tx.id)}
                       className={`block w-full border-t border-slate-100 px-4 py-3 text-left ${
@@ -900,7 +900,7 @@ export function MovementScreen({
                   </div>
                   <div className="space-y-3">
                     {movementTimeline(selectedFlow).map((step, index) => (
-                      <div key={step.title} className="flex gap-3">
+                      <div key={`step-${step.title}-${index}`} className="flex gap-3">
                         <div
                           className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                             step.tone === 'success'

@@ -61,6 +61,19 @@ async function runTwoRoleWorkflowTest() {
   const adminCategories = catRes.json.data;
   console.log(`Found ${adminCategories.length} admin categories`);
 
+  // STEP 0.3: Fetch Treasurer Cash Accounts
+  console.log('\n--- Step 0.3: Fetch eligible Treasurer Cash Accounts ---');
+  const trAccRes = await getAction('treasurer_accounts');
+  assert(trAccRes.ok && Array.isArray(trAccRes.json.data), 'Step 0.3: Fetch treasurer accounts');
+  const treasurerAccounts = trAccRes.json.data;
+  assert(treasurerAccounts.length > 0, 'Step 0.3: Has at least 1 active treasurer account');
+  console.log(`Found ${treasurerAccounts.length} treasurer cash account(s):`, treasurerAccounts.map((t) => `${t.accountName} (${t.accountCode}) · คงเหลือ ฿${t.currentBalance}`));
+  
+  // Verify strict separation: NO bank accounts, NO staff cash accounts in treasurer options
+  assert(!treasurerAccounts.some((t) => t.id.startsWith('bank-')), 'Step 0.3: Verified NO commercial bank accounts in treasurer accounts');
+  assert(!treasurerAccounts.some((t) => t.accountCode === '1030-01' || t.id.startsWith('staff-')), 'Step 0.3: Verified NO staff cash accounts in treasurer accounts');
+  const primaryTreasurer = treasurerAccounts[0];
+
   const sampleApp1 = eligibleApps[0] || {
     id: 'app-demo-1',
     applicationNo: 'APP-2569-DEMO1',
@@ -84,14 +97,69 @@ async function runTwoRoleWorkflowTest() {
     name: 'เครื่องเขียนและอุปกรณ์สำนักงาน',
   };
 
-  // STEP 1: Staff creates new Batch with 3 items (2 Aid, 1 Admin) as Draft
-  console.log('\n--- Step 1: Staff creates multi-item batch disbursement ---');
+  // SECURITY TESTS: Backend verification of Source Account
+  console.log('\n--- Security Checks: Source Account Validation on Backend ---');
+  
+  // Test A: Attempt to pass commercial bank account as source
+  const badBankRes = await postAction(
+    'create_batch',
+    {
+      title: 'ทดสอบส่งบัญชีธนาคาร (ต้องถูกบล็อก)',
+      fundType: 'zakat',
+      sourceAccountId: 'bank-1',
+      items: [{ type: 'admin', categoryId: sampleCat.id, amount: 1000, description: 'test' }],
+    },
+    staffActor
+  );
+  assert(!badBankRes.ok && badBankRes.status === 400, 'Security Check A: Commercial bank account correctly blocked');
+
+  // Test B: Attempt to pass staff cash account as source
+  const badStaffRes = await postAction(
+    'create_batch',
+    {
+      title: 'ทดสอบส่งบัญชีเงินสดเจ้าหน้าที่ (ต้องถูกบล็อก)',
+      fundType: 'zakat',
+      sourceAccountId: '1030-01',
+      items: [{ type: 'admin', categoryId: sampleCat.id, amount: 1000, description: 'test' }],
+    },
+    staffActor
+  );
+  assert(!badStaffRes.ok && badStaffRes.status === 400, 'Security Check B: Staff cash account correctly blocked');
+
+  // Test C: Attempt to pass non-existent account as source
+  const badFakeRes = await postAction(
+    'create_batch',
+    {
+      title: 'ทดสอบส่งบัญชีไม่มีอยู่จริง (ต้องถูกบล็อก)',
+      fundType: 'zakat',
+      sourceAccountId: 'fake-account-999',
+      items: [{ type: 'admin', categoryId: sampleCat.id, amount: 1000, description: 'test' }],
+    },
+    staffActor
+  );
+  assert(!badFakeRes.ok && badFakeRes.status === 400, 'Security Check C: Arbitrary account correctly blocked');
+
+  // Test D: Attempt to request more than treasurer balance
+  const badOverBudgetRes = await postAction(
+    'create_batch',
+    {
+      title: 'ทดสอบขอยอดเงินเกินคงเหลือเหรัญญิก (ต้องถูกบล็อก)',
+      fundType: 'zakat',
+      sourceAccountId: primaryTreasurer.id,
+      items: [{ type: 'admin', categoryId: sampleCat.id, amount: 99999999, description: 'test over budget' }],
+    },
+    staffActor
+  );
+  assert(!badOverBudgetRes.ok && badOverBudgetRes.status === 400, 'Security Check D: Over-budget batch correctly blocked due to insufficient treasurer balance');
+
+  // STEP 1: Staff creates new Batch with 3 items (2 Aid, 1 Admin) as Draft using genuine Treasurer Account
+  console.log('\n--- Step 1: Staff creates multi-item batch disbursement from Treasurer Account ---');
   const createRes = await postAction(
     'create_batch',
     {
       title: 'โครงการจ่ายเงินสงเคราะห์ผู้ประสบภัยและค่าบริหารลงพื้นที่ งวด 1/2569',
       fundType: 'zakat',
-      bankAccountId: 'bank-1',
+      sourceAccountId: primaryTreasurer.id,
       submitImmediately: false, // Save as draft first
       items: [
         {

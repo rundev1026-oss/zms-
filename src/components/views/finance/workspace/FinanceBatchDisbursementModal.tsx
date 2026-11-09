@@ -39,6 +39,21 @@ interface AdminCat {
   budgetLimit: number;
 }
 
+interface TreasurerAccount {
+  id: string;
+  accountCode: string;
+  accountName: string;
+  custodianId: string;
+  custodianName: string;
+  accountType: string;
+  currentBalance: number;
+  status: string;
+  isDefault: boolean;
+  allowedForStaffDisbursement: boolean;
+  description?: string;
+  fundTypes?: string[];
+}
+
 interface LineItem {
   type: 'aid' | 'admin';
   applicationId?: string;
@@ -68,13 +83,13 @@ export function FinanceBatchDisbursementModal({
   isOpen: boolean;
   onClose: () => void;
   actor: { id: string; name: string; role: string };
-  banks: BankAccount[];
+  banks?: BankAccount[];
   onSuccess?: () => void;
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [title, setTitle] = useState('');
   const [fundType, setFundType] = useState('zakat');
-  const [bankAccountId, setBankAccountId] = useState('');
+  const [sourceAccountId, setSourceAccountId] = useState('');
   const [notes, setNotes] = useState('');
 
   const [items, setItems] = useState<LineItem[]>([]);
@@ -83,7 +98,10 @@ export function FinanceBatchDisbursementModal({
   // Master data
   const [eligibleApps, setEligibleApps] = useState<EligibleApp[]>([]);
   const [adminCats, setAdminCats] = useState<AdminCat[]>([]);
+  const [treasurerAccounts, setTreasurerAccounts] = useState<TreasurerAccount[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [loadingTreasurer, setLoadingTreasurer] = useState(false);
+  const [treasurerError, setTreasurerError] = useState('');
 
   // New item draft form
   const [selectedAppId, setSelectedAppId] = useState('');
@@ -102,6 +120,7 @@ export function FinanceBatchDisbursementModal({
   useEffect(() => {
     if (isOpen) {
       setError('');
+      setTreasurerError('');
       setStep(1);
       setTitle('');
       setFundType('zakat');
@@ -109,30 +128,42 @@ export function FinanceBatchDisbursementModal({
       setItems([]);
       setSelectedAppId('');
       setSelectedCatId('');
-      if (banks.length > 0 && !bankAccountId) {
-        const def = banks.find((b) => b.isDefault || b.status === 'active') || banks[0];
-        setBankAccountId(def.id);
-      }
       loadMasterData();
     }
-  }, [isOpen, banks]);
+  }, [isOpen]);
 
   const loadMasterData = async () => {
     try {
       setLoadingData(true);
-      const [appRes, catRes] = await Promise.all([
+      setLoadingTreasurer(true);
+      const [appRes, catRes, trRes] = await Promise.all([
         fetch('/api/finance/workflow-actions?view=eligible_applications').then((r) => r.json()),
         fetch('/api/finance/workflow-actions?view=admin_categories').then((r) => r.json()),
+        fetch('/api/finance/workflow-actions?view=treasurer_accounts').then((r) => r.json()),
       ]);
       if (appRes.success && Array.isArray(appRes.data)) setEligibleApps(appRes.data);
       if (catRes.success && Array.isArray(catRes.data)) {
         setAdminCats(catRes.data);
         if (catRes.data.length > 0) setSelectedCatId(catRes.data[0].id);
       }
+      if (trRes.success && Array.isArray(trRes.data)) {
+        const eligible = trRes.data.filter((t: TreasurerAccount) => t.allowedForStaffDisbursement && t.status === 'active');
+        setTreasurerAccounts(eligible);
+        if (eligible.length > 0) {
+          const def = eligible.find((t: TreasurerAccount) => t.isDefault) || eligible[0];
+          setSourceAccountId(def.id);
+        } else {
+          setTreasurerError('ไม่มีบัญชีเหรัญญิกที่พร้อมใช้งานสำหรับการเบิกจ่ายในระบบ กรุณาติดต่อฝ่ายเหรัญญิก');
+        }
+      } else {
+        setTreasurerError('ไม่สามารถดึงข้อมูลบัญชีเหรัญญิกได้');
+      }
     } catch (err: any) {
       console.error(err);
+      setTreasurerError('เกิดข้อผิดพลาดในการโหลดข้อมูลบัญชีเหรัญญิก');
     } finally {
       setLoadingData(false);
+      setLoadingTreasurer(false);
     }
   };
 
@@ -147,6 +178,9 @@ export function FinanceBatchDisbursementModal({
     .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
 
   const totalBatchAmount = totalAidAmount + totalAdminAmount;
+
+  const selectedTreasurer = treasurerAccounts.find((t) => t.id === sourceAccountId) || treasurerAccounts[0] || null;
+  const isBalanceInsufficient = selectedTreasurer ? totalBatchAmount > selectedTreasurer.currentBalance : false;
 
   const handleAddAidItem = () => {
     setError('');
@@ -234,12 +268,18 @@ export function FinanceBatchDisbursementModal({
       setError('กรุณาระบุวัตถุประสงค์หรือชื่อรอบการเบิก');
       return;
     }
-    if (!bankAccountId) {
-      setError('กรุณาเลือกบัญชีธนาคารต้นทาง');
+    if (!sourceAccountId) {
+      setError('ไม่มีบัญชีเหรัญญิกที่พร้อมใช้งานสำหรับการเบิกจ่าย ไม่สามารถส่งคำขอได้');
       return;
     }
     if (items.length === 0) {
       setError('กรุณาเพิ่มรายการย่อยอย่างน้อย 1 รายการก่อนบันทึก');
+      return;
+    }
+    if (isBalanceInsufficient && selectedTreasurer) {
+      setError(
+        `ยอดเงินคงเหลือในบัญชีเหรัญญิกไม่เพียงพอ (คงเหลือ ฿${selectedTreasurer.currentBalance.toLocaleString('th-TH', { minimumFractionDigits: 2 })}, ยอดขอเบิก ฿${totalBatchAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})`
+      );
       return;
     }
 
@@ -253,7 +293,8 @@ export function FinanceBatchDisbursementModal({
           input: {
             title: title.trim(),
             fundType,
-            bankAccountId,
+            sourceAccountId,
+            bankAccountId: sourceAccountId, // backwards compatibility
             notes,
             submitImmediately,
             items,
@@ -387,21 +428,67 @@ export function FinanceBatchDisbursementModal({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-700">
-                    บัญชีธนาคารต้นทาง <span className="text-rose-500">*</span>
+                  <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5 text-amber-700" />
+                      บัญชีต้นทาง (เหรัญญิก) <span className="text-rose-500">*</span>
+                    </span>
+                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      เฉพาะบัญชีเหรัญญิกเท่านั้น
+                    </span>
                   </label>
-                  <select
-                    value={bankAccountId}
-                    onChange={(e) => setBankAccountId(e.target.value)}
-                    className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:border-teal-600"
-                  >
-                    {banks.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.bankName} — {b.accountName} ({b.accountNumber}) · คงเหลือ ฿
-                        {Number(b.currentBalance).toLocaleString('th-TH')}
-                      </option>
-                    ))}
-                  </select>
+
+                  {loadingTreasurer ? (
+                    <div className="mt-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
+                      กำลังโหลดข้อมูลบัญชีเหรัญญิก...
+                    </div>
+                  ) : treasurerAccounts.length === 0 ? (
+                    <div className="mt-1.5 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                      <span>{treasurerError || 'ไม่มีบัญชีเหรัญญิกที่เปิดใช้งานสำหรับการเบิกจ่าย ไม่สามารถส่งคำขอได้'}</span>
+                    </div>
+                  ) : treasurerAccounts.length === 1 ? (
+                    <div className="mt-1.5 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50/70 via-white to-amber-50/30 p-3 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900 text-xs">
+                              {treasurerAccounts[0].accountName}
+                            </span>
+                            <span className="font-mono text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded">
+                              {treasurerAccounts[0].accountCode}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            ผู้รับผิดชอบ: <span className="font-semibold text-slate-700">{treasurerAccounts[0].custodianName}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-slate-400 font-semibold uppercase">คงเหลือในมือเหรัญญิก</div>
+                          <div className="font-mono font-bold text-amber-900 text-xs tabular-nums">
+                            ฿{Number(treasurerAccounts[0].currentBalance).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 space-y-1">
+                      <select
+                        value={sourceAccountId}
+                        onChange={(e) => setSourceAccountId(e.target.value)}
+                        className="w-full rounded-2xl border border-amber-300 bg-amber-50/20 px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:border-amber-600 font-medium"
+                      >
+                        {treasurerAccounts.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.accountName} — {t.custodianName} (รหัส {t.accountCode}) · คงเหลือ ฿{Number(t.currentBalance).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500">
+                        * แสดงเฉพาะบัญชีเหรัญญิกที่กำหนดให้ใช้สำหรับการเบิกของเจ้าหน้าที่
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -682,16 +769,20 @@ export function FinanceBatchDisbursementModal({
                   สรุปรายละเอียดรอบการเบิกเงิน
                 </div>
                 <div className="text-base font-extrabold text-slate-800">{title}</div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
                   <div>
-                    <span className="text-slate-400">ผู้จัดทำ:</span> <span className="font-semibold">{actor.name}</span>
+                    <span className="text-slate-400">ผู้จัดทำ:</span> <span className="font-semibold text-slate-900">{actor.name}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">กองทุน:</span> <span className="font-semibold">{fundType}</span>
+                    <span className="text-slate-400">บัญชีต้นทาง:</span>{' '}
+                    <span className="font-semibold text-amber-900">{selectedTreasurer?.accountName || 'บัญชีเหรัญญิก'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">จำนวนรายการ:</span>{' '}
-                    <span className="font-semibold">{items.length} รายการ</span>
+                    <span className="text-slate-400">ผู้รับผิดชอบต้นทาง:</span>{' '}
+                    <span className="font-semibold text-slate-900">{selectedTreasurer?.custodianName || 'เหรัญญิก'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">กองทุน:</span> <span className="font-semibold text-slate-900">{fundType}</span>
                   </div>
                 </div>
               </div>
@@ -720,11 +811,27 @@ export function FinanceBatchDisbursementModal({
                 </div>
               </div>
 
+              {/* Balance Warning Banner if Insufficient */}
+              {isBalanceInsufficient && selectedTreasurer && (
+                <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 text-xs text-rose-800 flex items-start gap-2.5">
+                  <AlertCircle className="h-5 w-5 shrink-0 text-rose-600 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-rose-900 text-sm">
+                      ยอดเงินในบัญชีเหรัญญิกไม่เพียงพอสำหรับการเบิกจ่าย
+                    </div>
+                    <p className="mt-1 text-xs text-rose-700 leading-relaxed">
+                      เงินสดคงเหลือในบัญชีเหรัญญิกมี <strong>฿{selectedTreasurer.currentBalance.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong> แต่ยอดขอเบิกรอบนี้คือ <strong>฿{totalBatchAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong> (ขาดอีก ฿{(totalBatchAmount - selectedTreasurer.currentBalance).toLocaleString('th-TH', { minimumFractionDigits: 2 })}) กรุณาปรับลดจำนวนเงิน หรือรอให้เหรัญญิกถอนเงินสดจากธนาคารเข้าคลังก่อน
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-2xl bg-amber-50 p-3 text-xs text-amber-800 border border-amber-200">
                 <div className="font-bold">คำชี้แจงขั้นตอน Workflow:</div>
                 <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px]">
                   <li>หากเลือก <strong>&quot;บันทึกเป็นแบบร่าง&quot;</strong>: คำขอจะยังไม่ส่งถึงเหรัญญิก สามารถกลับมาแก้ไขเพิ่มรายการได้</li>
-                  <li>หากเลือก <strong>&quot;ยื่นขออนุมัติเหรัญญิก&quot;</strong>: คำขอจะถูกล็อกและส่งไปยังกล่องงานเหรัญญิกเพื่อพิจารณาอนุมัติทันที</li>
+                  <li>หากเลือก <strong>&quot;ยื่นขออนุมัติเหรัญญิก&quot;</strong>: คำขอจะถูกส่งไปยังกล่องงานเหรัญญิกเพื่อพิจารณาอนุมัติและนัดหมายส่งมอบเงินสด</li>
+                  <li><strong>ยอดเงินจะยังไม่ถูกตัดบัญชี</strong> จนกว่าเหรัญญิกจะส่งมอบเงินสดและเจ้าหน้าที่กดยืนยันรับเงิน</li>
                 </ul>
               </div>
             </div>
@@ -757,9 +864,15 @@ export function FinanceBatchDisbursementModal({
                 type="button"
                 onClick={() => {
                   setError('');
-                  if (step === 1 && !title.trim()) {
-                    setError('กรุณาระบุวัตถุประสงค์หรือชื่อรอบการเบิก');
-                    return;
+                  if (step === 1) {
+                    if (!title.trim()) {
+                      setError('กรุณาระบุวัตถุประสงค์หรือชื่อรอบการเบิก');
+                      return;
+                    }
+                    if (!sourceAccountId || treasurerAccounts.length === 0) {
+                      setError('ไม่มีบัญชีเหรัญญิกที่พร้อมใช้งานสำหรับการเบิกจ่าย ไม่สามารถดำเนินการต่อได้');
+                      return;
+                    }
                   }
                   if (step === 2 && items.length === 0) {
                     setError('กรุณาเพิ่มรายการย่อยอย่างน้อย 1 รายการก่อนดำเนินการต่อ');
@@ -775,7 +888,7 @@ export function FinanceBatchDisbursementModal({
               <>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || isBalanceInsufficient || !sourceAccountId || treasurerAccounts.length === 0}
                   onClick={() => handleSave(false)}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 disabled:opacity-50"
                 >
@@ -783,7 +896,7 @@ export function FinanceBatchDisbursementModal({
                 </button>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || isBalanceInsufficient || !sourceAccountId || treasurerAccounts.length === 0}
                   onClick={() => handleSave(true)}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-teal-700/20 hover:bg-teal-800 disabled:opacity-50"
                 >

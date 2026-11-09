@@ -46,6 +46,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: items });
     }
 
+    if (view === 'treasurer_accounts' || view === 'treasurer_account') {
+      const items = await FinancialWorkflowService.getEligibleTreasurerAccounts();
+      return NextResponse.json({ success: true, data: items });
+    }
+
     if (view === 'eligible_applications') {
       const search = searchParams.get('search') || '';
       const items = await FinancialWorkflowService.getEligibleAssistanceApplications(search);

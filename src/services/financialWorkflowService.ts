@@ -1322,12 +1322,60 @@ export class FinancialWorkflowService {
   }
 
   /**
+   * Fetch Active Treasurer Cash Accounts for Staff Batch Disbursement
+   */
+  static async getEligibleTreasurerAccounts() {
+    await initDb();
+    const db = getDb();
+
+    // 1. Get real balance from KPI engine
+    const kpi = await this.getKpiBalances();
+    const currentBalance = kpi.treasurer.currentBalance;
+
+    // 2. Query distinct treasurers and finance users from database
+    const wfTreasurers = await db.execute(`
+      SELECT DISTINCT step2_treasurer_id, step2_treasurer_name 
+      FROM cash_flow_workflows 
+      WHERE step2_treasurer_id IS NOT NULL AND step2_treasurer_name IS NOT NULL
+      ORDER BY created_at DESC
+    `);
+
+    // Primary treasurer from database history
+    const primaryCustodian = wfTreasurers.rows.find(
+      (r: any) => r.step2_treasurer_id === 'custodian-ruslan' || String(r.step2_treasurer_name).includes('รุสลัน')
+    ) || wfTreasurers.rows[0];
+
+    const treasurerId = primaryCustodian ? String(primaryCustodian.step2_treasurer_id) : 'custodian-ruslan';
+    const treasurerName = primaryCustodian ? String(primaryCustodian.step2_treasurer_name) : 'นายรุสลัน หะสาเมาะ (เหรัญญิกมูลนิธิ)';
+
+    const accounts = [
+      {
+        id: 'treasurer-cash-main',
+        accountCode: '1020-01',
+        accountName: 'บัญชีเหรัญญิก (Treasurer Cash Account)',
+        custodianId: treasurerId,
+        custodianName: treasurerName,
+        accountType: 'treasurer_cash',
+        currentBalance,
+        status: 'active',
+        isDefault: true,
+        allowedForStaffDisbursement: true,
+        description: 'บัญชีเงินสดคลังเหรัญญิกสำหรับส่งมอบเงินสดให้เจ้าหน้าที่ประจำสำนักงานเพื่อเบิกจ่าย',
+        fundTypes: ['zakat', 'sadaqah', 'operational'],
+      },
+    ];
+
+    return accounts.filter((acc) => acc.allowedForStaffDisbursement && acc.status === 'active');
+  }
+
+  /**
    * ROLE A: Office Staff creates a multi-item batch disbursement
    */
   static async createBatchDisbursement(input: {
     title: string;
     fundType?: string;
-    bankAccountId: string;
+    sourceAccountId?: string;
+    bankAccountId?: string; // backwards compatibility
     notes?: string;
     submitImmediately?: boolean;
     items: Array<{
@@ -1354,9 +1402,56 @@ export class FinancialWorkflowService {
     if (!input.title || input.title.trim().length === 0) {
       throw new Error('กรุณาระบุวัตถุประสงค์หรือชื่อรอบการเบิกเงิน');
     }
-    if (!input.bankAccountId) {
-      throw new Error('กรุณาเลือกบัญชีธนาคารต้นทาง');
+
+    const sourceAccountId = (input.sourceAccountId || input.bankAccountId || '').trim();
+    if (!sourceAccountId) {
+      throw new Error('กรุณาเลือกบัญชีต้นทาง (บัญชีเหรัญญิก)');
     }
+
+    // STRICT CHECK 1: Disallow Commercial Bank Accounts
+    const bankCheck = await db.execute({
+      sql: `SELECT id, account_name, bank_name FROM bank_accounts WHERE id = ?`,
+      args: [sourceAccountId],
+    });
+    if (bankCheck.rows.length > 0) {
+      throw new Error(
+        `ไม่อนุญาตให้เลือกบัญชีธนาคาร (${bankCheck.rows[0].account_name}) เป็นบัญชีต้นทาง — การสร้างรอบเบิกเงินของเจ้าหน้าที่ต้องเบิกจากบัญชีเหรัญญิก (Treasurer Cash Account) เท่านั้น`
+      );
+    }
+
+    // STRICT CHECK 2: Disallow Staff Cash Accounts
+    if (
+      sourceAccountId === '1030-01' ||
+      sourceAccountId.startsWith('staff-') ||
+      sourceAccountId.toLowerCase().includes('officer') ||
+      sourceAccountId.toLowerCase().includes('staff')
+    ) {
+      throw new Error(
+        'ไม่อนุญาตให้เลือกบัญชีเงินสดเจ้าหน้าที่เป็นบัญชีต้นทาง — การสร้างรอบเบิกเงินต้องเริ่มต้นจากบัญชีเหรัญญิกเท่านั้น'
+      );
+    }
+
+    // STRICT CHECK 3: Verify genuine Treasurer Cash Account
+    const eligibleTreasurers = await this.getEligibleTreasurerAccounts();
+    if (eligibleTreasurers.length === 0) {
+      throw new Error('ไม่มีบัญชีเหรัญญิกที่พร้อมใช้งานสำหรับการเบิกจ่ายในระบบ กรุณาติดต่อฝ่ายเหรัญญิก');
+    }
+
+    const matchedTreasurer = eligibleTreasurers.find(
+      (t) =>
+        t.id === sourceAccountId ||
+        t.accountCode === sourceAccountId ||
+        t.custodianId === sourceAccountId ||
+        sourceAccountId === 'treasurer-cash' ||
+        sourceAccountId === 'treasurer-cash-main'
+    );
+
+    if (!matchedTreasurer) {
+      throw new Error(
+        `บัญชีต้นทาง "${sourceAccountId}" ไม่ใช่บัญชีเหรัญญิกที่ได้รับอนุญาตสำหรับรอบเบิกเงินของเจ้าหน้าที่`
+      );
+    }
+
     if (!input.items || input.items.length === 0) {
       throw new Error('ต้องมีรายการย่อยอย่างน้อย 1 รายการในรอบการเบิก');
     }
@@ -1376,6 +1471,19 @@ export class FinancialWorkflowService {
       throw new Error('ยอดรวมของรอบการเบิกต้องมากกว่า 0 บาท');
     }
 
+    // STRICT CHECK 4: Check Treasurer Cash Balance
+    if (totalBatchAmount > matchedTreasurer.currentBalance) {
+      throw new Error(
+        `ยอดเงินคงเหลือในบัญชีเหรัญญิกไม่เพียงพอ (คงเหลือ ฿${matchedTreasurer.currentBalance.toLocaleString('th-TH', { minimumFractionDigits: 2 })}, แต่ยอดขอเบิกรอบนี้ ฿${totalBatchAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) กรุณาปรับลดจำนวนเงิน หรือรอเหรัญญิกเบิกเงินสดจากธนาคารเข้าคลังก่อน`
+      );
+    }
+
+    // STRICT CHECK 5: Validate Fund Type
+    const fundType = input.fundType || 'zakat';
+    if (!['zakat', 'sadaqah', 'operational'].includes(fundType)) {
+      throw new Error(`ประเภทกองทุน "${fundType}" ไม่ถูกต้อง`);
+    }
+
     const thaiYear = new Date().getFullYear() + 543;
     const batchNo = `WD-${thaiYear}-${Math.floor(1000 + Math.random() * 9000)}`;
     const workflowId = `wf-${Date.now()}-${randomUUID().slice(0, 6)}`;
@@ -1392,20 +1500,22 @@ export class FinancialWorkflowService {
           step1_fund_type, step1_notes,
           step2_treasurer_id, step2_treasurer_name, step2_status,
           overall_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'custodian-ruslan', 'นายรุสลัน หะสาเมาะ', 'pending', ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `,
       args: [
         workflowId,
         batchNo,
         input.title.trim(),
-        input.bankAccountId,
+        matchedTreasurer.id,
         totalBatchAmount,
         dateNow,
         actor.id,
         actor.name,
         initialStatus,
-        input.fundType || 'zakat',
+        fundType,
         input.notes || null,
+        matchedTreasurer.custodianId,
+        matchedTreasurer.custodianName,
         initialStatus,
       ],
     });
@@ -2796,6 +2906,11 @@ export class FinancialWorkflowService {
         status: String(wf.overall_status || 'draft'),
         fundType: String(wf.step1_fund_type || 'zakat'),
         bankAccountId: String(wf.step1_bank_account_id),
+        sourceAccountId: String(wf.step1_bank_account_id),
+        sourceAccountName: 'บัญชีเหรัญญิก (Treasurer Cash Account)',
+        sourceAccountType: 'treasurer_cash',
+        treasurerId: String(wf.step2_treasurer_id || 'custodian-ruslan'),
+        treasurerName: String(wf.step2_treasurer_name || 'นายรุสลัน หะสาเมาะ'),
         withdrawAmount: totalWithdrawAmount,
         date: String(wf.step1_date || '').slice(0, 10),
         operatorId: String(wf.step1_operator_id),

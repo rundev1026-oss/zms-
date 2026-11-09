@@ -203,67 +203,206 @@ export class ApprovalsService {
       );
     }
 
-    // 1. Resolve Fund Account (Level 1)
-    const fundInput = dto.fundId.trim();
-    const isFundUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fundInput);
-    const fund = await this.prisma.fundAccount.findFirst({
-      where: {
-        OR: [
-          ...(isFundUuid ? [{ id: fundInput }] : []),
-          { code: fundInput },
-          { legacyId: fundInput },
-        ],
-      },
-    });
+    // 1. Resolve Specific Sub-Fund (Level 2) strictly by Assistance Type
+    const cleanType = (app.assistanceType || '').trim().toLowerCase();
+    const cleanId = (app.assistanceTypeId || '').trim().toLowerCase();
+    let targetSubSearch: string | null = null;
+
+    if (
+      cleanType.includes('ทุนการศึกษา') ||
+      cleanType.includes('การศึกษา') ||
+      cleanType.includes('ค่าเล่าเรียน') ||
+      cleanType.includes('อุปกรณ์การเรียน') ||
+      cleanType === 'education' ||
+      cleanId.includes('edu') ||
+      cleanId === 'subf-4' ||
+      cleanId === 'ast-4'
+    ) {
+      targetSubSearch = 'education';
+    } else if (cleanType.includes('บ้านอัน-เราะห์มัต') || cleanType.includes('เราะห์มัต')) {
+      targetSubSearch = 'housing';
+    } else if (
+      cleanType.includes('ซ่อมแซม') ||
+      cleanType.includes('ที่อยู่อาศัย') ||
+      cleanType === 'housing' ||
+      cleanId.includes('house') ||
+      cleanId === 'subf-2' ||
+      cleanId === 'ast-2'
+    ) {
+      targetSubSearch = 'housing';
+    } else if (
+      cleanType.includes('ต่อยอดอาชีพ') ||
+      cleanType.includes('สนับสนุนอาชีพ') ||
+      cleanType.includes('ประกอบอาชีพ') ||
+      cleanType.includes('ส่งเสริมอาชีพ') ||
+      cleanType.includes('อาชีพ') ||
+      cleanType === 'career' ||
+      cleanId.includes('career') ||
+      cleanId === 'subf-3' ||
+      cleanId === 'ast-3'
+    ) {
+      targetSubSearch = 'career';
+    } else if (
+      cleanType.includes('ปัจจัยยังชีพ') ||
+      cleanType.includes('ยังชีพ') ||
+      cleanType.includes('ค่าครองชีพ') ||
+      cleanType.includes('อาหาร') ||
+      cleanType === 'living' ||
+      cleanId.includes('living') ||
+      cleanId === 'subf-1' ||
+      cleanId === 'ast-1'
+    ) {
+      targetSubSearch = 'living';
+    } else if (
+      cleanType.includes('ช่วยเหลือฉุกเฉิน') ||
+      cleanType.includes('ฉุกเฉิน') ||
+      cleanType.includes('บรรเทาทุกข์') ||
+      cleanType.includes('ภัยพิบัติ') ||
+      cleanType.includes('ผู้ประสบภัย') ||
+      cleanType === 'emergency' ||
+      cleanId.includes('emergency') ||
+      cleanId === 'subf-5' ||
+      cleanId === 'ast-5'
+    ) {
+      targetSubSearch = 'emergency';
+    } else if (
+      cleanType.includes('หนี้สิน') ||
+      cleanType.includes('ปลดหนี้') ||
+      cleanType.includes('ฆอรีมีน') ||
+      cleanId.includes('gharim')
+    ) {
+      targetSubSearch = 'gharimin_debt_relief';
+    } else if (
+      cleanType.includes('มุอัลลัฟ') ||
+      cleanType.includes('มุสลิมใหม่') ||
+      cleanId.includes('muallaf')
+    ) {
+      targetSubSearch = 'muallaf_welfare';
+    } else if (
+      cleanType.includes('ผู้เดินทาง') ||
+      cleanType.includes('พลัดถิ่น') ||
+      cleanType.includes('อิบนุสสะบีล') ||
+      cleanId.includes('ibnsabil')
+    ) {
+      targetSubSearch = 'ibnsabil_travel_aid';
+    } else if (
+      cleanType.includes('มนุษยธรรม') ||
+      cleanType.includes('ผู้ลี้ภัย') ||
+      cleanId.includes('human')
+    ) {
+      targetSubSearch = 'humanitarian_relief';
+    } else if (
+      cleanType.includes('ฟีสะบีลิลลาฮ์') ||
+      cleanType.includes('ส่งเสริมศาสนา') ||
+      cleanId.includes('fisabilillah')
+    ) {
+      targetSubSearch = 'fisabilillah_education_dawah';
+    } else if (
+      cleanType.includes('อามิล') ||
+      cleanId.includes('amil')
+    ) {
+      targetSubSearch = 'amil_operations';
+    }
+
+    let subFund: any = null;
+
+    if (targetSubSearch) {
+      subFund = await this.prisma.faqirMiskinSubFund.findFirst({
+        where: {
+          OR: [
+            { code: targetSubSearch },
+            { fundCode: targetSubSearch.toUpperCase() },
+            ...(targetSubSearch === 'education' ? [{ code: 'education' }, { fundCode: 'SF-FM-04' }, { legacyId: 'subf-4' }] : []),
+            ...(targetSubSearch === 'housing' ? [{ code: 'housing' }, { fundCode: 'SF-FM-02' }, { legacyId: 'subf-2' }] : []),
+            ...(targetSubSearch === 'career' ? [{ code: 'career' }, { fundCode: 'SF-FM-03' }, { legacyId: 'subf-3' }] : []),
+            ...(targetSubSearch === 'living' ? [{ code: 'living' }, { fundCode: 'SF-FM-01' }, { legacyId: 'subf-1' }] : []),
+            ...(targetSubSearch === 'emergency' ? [{ code: 'emergency' }, { fundCode: 'SF-FM-05' }, { legacyId: 'subf-5' }] : []),
+            ...(targetSubSearch === 'gharimin_debt_relief' ? [{ code: 'gharimin_debt_relief' }, { fundCode: 'SF-GHR-01' }, { legacyId: 'subf-gharimin-1' }] : []),
+            ...(targetSubSearch === 'muallaf_welfare' ? [{ code: 'muallaf_welfare' }, { fundCode: 'SF-MLF-01' }, { legacyId: 'subf-muallaf-1' }] : []),
+            ...(targetSubSearch === 'ibnsabil_travel_aid' ? [{ code: 'ibnsabil_travel_aid' }, { fundCode: 'SF-IBS-01' }, { legacyId: 'subf-ibnsabil-1' }] : []),
+            ...(targetSubSearch === 'humanitarian_relief' ? [{ code: 'humanitarian_relief' }, { fundCode: 'SF-HUM-01' }, { legacyId: 'subf-humanitarian-1' }] : []),
+            ...(targetSubSearch === 'fisabilillah_education_dawah' ? [{ code: 'fisabilillah_education_dawah' }, { fundCode: 'SF-FSB-01' }, { legacyId: 'subf-fisabilillah-1' }] : []),
+            ...(targetSubSearch === 'amil_operations' ? [{ code: 'amil_operations' }, { fundCode: 'SF-AML-01' }, { legacyId: 'subf-amil-1' }] : []),
+          ],
+        },
+      });
+    }
+
+    if (!subFund && dto.specificFundId) {
+      const isSubUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dto.specificFundId);
+      subFund = await this.prisma.faqirMiskinSubFund.findFirst({
+        where: {
+          OR: [
+            ...(isSubUuid ? [{ id: dto.specificFundId }] : []),
+            { code: dto.specificFundId },
+            { fundCode: dto.specificFundId },
+            { legacyId: dto.specificFundId },
+          ],
+        },
+      });
+    }
+
+    if (!subFund) {
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'UNMAPPED_FUND',
+        'ยังไม่ได้กำหนดกองทุนที่สัมพันธ์กับประเภทความช่วยเหลือนี้',
+      );
+    }
+
+    // 2. Resolve Fund Account (Level 1)
+    const rawFundInput =
+      dto.fundId?.trim() ||
+      app.legacyAssessment?.recommendedFundId ||
+      app.approvedFundId ||
+      subFund?.fundAccountId ||
+      undefined;
+
+    let fund: any = null;
+    if (rawFundInput) {
+      const isFundUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawFundInput);
+      fund = await this.prisma.fundAccount.findFirst({
+        where: {
+          OR: [
+            ...(isFundUuid ? [{ id: rawFundInput }] : []),
+            { code: rawFundInput },
+            { legacyId: rawFundInput },
+          ],
+        },
+      });
+    }
+
+    // Auto-resolve from Asnaf Category if still not found
+    if (!fund) {
+      const asnafClean = (app.asnafCategory || '').toLowerCase();
+      let matchedCode = 'FND-ZKT-01';
+      if (asnafClean.includes('gharim')) matchedCode = 'FND-ZKT-02';
+      else if (asnafClean.includes('fisa') || asnafClean.includes('sabil')) matchedCode = 'FND-ZKT-03';
+      else if (asnafClean.includes('ibn')) matchedCode = 'FND-ZKT-04';
+      else if (asnafClean.includes('amil')) matchedCode = 'FND-OPR-01';
+      else if (asnafClean.includes('muallaf') || asnafClean.includes('human')) matchedCode = 'FND-SDQ-01';
+
+      fund = await this.prisma.fundAccount.findFirst({
+        where: {
+          OR: [
+            { code: matchedCode },
+            { primaryAsnafCode: asnafClean },
+            { legacyId: 'fund-1' },
+          ],
+        },
+      });
+    }
 
     if (!fund) {
-      throw new AppException(HttpStatus.NOT_FOUND, 'FUND_NOT_FOUND', `ไม่พบบัญชีกองทุนรหัส ${dto.fundId}`);
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'CANNOT_RESOLVE_FUND',
+        `ไม่สามารถเชื่อมโยงบัญชีกองทุนสำหรับคำร้อง ${app.applicationNo} ได้ (อัสนัฟ: ${app.asnafCategory}) กรุณาตรวจสอบ Master Data กองทุน`,
+      );
     }
 
     if (!fund.isActive) {
       throw new AppException(HttpStatus.BAD_REQUEST, 'FUND_INACTIVE', `บัญชีกองทุน "${fund.name}" ถูกปิดใช้งาน`);
-    }
-
-    const availableFund = Number(fund.availableAmount);
-    if (availableFund < dto.approvedAmount) {
-      throw new AppException(
-        HttpStatus.BAD_REQUEST,
-        'INSUFFICIENT_FUNDS',
-        `ยอดเงินคงเหลือจัดสรรได้ในบัญชีกองทุน "${fund.name}" ไม่เพียงพอ (คงเหลือ: ฿${availableFund.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ยอดที่ขออนุมัติ: ฿${dto.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`,
-      );
-    }
-
-    // 2. Resolve Specific Sub-Fund (Level 2) if specified or inherited
-    const specificFundId =
-      dto.specificFundId ||
-      app.legacyAssessment?.recommendedSpecificFundId ||
-      app.specificFundId ||
-      undefined;
-
-    let subFund: any = null;
-    if (specificFundId) {
-      const isSubUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(specificFundId);
-      subFund = await this.prisma.faqirMiskinSubFund.findFirst({
-        where: {
-          OR: [
-            ...(isSubUuid ? [{ id: specificFundId }] : []),
-            { code: specificFundId },
-            { fundCode: specificFundId },
-            { legacyId: specificFundId },
-          ],
-        },
-      });
-
-      if (subFund) {
-        const remainingSubFund = Number(subFund.remainingAmount || 0);
-        if (remainingSubFund < dto.approvedAmount) {
-          throw new AppException(
-            HttpStatus.BAD_REQUEST,
-            'INSUFFICIENT_SUB_FUND_BALANCE',
-            `ยอดงบประมาณคงเหลือในกองทุนเฉพาะเจาะจง "${subFund.name}" ไม่เพียงพอ (คงเหลือ: ฿${remainingSubFund.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ยอดที่ขออนุมัติ: ฿${dto.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`,
-          );
-        }
-      }
     }
 
     const approvedDecimal = new Prisma.Decimal(dto.approvedAmount);
@@ -271,6 +410,39 @@ export class ApprovalsService {
     const approvedDateStr = new Date().toLocaleDateString('th-TH');
 
     return await this.prisma.$transaction(async (tx) => {
+      // Concurrency check (Phase 6): query latest balance inside transaction
+      const freshFund = await tx.fundAccount.findUnique({
+        where: { id: fund.id },
+      });
+      if (!freshFund || !freshFund.isActive) {
+        throw new AppException(HttpStatus.BAD_REQUEST, 'FUND_UNAVAILABLE', `บัญชีกองทุน "${fund.name}" ไม่พร้อมใช้งาน`);
+      }
+      const liveAvailableFund = Number(freshFund.availableAmount);
+      if (liveAvailableFund < dto.approvedAmount) {
+        const shortage = dto.approvedAmount - liveAvailableFund;
+        throw new AppException(
+          HttpStatus.BAD_REQUEST,
+          'INSUFFICIENT_FUNDS',
+          `ยอดเงินคงเหลือจัดสรรได้ในบัญชีกองทุน "${freshFund.name}" ไม่เพียงพอ (คงเหลือ: ฿${liveAvailableFund.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ยอดที่ขออนุมัติ: ฿${dto.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ขาดอีก: ฿${shortage.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`,
+        );
+      }
+
+      if (subFund) {
+        const freshSubFund = await tx.faqirMiskinSubFund.findUnique({
+          where: { id: subFund.id },
+        });
+        if (freshSubFund) {
+          const liveRemainingSubFund = Number(freshSubFund.remainingAmount || 0);
+          if (liveRemainingSubFund < dto.approvedAmount) {
+            const shortage = dto.approvedAmount - liveRemainingSubFund;
+            throw new AppException(
+              HttpStatus.BAD_REQUEST,
+              'INSUFFICIENT_SUB_FUND_BALANCE',
+              `ยอดงบประมาณคงเหลือในกองทุนเฉพาะเจาะจง "${freshSubFund.name}" ไม่เพียงพอ (คงเหลือ: ฿${liveRemainingSubFund.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ยอดที่ขออนุมัติ: ฿${dto.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท, ขาดอีก: ฿${shortage.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`,
+            );
+          }
+        }
+      }
       // 1) Update FundAccount (Level 1)
       await tx.fundAccount.update({
         where: { id: fund.id },
@@ -399,10 +571,38 @@ export class ApprovalsService {
     const nowIso = new Date().toISOString();
 
     return await this.prisma.$transaction(async (tx) => {
+      // Release Hold Commitment if previously approved or in wait_disbursement
+      const refundAmount = app.approvedAmount ? Number(app.approvedAmount) : 0;
+      if (refundAmount > 0 && app.approvedFundId) {
+        const refundDecimal = new Prisma.Decimal(refundAmount);
+        await tx.fundAccount.update({
+          where: { id: app.approvedFundId },
+          data: {
+            committedAmount: { decrement: refundDecimal },
+            availableAmount: { increment: refundDecimal },
+            updatedAt: new Date(),
+          },
+        }).catch(() => {});
+
+        if (app.approvedSpecificFundId) {
+          await tx.faqirMiskinSubFund.update({
+            where: { id: app.approvedSpecificFundId },
+            data: {
+              committedAmount: { decrement: refundDecimal },
+              remainingAmount: { increment: refundDecimal },
+              updatedAt: new Date(),
+            },
+          }).catch(() => {});
+        }
+      }
+
       const updatedApp = await tx.assistanceApplication.update({
         where: { id: app.id },
         data: {
           status: 'rejected',
+          approvedAmount: null,
+          approvedFundId: null,
+          approvedSpecificFundId: null,
           rejectionReason: dto.reason.trim(),
           approvalNotes: dto.notes ? `${dto.reason} (${dto.notes})` : dto.reason,
           updatedAt: new Date(),
@@ -465,10 +665,38 @@ export class ApprovalsService {
     const nowIso = new Date().toISOString();
 
     return await this.prisma.$transaction(async (tx) => {
+      // Release Hold Commitment if previously approved or in wait_disbursement
+      const refundAmount = app.approvedAmount ? Number(app.approvedAmount) : 0;
+      if (refundAmount > 0 && app.approvedFundId) {
+        const refundDecimal = new Prisma.Decimal(refundAmount);
+        await tx.fundAccount.update({
+          where: { id: app.approvedFundId },
+          data: {
+            committedAmount: { decrement: refundDecimal },
+            availableAmount: { increment: refundDecimal },
+            updatedAt: new Date(),
+          },
+        }).catch(() => {});
+
+        if (app.approvedSpecificFundId) {
+          await tx.faqirMiskinSubFund.update({
+            where: { id: app.approvedSpecificFundId },
+            data: {
+              committedAmount: { decrement: refundDecimal },
+              remainingAmount: { increment: refundDecimal },
+              updatedAt: new Date(),
+            },
+          }).catch(() => {});
+        }
+      }
+
       const updatedApp = await tx.assistanceApplication.update({
         where: { id: app.id },
         data: {
           status: targetStatus,
+          approvedAmount: null,
+          approvedFundId: null,
+          approvedSpecificFundId: null,
           approvalNotes: dto.notes.trim(),
           updatedAt: new Date(),
         },
@@ -504,5 +732,280 @@ export class ApprovalsService {
         notes: updatedApp.approvalNotes,
       };
     });
+  }
+
+  /**
+   * Get real-time budget status and auto-resolved fund relations for an application
+   */
+  async getBudgetStatus(id: string) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const app = await this.prisma.assistanceApplication.findFirst({
+      where: isUuid ? { id } : { OR: [{ applicationNo: id }, { legacyId: id }] },
+      include: {
+        legacyAssessment: true,
+        beneficiary: {
+          select: {
+            id: true,
+            title: true,
+            firstName: true,
+            lastName: true,
+            registryNumber: true,
+          },
+        },
+      },
+    });
+
+    if (!app) {
+      throw new AppException(HttpStatus.NOT_FOUND, 'APPLICATION_NOT_FOUND', `ไม่พบคำร้องขอความช่วยเหลือรหัส ${id}`);
+    }
+
+    // 1. Resolve Specific Sub-Fund (Level 2) strictly by Assistance Type
+    const cleanType = (app.assistanceType || '').trim().toLowerCase();
+    const cleanId = (app.assistanceTypeId || '').trim().toLowerCase();
+    let targetSubSearch: string | null = null;
+
+    if (
+      cleanType.includes('ทุนการศึกษา') ||
+      cleanType.includes('การศึกษา') ||
+      cleanType.includes('ค่าเล่าเรียน') ||
+      cleanType.includes('อุปกรณ์การเรียน') ||
+      cleanType === 'education' ||
+      cleanId.includes('edu') ||
+      cleanId === 'subf-4' ||
+      cleanId === 'ast-4'
+    ) {
+      targetSubSearch = 'education';
+    } else if (cleanType.includes('บ้านอัน-เราะห์มัต') || cleanType.includes('เราะห์มัต')) {
+      targetSubSearch = 'housing';
+    } else if (
+      cleanType.includes('ซ่อมแซม') ||
+      cleanType.includes('ที่อยู่อาศัย') ||
+      cleanType === 'housing' ||
+      cleanId.includes('house') ||
+      cleanId === 'subf-2' ||
+      cleanId === 'ast-2'
+    ) {
+      targetSubSearch = 'housing';
+    } else if (
+      cleanType.includes('ต่อยอดอาชีพ') ||
+      cleanType.includes('สนับสนุนอาชีพ') ||
+      cleanType.includes('ประกอบอาชีพ') ||
+      cleanType.includes('ส่งเสริมอาชีพ') ||
+      cleanType.includes('อาชีพ') ||
+      cleanType === 'career' ||
+      cleanId.includes('career') ||
+      cleanId === 'subf-3' ||
+      cleanId === 'ast-3'
+    ) {
+      targetSubSearch = 'career';
+    } else if (
+      cleanType.includes('ปัจจัยยังชีพ') ||
+      cleanType.includes('ยังชีพ') ||
+      cleanType.includes('ค่าครองชีพ') ||
+      cleanType.includes('อาหาร') ||
+      cleanType === 'living' ||
+      cleanId.includes('living') ||
+      cleanId === 'subf-1' ||
+      cleanId === 'ast-1'
+    ) {
+      targetSubSearch = 'living';
+    } else if (
+      cleanType.includes('ช่วยเหลือฉุกเฉิน') ||
+      cleanType.includes('ฉุกเฉิน') ||
+      cleanType.includes('บรรเทาทุกข์') ||
+      cleanType.includes('ภัยพิบัติ') ||
+      cleanType.includes('ผู้ประสบภัย') ||
+      cleanType === 'emergency' ||
+      cleanId.includes('emergency') ||
+      cleanId === 'subf-5' ||
+      cleanId === 'ast-5'
+    ) {
+      targetSubSearch = 'emergency';
+    } else if (
+      cleanType.includes('หนี้สิน') ||
+      cleanType.includes('ปลดหนี้') ||
+      cleanType.includes('ฆอรีมีน') ||
+      cleanId.includes('gharim')
+    ) {
+      targetSubSearch = 'gharimin_debt_relief';
+    } else if (
+      cleanType.includes('มุอัลลัฟ') ||
+      cleanType.includes('มุสลิมใหม่') ||
+      cleanId.includes('muallaf')
+    ) {
+      targetSubSearch = 'muallaf_welfare';
+    } else if (
+      cleanType.includes('ผู้เดินทาง') ||
+      cleanType.includes('พลัดถิ่น') ||
+      cleanType.includes('อิบนุสสะบีล') ||
+      cleanId.includes('ibnsabil')
+    ) {
+      targetSubSearch = 'ibnsabil_travel_aid';
+    } else if (
+      cleanType.includes('มนุษยธรรม') ||
+      cleanType.includes('ผู้ลี้ภัย') ||
+      cleanId.includes('human')
+    ) {
+      targetSubSearch = 'humanitarian_relief';
+    } else if (
+      cleanType.includes('ฟีสะบีลิลลาฮ์') ||
+      cleanType.includes('ส่งเสริมศาสนา') ||
+      cleanId.includes('fisabilillah')
+    ) {
+      targetSubSearch = 'fisabilillah_education_dawah';
+    } else if (
+      cleanType.includes('อามิล') ||
+      cleanId.includes('amil')
+    ) {
+      targetSubSearch = 'amil_operations';
+    }
+
+    let subFund: any = null;
+
+    if (targetSubSearch) {
+      subFund = await this.prisma.faqirMiskinSubFund.findFirst({
+        where: {
+          OR: [
+            { code: targetSubSearch },
+            { fundCode: targetSubSearch.toUpperCase() },
+            ...(targetSubSearch === 'education' ? [{ code: 'education' }, { fundCode: 'SF-FM-04' }, { legacyId: 'subf-4' }] : []),
+            ...(targetSubSearch === 'housing' ? [{ code: 'housing' }, { fundCode: 'SF-FM-02' }, { legacyId: 'subf-2' }] : []),
+            ...(targetSubSearch === 'career' ? [{ code: 'career' }, { fundCode: 'SF-FM-03' }, { legacyId: 'subf-3' }] : []),
+            ...(targetSubSearch === 'living' ? [{ code: 'living' }, { fundCode: 'SF-FM-01' }, { legacyId: 'subf-1' }] : []),
+            ...(targetSubSearch === 'emergency' ? [{ code: 'emergency' }, { fundCode: 'SF-FM-05' }, { legacyId: 'subf-5' }] : []),
+            ...(targetSubSearch === 'gharimin_debt_relief' ? [{ code: 'gharimin_debt_relief' }, { fundCode: 'SF-GHR-01' }, { legacyId: 'subf-gharimin-1' }] : []),
+            ...(targetSubSearch === 'muallaf_welfare' ? [{ code: 'muallaf_welfare' }, { fundCode: 'SF-MLF-01' }, { legacyId: 'subf-muallaf-1' }] : []),
+            ...(targetSubSearch === 'ibnsabil_travel_aid' ? [{ code: 'ibnsabil_travel_aid' }, { fundCode: 'SF-IBS-01' }, { legacyId: 'subf-ibnsabil-1' }] : []),
+            ...(targetSubSearch === 'humanitarian_relief' ? [{ code: 'humanitarian_relief' }, { fundCode: 'SF-HUM-01' }, { legacyId: 'subf-humanitarian-1' }] : []),
+            ...(targetSubSearch === 'fisabilillah_education_dawah' ? [{ code: 'fisabilillah_education_dawah' }, { fundCode: 'SF-FSB-01' }, { legacyId: 'subf-fisabilillah-1' }] : []),
+            ...(targetSubSearch === 'amil_operations' ? [{ code: 'amil_operations' }, { fundCode: 'SF-AML-01' }, { legacyId: 'subf-amil-1' }] : []),
+          ],
+        },
+      });
+    }
+
+    // 2. Resolve Main Fund Account (Level 1)
+    const rawFundInput =
+      app.legacyAssessment?.recommendedFundId ||
+      app.approvedFundId ||
+      subFund?.fundAccountId ||
+      undefined;
+
+    let fund: any = null;
+    if (rawFundInput) {
+      const isFundUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawFundInput);
+      fund = await this.prisma.fundAccount.findFirst({
+        where: {
+          OR: [
+            ...(isFundUuid ? [{ id: rawFundInput }] : []),
+            { code: rawFundInput },
+            { legacyId: rawFundInput },
+          ],
+        },
+      });
+    }
+
+    if (!fund) {
+      const asnafClean = (app.asnafCategory || '').toLowerCase();
+      let matchedCode = 'FND-ZKT-01';
+      if (asnafClean.includes('gharim')) matchedCode = 'FND-ZKT-02';
+      else if (asnafClean.includes('fisa') || asnafClean.includes('sabil')) matchedCode = 'FND-ZKT-03';
+      else if (asnafClean.includes('ibn')) matchedCode = 'FND-ZKT-04';
+      else if (asnafClean.includes('amil')) matchedCode = 'FND-OPR-01';
+      else if (asnafClean.includes('muallaf') || asnafClean.includes('human')) matchedCode = 'FND-SDQ-01';
+
+      fund = await this.prisma.fundAccount.findFirst({
+        where: {
+          OR: [
+            { code: matchedCode },
+            { primaryAsnafCode: asnafClean },
+            { legacyId: 'fund-1' },
+          ],
+        },
+      });
+    }
+
+    const asnafLabels: Record<string, string> = {
+      faqir_miskin: 'ฟากีร–มิสกิน (Faqir & Miskin)',
+      faqir: 'ฟากีร (The Destitute)',
+      miskin: 'มิสกิน (The Needy)',
+      amil: 'อามิลีน (Amil / Zakat Admin)',
+      muallaf: 'มุอัลลัฟ (Muallaf)',
+      gharimin: 'อัล-ฆอรีมีน (Gharimin / Debtors)',
+      fisabilillah: 'ฟีสะบีลิลลาฮ์ (Fi Sabilillah)',
+      ibnsabil: 'อิบนุสสะบีล (Ibn Sabil / Wayfarer)',
+      humanitarian: 'มนุษยธรรมและบรรเทาทุกข์',
+    };
+
+    const asnafDisplay = asnafLabels[app.asnafCategory] || app.asnafCategory;
+    const requestedAmount = Number(app.requestedAmount);
+    const recommendedAmount = app.legacyAssessment?.recommendedAmount ? Number(app.legacyAssessment.recommendedAmount) : requestedAmount;
+
+    const mainAllocated = fund ? Number(fund.totalReceived || 0) : 0;
+    const mainDisbursed = fund ? Number(fund.disbursedAmount || 0) : 0;
+    const mainCommitted = fund ? Number(fund.committedAmount || 0) : 0;
+    const mainAvailable = fund ? Number(fund.availableAmount || 0) : 0;
+
+    const subAllocated = subFund ? Number(subFund.allocatedAmount || subFund.targetAmount || 0) : 0;
+    const subDisbursed = subFund ? Number(subFund.disbursedAmount || 0) : 0;
+    const subCommitted = subFund ? Number(subFund.committedAmount || 0) : 0;
+    const subAvailable = subFund ? Number(subFund.remainingAmount || 0) : 0;
+
+    return {
+      applicationId: app.id,
+      applicationNo: app.applicationNo,
+      status: app.status,
+      requestInfo: {
+        beneficiaryName: app.beneficiary ? formatPersonName({ prefix: app.beneficiary.title, firstName: app.beneficiary.firstName, lastName: app.beneficiary.lastName }) : '',
+        beneficiaryRegistryNo: app.beneficiary?.registryNumber || '',
+        asnafCategory: app.asnafCategory,
+        asnafDisplayName: asnafDisplay,
+        assistanceType: app.assistanceType || 'ปัจจัยยังชีพ',
+        assistanceTypeId: app.assistanceTypeId,
+        assistanceFormat: (app as any).assistanceFormat || 'โอนเงินเข้าบัญชี (Bank Transfer)',
+        requestedAmount,
+        recommendedAmount,
+      },
+      resolvedFunds: {
+        mainFund: fund
+          ? {
+              id: fund.id,
+              code: fund.code,
+              name: fund.name,
+              category: fund.category,
+              isActive: fund.isActive,
+              isAutoResolved: true,
+            }
+          : null,
+        subFund: subFund
+          ? {
+              id: subFund.id,
+              code: subFund.code || subFund.fundCode,
+              fundCode: subFund.fundCode,
+              name: subFund.name,
+              primaryGroupCode: subFund.primaryGroupCode,
+              isActive: subFund.isActive ?? true,
+              isAutoResolved: true,
+            }
+          : null,
+      },
+      budgetStatus: {
+        mainFund: {
+          allocated: mainAllocated,
+          disbursed: mainDisbursed,
+          committed: mainCommitted,
+          availableBeforeApproval: mainAvailable,
+        },
+        subFund: {
+          allocated: subAllocated,
+          disbursed: subDisbursed,
+          committed: subCommitted,
+          availableBeforeApproval: subAvailable,
+        },
+      },
+      isResolvable: Boolean(fund && subFund),
+      isMapped: Boolean(fund && subFund),
+      unmappedWarning: (fund && subFund) ? null : 'ยังไม่ได้กำหนดกองทุนที่สัมพันธ์กับประเภทความช่วยเหลือนี้',
+    };
   }
 }

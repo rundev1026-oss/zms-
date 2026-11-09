@@ -41,6 +41,13 @@ export class ApprovalsController {
     return this.approvalsService.getSummary();
   }
 
+  @Get(':id/budget-status')
+  @RequirePermissions('beneficiaries.read')
+  @ApiOperation({ summary: 'ดึงสถานะความสัมพันธ์กองทุนและงบประมาณแบบ Real-time สำหรับการพิจารณาอนุมัติ' })
+  getBudgetStatus(@Param('id') id: string) {
+    return this.approvalsService.getBudgetStatus(id);
+  }
+
   @Post(':id/approve')
   @RequirePermissions('beneficiaries.decide')
   @ApiOperation({ summary: 'พิจารณาอนุมัติคำร้อง จัดสรรกองทุน และกันงบประมาณผูกพัน' })

@@ -124,7 +124,7 @@ interface AppContextType {
   updateChecklist: (appId: string, checklist: any) => Promise<boolean>;
   updateApplicationStatus: (appId: string, newStatus: ApplicationStatus, notes: string) => Promise<void>;
   submitAssessment: (appId: string, assessment: BeneficiaryAssessment) => Promise<boolean>;
-  approveApplication: (appId: string, approvedAmount: number, fundId: string, notes: string, specificFundId?: string) => Promise<boolean>;
+  approveApplication: (appId: string, approvedAmount: number, fundId?: string, notes?: string, specificFundId?: string) => Promise<boolean>;
   rejectApplication: (appId: string, notes: string) => Promise<boolean>;
   returnApplication: (appId: string, notes: string) => Promise<boolean>;
   executeDisbursement: (appId: string, amount: number, paymentRef: string, proofUrl: string, notes: string) => Promise<boolean>;
@@ -622,8 +622,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const approveApplication = async (
     appId: string,
     approvedAmount: number,
-    fundId: string,
-    notes: string,
+    fundId?: string,
+    notes?: string,
     specificFundId?: string
   ): Promise<boolean> => {
     try {

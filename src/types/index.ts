@@ -487,7 +487,7 @@ export interface BeneficiaryAssessment {
   primaryHardship: string;
   officerRecommendation: 'recommend_full' | 'recommend_partial' | 'recommend_decline';
   recommendedAmount: number;
-  recommendedFundId: string;
+  recommendedFundId?: string;
   recommendedSpecificFundId?: string;
   generalNotes: string;
 }
@@ -2314,6 +2314,8 @@ export interface FundSolvencyCheckResult {
     id: string;
     code: string;
     name: string;
+    allocatedAmount?: number;
+    disbursedAmount?: number;
     remainingAmount: number;
     committedAmount: number;
   };

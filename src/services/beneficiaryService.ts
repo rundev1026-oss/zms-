@@ -31,6 +31,13 @@ import {
   resolveAsnafGroupCode,
   getChartOfAccountsForDisbursement 
 } from '@/lib/constants/asnafRelationshipCatalog';
+import {
+  matchCanonicalSubKey,
+  matchCanonicalMainFundCode,
+  CANONICAL_SUB_FUNDS,
+  CANONICAL_MAIN_FUNDS,
+  UNMAPPED_FUND_WARNING,
+} from '@/lib/fundResolution';
 
 export interface HouseholdMemberInput {
   id?: string;
@@ -148,7 +155,7 @@ export interface AssessmentInput {
   primaryHardship: string;
   officerRecommendation: 'recommend_full' | 'recommend_partial' | 'recommend_decline';
   recommendedAmount: number;
-  recommendedFundId: string;
+  recommendedFundId?: string;
   recommendedSpecificFundId?: string;
   generalNotes: string;
 }
@@ -1560,7 +1567,7 @@ export class BeneficiaryService {
     }
 
     const appRes = await db.execute({
-      sql: 'SELECT id, application_no, status, specific_fund_id, request_status, assessment_status, completion_status FROM assistance_applications WHERE id = ?',
+      sql: 'SELECT id, application_no, status, specific_fund_id, primary_group_code, assistance_type_id, assistance_type, request_status, assessment_status, completion_status FROM assistance_applications WHERE id = ?',
       args: [applicationId],
     });
 
@@ -1571,6 +1578,27 @@ export class BeneficiaryService {
     const app = appRes.rows[0];
     if (String(app.completion_status || 'active') !== 'active') {
       throw new Error(`คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถบันทึกผลประเมินได้`);
+    }
+
+    // Auto-resolve specific fund and primary group from application data or Master Data relationship
+    let autoSpecificFundId = assessment.recommendedSpecificFundId || (app.specific_fund_id ? String(app.specific_fund_id) : null);
+    let autoFundId = assessment.recommendedFundId || (app.primary_group_code ? String(app.primary_group_code) : 'fund-1');
+
+    if (!autoSpecificFundId && (app.assistance_type_id || app.assistance_type)) {
+      const astRes = await db.execute({
+        sql: 'SELECT specific_fund_id, primary_group_code FROM assistance_types WHERE id = ? OR code = ? OR name = ? LIMIT 1',
+        args: [
+          String(app.assistance_type_id || app.assistance_type),
+          String(app.assistance_type_id || app.assistance_type),
+          String(app.assistance_type || app.assistance_type_id),
+        ],
+      });
+      if (astRes.rows.length > 0 && astRes.rows[0].specific_fund_id) {
+        autoSpecificFundId = String(astRes.rows[0].specific_fund_id);
+        if (astRes.rows[0].primary_group_code && !autoFundId) {
+          autoFundId = String(astRes.rows[0].primary_group_code);
+        }
+      }
     }
 
     const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
@@ -1596,8 +1624,8 @@ export class BeneficiaryService {
         assessment.primaryHardship || '',
         assessment.officerRecommendation || 'recommend_full',
         assessment.recommendedAmount || 0,
-        assessment.recommendedFundId || 'fund-1',
-        assessment.recommendedSpecificFundId || null,
+        autoFundId,
+        autoSpecificFundId || null,
         assessment.generalNotes || '',
       ],
     });
@@ -1610,9 +1638,12 @@ export class BeneficiaryService {
                 assessment_date = ?,
                 assessed_by_id = ?,
                 assessed_by_name = ?,
+                ${!app.specific_fund_id && autoSpecificFundId ? 'specific_fund_id = ?, ' : ''}
                 updated_at = CURRENT_TIMESTAMP 
             WHERE id = ?`,
-      args: [timestampNow, actor.id, actor.name, applicationId],
+      args: !app.specific_fund_id && autoSpecificFundId
+        ? [timestampNow, actor.id, actor.name, autoSpecificFundId, applicationId]
+        : [timestampNow, actor.id, actor.name, applicationId],
     });
 
     // Record Lifecycle Transition
@@ -1695,7 +1726,7 @@ export class BeneficiaryService {
 
     const appRes = await db.execute({
       sql: `SELECT a.id, a.application_no, a.requested_amount, a.approved_amount, a.specific_fund_id,
-                   a.primary_group_code, a.asnaf_category, a.assistance_type_id, a.assistance_format_id,
+                   a.primary_group_code, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.assistance_format_id,
                    a.assistance_format_code, a.delivery_method, a.fiscal_year,
                    ass.recommended_fund_id, ass.recommended_specific_fund_id
             FROM assistance_applications a
@@ -1710,10 +1741,27 @@ export class BeneficiaryService {
 
     const app = appRes.rows[0];
     const fiscalYear = String(app.fiscal_year || '2569');
-    const targetSpecificFundId = params.specificFundId ||
-      (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
-      (app.specific_fund_id ? String(app.specific_fund_id) : undefined) ||
-      'subf-1';
+
+    // Strict Assistance Type-driven Sub-Fund Resolution
+    const asnafRaw = String(app.asnaf_category || 'faqir_miskin');
+    const assistanceTypeStr = String(app.assistance_type || '');
+    const assistanceTypeIdStr = app.assistance_type_id ? String(app.assistance_type_id) : undefined;
+
+    const subKey = matchCanonicalSubKey(assistanceTypeStr, assistanceTypeIdStr, undefined, asnafRaw);
+    let targetSpecificFundId = params.specificFundId;
+
+    if (!targetSpecificFundId && subKey && CANONICAL_SUB_FUNDS[subKey]) {
+      targetSpecificFundId = CANONICAL_SUB_FUNDS[subKey].id;
+    }
+    if (!targetSpecificFundId) {
+      targetSpecificFundId =
+        (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
+        (app.specific_fund_id ? String(app.specific_fund_id) : undefined);
+    }
+
+    if (!targetSpecificFundId) {
+      throw new Error(UNMAPPED_FUND_WARNING);
+    }
 
     const sfRes = await db.execute({
       sql: 'SELECT id, fund_code, code, name, primary_group_code, fund_account_id, is_active, remaining_amount, committed_amount, allocated_amount FROM faqir_miskin_sub_funds WHERE id = ? OR code = ? OR fund_code = ? LIMIT 1',
@@ -1726,7 +1774,12 @@ export class BeneficiaryService {
 
     const sf = sfRes.rows[0];
     const primaryGroupCode = String(sf.primary_group_code || app.primary_group_code || 'faqir_miskin');
-    const targetFundAccountId = params.fundId || String(sf.fund_account_id || 'fund-1');
+    const mainCode = matchCanonicalMainFundCode(asnafRaw, subKey);
+    let targetFundAccountId = params.fundId || String(sf.fund_account_id || '');
+    if (!targetFundAccountId && mainCode && CANONICAL_MAIN_FUNDS[mainCode]) {
+      targetFundAccountId = CANONICAL_MAIN_FUNDS[mainCode].id;
+    }
+    if (!targetFundAccountId) targetFundAccountId = 'fund-1';
 
     const fundRes = await db.execute({
       sql: 'SELECT id, code, name, available_amount, committed_amount FROM fund_accounts WHERE id = ?',
@@ -1742,6 +1795,10 @@ export class BeneficiaryService {
 
     // Live specific fund metrics
     let sfRemaining = Number(sf.remaining_amount || 0);
+    let sfAllocated = Number(sf.allocated_amount || 0);
+    let sfDisbursed = Number(sf.disbursed_amount || 0);
+    let sfCommitted = Number(sf.committed_amount || 0);
+
     try {
       const sfList = await FinancialService.getSpecificFunds({
         fiscalYear,
@@ -1750,7 +1807,10 @@ export class BeneficiaryService {
       });
       const liveSf = sfList.find((s) => s.id === targetSpecificFundId || s.code === sf.code || s.fundCode === sf.fund_code);
       if (liveSf) {
-        sfRemaining = Math.min(Number(sf.remaining_amount || 0), Number(liveSf.remainingAmount));
+        sfRemaining = Number(liveSf.remainingAmount ?? sfRemaining);
+        sfAllocated = Number(liveSf.allocatedAmount ?? sfAllocated);
+        sfDisbursed = Number(liveSf.disbursedAmount ?? sfDisbursed);
+        sfCommitted = Number(liveSf.committedAmount ?? sfCommitted);
       }
     } catch {}
 
@@ -1798,6 +1858,8 @@ export class BeneficiaryService {
         id: String(sf.id),
         code: String(sf.code || sf.fund_code || ''),
         name: String(sf.name),
+        allocatedAmount: sfAllocated,
+        disbursedAmount: sfDisbursed,
         remainingAmount: sfRemaining,
         committedAmount: Number(sf.committed_amount || 0),
       },
@@ -1830,23 +1892,29 @@ export class BeneficiaryService {
   static async approveApplication(
     applicationId: string,
     approvedAmount: number,
-    fundId: string,
-    notes: string,
-    actor: ActorContext,
+    fundId?: string,
+    notes?: string,
+    actor?: ActorContext,
     specificFundId?: string
   ) {
     await initDb();
     const db = getDb();
 
+    const currentActor = actor || {
+      id: 'u-1',
+      name: 'เจ้าหน้าที่ผู้พิจารณาอนุมัติ',
+      role: 'approver',
+    };
+
     // 1. Check Role Authorization
-    if (!['approver', 'executive', 'super_admin'].includes(actor.role)) {
-      throw new Error(`บทบาท "${actor.role}" ไม่มีสิทธิ์พิจารณาอนุมัติคำร้องขอรับซะกาต`);
+    if (!['approver', 'executive', 'super_admin'].includes(currentActor.role)) {
+      throw new Error(`บทบาท "${currentActor.role}" ไม่มีสิทธิ์พิจารณาอนุมัติคำร้องขอรับซะกาต`);
     }
 
     // 2. Fetch Application & Assessment details
     let appRes = await db.execute({
       sql: `SELECT a.id, a.application_no, a.assigned_officer_id, a.status, a.beneficiary_id,
-                   a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.fiscal_year,
+                   a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.fiscal_year,
                    a.request_status, a.assessment_status, a.approval_status, a.delivery_method, a.completion_status,
                    ass.recommended_fund_id, ass.recommended_specific_fund_id
             FROM assistance_applications a
@@ -1862,7 +1930,7 @@ export class BeneficiaryService {
         if (synced) {
           appRes = await db.execute({
             sql: `SELECT a.id, a.application_no, a.assigned_officer_id, a.status, a.beneficiary_id,
-                         a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.fiscal_year,
+                         a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.fiscal_year,
                          a.request_status, a.assessment_status, a.approval_status, a.delivery_method, a.completion_status,
                          ass.recommended_fund_id, ass.recommended_specific_fund_id
                   FROM assistance_applications a
@@ -1882,9 +1950,9 @@ export class BeneficiaryService {
 
     // SEGREGATION OF DUTIES ENFORCEMENT:
     // Assigned Help Officer CANNOT approve their own application!
-    if (app.assigned_officer_id === actor.id && actor.role !== 'super_admin') {
+    if (app.assigned_officer_id === currentActor.id && currentActor.role !== 'super_admin') {
       throw new Error(
-        `การละเมิดหลักการแบ่งแยกหน้าที่ (Segregation of Duties): เจ้าหน้าที่ผู้รับผิดชอบคำร้อง (${actor.name}) ไม่มีสิทธิ์อนุมัติคำร้องของตนเอง`
+        `การละเมิดหลักการแบ่งแยกหน้าที่ (Segregation of Duties): เจ้าหน้าที่ผู้รับผิดชอบคำร้อง (${currentActor.name}) ไม่มีสิทธิ์อนุมัติคำร้องของตนเอง`
       );
     }
 
@@ -1911,11 +1979,26 @@ export class BeneficiaryService {
 
     const fiscalYear = String(app.fiscal_year || '2569');
 
-    // 3. Resolve Target Specific Fund (Level 2)
-    const targetSpecificFundId = specificFundId ||
-      (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
-      (app.specific_fund_id ? String(app.specific_fund_id) : undefined) ||
-      'subf-1';
+    // 3. Resolve Target Specific Fund (Level 2) strictly by assistance type
+    const asnafRaw = String(app.asnaf_category || 'faqir_miskin');
+    const assistanceTypeStr = String(app.assistance_type || '');
+    const assistanceTypeIdStr = app.assistance_type_id ? String(app.assistance_type_id) : undefined;
+
+    const subKey = matchCanonicalSubKey(assistanceTypeStr, assistanceTypeIdStr, undefined, asnafRaw);
+    let targetSpecificFundId = specificFundId;
+
+    if (!targetSpecificFundId && subKey && CANONICAL_SUB_FUNDS[subKey]) {
+      targetSpecificFundId = CANONICAL_SUB_FUNDS[subKey].id;
+    }
+    if (!targetSpecificFundId) {
+      targetSpecificFundId =
+        (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
+        (app.specific_fund_id ? String(app.specific_fund_id) : undefined);
+    }
+
+    if (!targetSpecificFundId) {
+      throw new Error(UNMAPPED_FUND_WARNING);
+    }
 
     const sfRes = await db.execute({
       sql: 'SELECT id, fund_code, code, name, primary_group_code, fund_account_id, is_active FROM faqir_miskin_sub_funds WHERE id = ? OR code = ? OR fund_code = ? LIMIT 1',
@@ -1928,7 +2011,12 @@ export class BeneficiaryService {
 
     const sf = sfRes.rows[0];
     const primaryGroupCode = String(sf.primary_group_code || app.primary_group_code || 'faqir_miskin');
-    const targetFundAccountId = fundId || String(sf.fund_account_id || 'fund-1');
+    const mainCode = matchCanonicalMainFundCode(asnafRaw, subKey);
+    let targetFundAccountId = fundId || String(sf.fund_account_id || '');
+    if (!targetFundAccountId && mainCode && CANONICAL_MAIN_FUNDS[mainCode]) {
+      targetFundAccountId = CANONICAL_MAIN_FUNDS[mainCode].id;
+    }
+    if (!targetFundAccountId) targetFundAccountId = 'fund-1';
 
     // 4. SOLVENCY CHECKS ACROSS 3 TIERS (Phase 10: Strict sub-fund balance validation)
     const solvency = await BeneficiaryService.checkFundSolvencyForApproval({
@@ -1997,12 +2085,12 @@ export class BeneficiaryService {
       args: [
         approvedAmount,
         targetFundAccountId,
-        sf.id,
-        sf.id,
-        actor.id,
-        actor.name,
+        sf.id ? String(sf.id) : null,
+        sf.id ? String(sf.id) : null,
+        currentActor.id,
+        currentActor.name,
         approvedDateStr,
-        notes,
+        notes || 'อนุมัติวงเงินช่วยเหลือ',
         applicationId,
       ],
     });
@@ -2014,8 +2102,8 @@ export class BeneficiaryService {
       fromStatus: String(app.approval_status || 'pending'),
       toStatus: 'approved',
       action: 'APPROVE_REQUEST',
-      actor,
-      notes: `อนุมัติวงเงิน ฿${approvedAmount.toLocaleString()} บาท จาก "${fund.name}" -> กองทุน "${sf.name}" (${notes}) และจองงบประมาณ (Fund Hold) ส่งต่อฝ่ายการเงิน`,
+      actor: currentActor,
+      notes: `อนุมัติวงเงิน ฿${approvedAmount.toLocaleString()} บาท จาก "${fund.name}" -> กองทุน "${sf.name}" (${notes || 'อนุมัติ'}) และจองงบประมาณ (Fund Hold) ส่งต่อฝ่ายการเงิน`,
       metadata: { 
         approvedAmount, 
         fundId: targetFundAccountId, 

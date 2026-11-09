@@ -22,11 +22,14 @@ export function createValidationPipe(): ValidationPipe {
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true,
-    exceptionFactory: (errors: ValidationError[]) =>
-      new BadRequestException({
+    exceptionFactory: (errors: ValidationError[]) => {
+      const details = flatten(errors);
+      const firstMessage = details[0]?.message;
+      return new BadRequestException({
         code: 'VALIDATION_ERROR',
-        message: 'ข้อมูลไม่ถูกต้อง',
-        details: flatten(errors),
-      }),
+        message: firstMessage || 'ข้อมูลไม่ถูกต้อง',
+        details,
+      });
+    },
   });
 }

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { formatPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
-import { AssistanceApplication, BeneficiaryAssessment, FaqirMiskinSubFund } from '@/types';
+import { AssistanceApplication, BeneficiaryAssessment } from '@/types';
 import { 
   FileCheck2, 
   CheckCircle, 
@@ -24,7 +24,7 @@ interface AssessmentViewProps {
 }
 
 export function AssessmentView({ onNavigate }: AssessmentViewProps) {
-  const { applications, funds, currentUser, submitAssessment, updateApplicationStatus, showToast } = useApp();
+  const { applications, currentUser, submitAssessment, updateApplicationStatus, showToast } = useApp();
 
   // Find applications waiting for review or assessment
   const pendingApps = applications.filter(
@@ -43,28 +43,22 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
   const [primaryHardship, setPrimaryHardship] = useState('หัวหน้าครอบครัวป่วย ขาดรายได้ประจำ มีบุตรในวัยเรียน');
   const [officerRecommendation, setOfficerRecommendation] = useState<'recommend_full' | 'recommend_partial' | 'recommend_decline'>('recommend_full');
   const [recommendedAmount, setRecommendedAmount] = useState<number>(selectedApp ? selectedApp.requestedAmount : 15000);
-  const [recommendedFundId, setRecommendedFundId] = useState<string>('fund-1');
-  const [recommendedSpecificFundId, setRecommendedSpecificFundId] = useState<string>('subf-1');
-  const [specificFundsList, setSpecificFundsList] = useState<FaqirMiskinSubFund[]>([]);
   const [generalNotes, setGeneralNotes] = useState('ตรวจสอบคุณสมบัติตรงตามเกณฑ์อัสนาฟ 8 จำพวก สมควรได้รับการสงเคราะห์');
-
-  React.useEffect(() => {
-    fetch('/api/finance/allocations/faqir-miskin?fiscalYear=2569')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && Array.isArray(data.subFunds)) {
-          setSpecificFundsList(data.subFunds);
-        }
-      })
-      .catch((err) => console.error('Failed to load specific funds for assessment', err));
-  }, []);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   React.useEffect(() => {
     if (selectedApp) {
-      setRecommendedAmount(selectedApp.requestedAmount);
-      if (selectedApp.specificFundId) {
-        setRecommendedSpecificFundId(selectedApp.specificFundId);
-      }
+      const ass = selectedApp.assessment || (selectedApp as any).legacyAssessment;
+      setRecommendedAmount(ass?.recommendedAmount ? Number(ass.recommendedAmount) : selectedApp.requestedAmount);
+      if (ass?.livingScore !== undefined && ass?.livingScore !== null) setLivingScore(Number(ass.livingScore));
+      if (ass?.housingCondition) setHousingCondition(ass.housingCondition as any);
+      if (ass?.housingNotes) setHousingNotes(ass.housingNotes);
+      if (ass?.debtBurdenSummary) setDebtSummary(ass.debtBurdenSummary);
+      if (ass?.primaryHardship) setPrimaryHardship(ass.primaryHardship);
+      if (ass?.officerRecommendation) setOfficerRecommendation(ass.officerRecommendation as any);
+      if (ass?.generalNotes) setGeneralNotes(ass.generalNotes);
+      setErrors({});
     }
   }, [selectedApp]);
 
@@ -88,7 +82,40 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
 
   const handleSaveAssessment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedApp) return;
+    if (!selectedApp || isSubmitting) return;
+
+    // Field-level validation before submit
+    const newErrors: Record<string, string> = {};
+
+    if (livingScore === undefined || livingScore === null || isNaN(livingScore) || livingScore < 0 || livingScore > 100) {
+      newErrors.livingScore = 'คะแนนประเมินต้องอยู่ระหว่าง 0–100';
+    }
+
+    if (recommendedAmount === undefined || recommendedAmount === null || isNaN(recommendedAmount) || recommendedAmount < 0) {
+      newErrors.recommendedAmount = 'กรุณาระบุวงเงินที่เสนอพิจารณา (ต้องไม่ติดลบ)';
+    }
+
+    if (!housingCondition) {
+      newErrors.housingCondition = 'กรุณาระบุสภาพที่อยู่อาศัย';
+    }
+
+    if (!officerRecommendation) {
+      newErrors.officerRecommendation = 'กรุณาระบุความเห็นและข้อเสนอแนะของเจ้าหน้าที่';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      const firstMsg = Object.values(newErrors)[0];
+      showToast(firstMsg, 'error');
+      return;
+    }
+
+    setErrors({});
+    setIsSubmitting(true);
+
+    // Automatically resolve fund from request & master data relationship (no manual input)
+    const autoFundId = selectedApp.approvedFundId || selectedApp.primaryGroupCode || 'fund-1';
+    const autoSpecificFundId = selectedApp.specificFundId || selectedApp.specificFundCode || undefined;
 
     const assessmentData: BeneficiaryAssessment = {
       id: `ass-${Date.now()}`,
@@ -101,14 +128,18 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
       primaryHardship,
       officerRecommendation,
       recommendedAmount,
-      recommendedFundId,
-      recommendedSpecificFundId,
+      recommendedFundId: autoFundId,
+      recommendedSpecificFundId: autoSpecificFundId,
       generalNotes,
     };
 
-    const success = await submitAssessment(selectedApp.id, assessmentData);
-    if (success) {
-      setSelectedApp(null);
+    try {
+      const success = await submitAssessment(selectedApp.id, assessmentData);
+      if (success) {
+        setSelectedApp(null);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -212,14 +243,27 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                     <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                       กลุ่มหลัก: {selectedApp.primaryGroupName || selectedApp.asnafCategory}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">
-                      กองทุน: {selectedApp.specificFundName || selectedApp.specificFundCode || '-'}
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                      selectedApp.specificFundName || selectedApp.specificFundCode
+                        ? 'bg-sky-50 text-sky-800 border-sky-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}>
+                      กองทุน: {selectedApp.specificFundName || selectedApp.specificFundCode || 'ยังไม่ระบุ'}
                     </span>
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
                       ประเภท: {selectedApp.assistanceType || '-'}
                     </span>
                   </div>
                 </div>
+
+                {(!selectedApp.specificFundName && !selectedApp.specificFundId && !selectedApp.specificFundCode) && (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                    <span>
+                      <strong>แจ้งเตือน:</strong> ยังไม่สามารถระบุกองทุนที่สัมพันธ์กับคำร้องนี้ได้ตาม Master Data (ระบบจะไม่สร้างความสัมพันธ์ปลอม)
+                    </span>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div className="p-2.5 rounded-xl bg-slate-50">
@@ -274,7 +318,9 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   {/* Living Hardship Score Slider */}
-                  <div className="sm:col-span-2 p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className={`sm:col-span-2 p-4 rounded-xl bg-slate-50 border space-y-2 transition-all ${
+                    errors.livingScore ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'
+                  }`}>
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-slate-800">
                         คะแนนความจำเป็นเร่งด่วน (Living Hardship Score: 0 - 100)
@@ -288,7 +334,10 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                       min={0}
                       max={100}
                       value={livingScore}
-                      onChange={(e) => setLivingScore(Number(e.target.value))}
+                      onChange={(e) => {
+                        setLivingScore(Number(e.target.value));
+                        if (errors.livingScore) setErrors({ ...errors, livingScore: '' });
+                      }}
                       className="w-full accent-emerald-600 cursor-pointer"
                     />
                     <div className="flex justify-between text-[10px] text-slate-400">
@@ -296,6 +345,9 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                       <span>50: ปานกลาง</span>
                       <span>80+: ขัดสนวิกฤต/ฉุกเฉิน</span>
                     </div>
+                    {errors.livingScore && (
+                      <p className="text-[11px] text-rose-600 font-semibold mt-1">⚠️ {errors.livingScore}</p>
+                    )}
                   </div>
 
                   <div>
@@ -304,14 +356,22 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                     </label>
                     <select
                       value={housingCondition}
-                      onChange={(e) => setHousingCondition(e.target.value as any)}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl"
+                      onChange={(e) => {
+                        setHousingCondition(e.target.value as any);
+                        if (errors.housingCondition) setErrors({ ...errors, housingCondition: '' });
+                      }}
+                      className={`w-full p-2 bg-slate-50 border rounded-xl transition-all ${
+                        errors.housingCondition ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'
+                      }`}
                     >
                       <option value="dilapidated">บ้านทรุดโทรมมาก ผุพัง หลังคารั่ว</option>
                       <option value="poor">บ้านสภาพไม่ปลอดภัย แออัด</option>
                       <option value="rented">ห้องเช่าค้างชำระ</option>
                       <option value="fair">บ้านตนเองสภาพพออาศัยได้</option>
                     </select>
+                    {errors.housingCondition && (
+                      <p className="text-[11px] text-rose-600 font-semibold mt-1">⚠️ {errors.housingCondition}</p>
+                    )}
                   </div>
 
                   <div>
@@ -320,60 +380,50 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                     </label>
                     <select
                       value={officerRecommendation}
-                      onChange={(e) => setOfficerRecommendation(e.target.value as any)}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-emerald-800"
+                      onChange={(e) => {
+                        setOfficerRecommendation(e.target.value as any);
+                        if (errors.officerRecommendation) setErrors({ ...errors, officerRecommendation: '' });
+                      }}
+                      className={`w-full p-2 bg-slate-50 border rounded-xl font-semibold text-emerald-800 transition-all ${
+                        errors.officerRecommendation ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'
+                      }`}
                     >
                       <option value="recommend_full">เสนออนุมัติเต็มจำนวน (100%)</option>
                       <option value="recommend_partial">เสนออนุมัติบางส่วน</option>
                       <option value="recommend_decline">เสนอไม่อนุมัติ (ไม่เข้าเกณฑ์)</option>
                     </select>
+                    {errors.officerRecommendation && (
+                      <p className="text-[11px] text-rose-600 font-semibold mt-1">⚠️ {errors.officerRecommendation}</p>
+                    )}
                   </div>
 
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block font-semibold text-slate-700 mb-1">
                       วงเงินที่เจ้าหน้าที่เสนอพิจารณา (บาท)
                     </label>
-                    <input
-                      type="number"
-                      required
-                      value={recommendedAmount}
-                      onChange={(e) => setRecommendedAmount(Number(e.target.value))}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      บัญชีกองทุนหลักระดับ 1
-                    </label>
-                    <select
-                      value={recommendedFundId}
-                      onChange={(e) => setRecommendedFundId(e.target.value)}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl"
-                    >
-                      {funds.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name} (คงเหลือ: ฿{f.availableAmount.toLocaleString()})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      กองทุนเฉพาะเจาะจงที่เสนอแนะ (Level 2 Specific Fund)
-                    </label>
-                    <select
-                      value={recommendedSpecificFundId}
-                      onChange={(e) => setRecommendedSpecificFundId(e.target.value)}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-emerald-800"
-                    >
-                      {specificFundsList.map((sf) => (
-                        <option key={sf.id} value={sf.id}>
-                          {sf.fundCode ? `[${sf.fundCode}] ` : ''}{sf.name} (คงเหลือ: ฿{sf.remainingAmount?.toLocaleString() || '0'})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">฿</span>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        value={recommendedAmount}
+                        onChange={(e) => {
+                          setRecommendedAmount(Number(e.target.value));
+                          if (errors.recommendedAmount) setErrors({ ...errors, recommendedAmount: '' });
+                        }}
+                        className={`w-full pl-8 pr-3 py-2 bg-slate-50 border rounded-xl font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all ${
+                          errors.recommendedAmount ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'
+                        }`}
+                      />
+                    </div>
+                    {errors.recommendedAmount ? (
+                      <p className="text-[11px] text-rose-600 font-semibold mt-1">⚠️ {errors.recommendedAmount}</p>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        วงเงินที่ผู้ขอรับยื่นคำร้อง: ฿{selectedApp.requestedAmount.toLocaleString()} บาท
+                      </p>
+                    )}
                   </div>
 
                   <div className="sm:col-span-2">
@@ -392,9 +442,22 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
                   <button
                     type="submit"
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 shadow-sm"
+                    disabled={isSubmitting}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer ${
+                      isSubmitting
+                        ? 'bg-slate-400 cursor-not-allowed opacity-80'
+                        : 'bg-emerald-700 hover:bg-emerald-800'
+                    }`}
                   >
-                    <Check className="w-4 h-4" /> บันทึกการประเมิน & เสนออนุมัติ (Forward to Approver)
+                    {isSubmitting ? (
+                      <>
+                        <Clock className="w-4 h-4 animate-spin" /> กำลังบันทึกและส่งเสนออนุมัติ...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" /> บันทึกการประเมิน & เสนออนุมัติ (Forward to Approver)
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

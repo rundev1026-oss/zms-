@@ -11,9 +11,9 @@ export async function POST(
     const body = await request.json();
     const { approvedAmount, fundId, notes, specificFundId, actor: bodyActor } = body;
 
-    if (approvedAmount === undefined || !fundId) {
+    if (approvedAmount === undefined || Number(approvedAmount) <= 0) {
       return NextResponse.json(
-        { success: false, error: 'ข้อมูลไม่ครบถ้วน (ต้องระบุ approvedAmount และ fundId)' },
+        { success: false, error: 'ข้อมูลไม่ถูกต้อง (ต้องระบุ approvedAmount มากกว่า 0 บาท)' },
         { status: 400 }
       );
     }

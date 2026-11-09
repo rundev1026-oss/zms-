@@ -25,15 +25,15 @@ export class AssessmentService {
       throw new AppException(
         HttpStatus.BAD_REQUEST,
         'INVALID_SCORE',
-        'คะแนนสภาพความเป็นอยู่ต้องอยู่ระหว่าง 0 ถึง 100',
+        'คะแนนประเมินต้องอยู่ระหว่าง 0–100',
       );
     }
 
-    if (dto.recommendedAmount < 0) {
+    if (dto.recommendedAmount === undefined || dto.recommendedAmount === null || Number.isNaN(dto.recommendedAmount) || dto.recommendedAmount < 0) {
       throw new AppException(
         HttpStatus.BAD_REQUEST,
         'INVALID_AMOUNT',
-        'วงเงินช่วยเหลือที่เสนอต้องไม่ติดลบ',
+        'วงเงินที่เสนอพิจารณาต้องไม่ติดลบ',
       );
     }
 
@@ -50,9 +50,57 @@ export class AssessmentService {
       );
     }
 
+    // Validate application lifecycle status
+    const assessableStatuses = ['submitted', 'doc_review', 'assessment', 'pending_approval', 'need_info'];
+    if (app.status && !assessableStatuses.includes(app.status)) {
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'INVALID_STATUS',
+        `คำร้องนี้อยู่ในสถานะ "${app.status}" ไม่สามารถส่งประเมินได้`,
+      );
+    }
+
     const nowIso = new Date().toISOString();
     const assessedDate = new Date().toLocaleString('th-TH', { hour12: false });
     const recommendedDecimal = new Prisma.Decimal(dto.recommendedAmount);
+
+    // Auto-resolve specific fund and primary fund from application or Master Data relationship
+    let resolvedSpecificFundId = dto.recommendedSpecificFundId || app.specificFundId || null;
+    let resolvedFundId = dto.recommendedFundId || app.approvedFundId || app.primaryGroupCode || null;
+
+    if (!resolvedSpecificFundId && (app.assistanceTypeId || app.assistanceType)) {
+      // Look up assistance type to resolve specificFundId from Master Data
+      const ast = await this.prisma.assistanceType.findFirst({
+        where: {
+          OR: [
+            ...(app.assistanceTypeId ? [{ id: app.assistanceTypeId }, { legacyId: app.assistanceTypeId }, { code: app.assistanceTypeId }] : []),
+            ...(app.assistanceType ? [{ name: app.assistanceType }, { code: app.assistanceType }] : []),
+          ],
+        },
+      });
+      if (ast?.specificFundId) {
+        resolvedSpecificFundId = ast.specificFundId;
+      }
+    }
+
+    if (!resolvedFundId) {
+      if (resolvedSpecificFundId) {
+        const isSubUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedSpecificFundId);
+        const sf = await this.prisma.faqirMiskinSubFund.findFirst({
+          where: {
+            OR: [
+              ...(isSubUuid ? [{ id: resolvedSpecificFundId }] : []),
+              { legacyId: resolvedSpecificFundId },
+              { code: resolvedSpecificFundId },
+              { fundCode: resolvedSpecificFundId },
+            ],
+          },
+        });
+        resolvedFundId = sf?.fundAccountId || sf?.primaryGroupCode || 'fund-1';
+      } else {
+        resolvedFundId = 'fund-1';
+      }
+    }
 
     return await this.prisma.$transaction(async (tx) => {
       // Upsert BeneficiaryAssessmentLegacy
@@ -69,8 +117,8 @@ export class AssessmentService {
           primaryHardship: dto.primaryHardship || '',
           officerRecommendation: dto.officerRecommendation,
           recommendedAmount: recommendedDecimal,
-          recommendedFundId: dto.recommendedFundId || 'fund-1',
-          recommendedSpecificFundId: dto.recommendedSpecificFundId || null,
+          recommendedFundId: resolvedFundId,
+          recommendedSpecificFundId: resolvedSpecificFundId,
           generalNotes: dto.generalNotes || '',
         },
         create: {
@@ -85,19 +133,24 @@ export class AssessmentService {
           primaryHardship: dto.primaryHardship || '',
           officerRecommendation: dto.officerRecommendation,
           recommendedAmount: recommendedDecimal,
-          recommendedFundId: dto.recommendedFundId || 'fund-1',
-          recommendedSpecificFundId: dto.recommendedSpecificFundId || null,
+          recommendedFundId: resolvedFundId,
+          recommendedSpecificFundId: resolvedSpecificFundId,
           generalNotes: dto.generalNotes || '',
         },
       });
 
-      // Advance application status to pending_approval
+      // Advance application status to pending_approval and sync specificFundId if resolved
+      const appUpdateData: Prisma.AssistanceApplicationUpdateInput = {
+        status: 'pending_approval',
+        updatedAt: new Date(),
+      };
+      if (!app.specificFundId && resolvedSpecificFundId) {
+        appUpdateData.specificFundId = resolvedSpecificFundId;
+      }
+
       await tx.assistanceApplication.update({
         where: { id: app.id },
-        data: {
-          status: 'pending_approval',
-          updatedAt: new Date(),
-        },
+        data: appUpdateData,
       });
 
       // Record in application history

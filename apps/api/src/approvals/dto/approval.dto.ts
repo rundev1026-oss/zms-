@@ -10,10 +10,10 @@ export class ApproveApplicationDto {
   @Min(1, { message: 'วงเงินที่อนุมัติต้องมากกว่า 0 บาท' })
   approvedAmount!: number;
 
-  @ApiProperty({ description: 'Primary Fund Account ID (Level 1)' })
-  @IsNotEmpty({ message: 'กรุณาระบุบัญชีกองทุนหลัก (Fund Account)' })
+  @ApiPropertyOptional({ description: 'Primary Fund Account ID (Level 1) - auto-resolved from request if omitted' })
+  @IsOptional()
   @IsString()
-  fundId!: string;
+  fundId?: string;
 
   @ApiPropertyOptional({ description: 'Specific Sub-Fund ID (Level 2)' })
   @IsOptional()

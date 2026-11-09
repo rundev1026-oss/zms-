@@ -125,8 +125,16 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
         />
 
         {/* Content View Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 touch-scroll">
-          <div className="max-w-7xl mx-auto space-y-6 animate-fadeIn">
+        <main className={`flex-1 overflow-y-auto touch-scroll ${
+          currentView === 'finance'
+            ? 'p-3 sm:p-5 lg:px-6 lg:py-5'
+            : 'p-4 sm:p-6 lg:p-8'
+        }`}>
+          <div className={`${
+            currentView === 'finance'
+              ? 'w-full max-w-none space-y-6 animate-fadeIn m-0'
+              : 'max-w-7xl mx-auto space-y-6 animate-fadeIn'
+          }`}>
             {children}
           </div>
         </main>

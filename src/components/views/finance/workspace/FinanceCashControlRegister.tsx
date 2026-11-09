@@ -173,83 +173,86 @@ export function FinanceCashControlRegister({
         </div>
       </div>
 
-      {/* 7 Filter Tabs */}
-      <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onTabChange(t.id)}
-            className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
-              activeTab === t.id
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Filter Tabs and Search Bar */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-3">
+        {/* 7 Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onTabChange(t.id)}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition whitespace-nowrap ${
+                activeTab === t.id
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/70'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Search Input */}
-      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-2xs">
-        <Search className="h-4 w-4 text-slate-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="ค้นหาตามชื่อเจ้าหน้าที่, เลขที่เอกสาร, ผู้รับความช่วยเหลือ, หรือหมวดหมู่..."
-          className="w-full bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400"
-        />
-        {searchQuery && (
-          <button
-            type="button"
-            onClick={() => onSearchChange('')}
-            className="text-xs font-semibold text-slate-400 hover:text-slate-600"
-          >
-            ล้าง
-          </button>
-        )}
+        {/* Search Input */}
+        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2 shadow-2xs w-full lg:w-80 xl:w-96 shrink-0">
+          <Search className="h-4 w-4 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="ค้นหาตามชื่อ, เลขที่, ผู้รับ, หมวดหมู่..."
+            className="w-full bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => onSearchChange('')}
+              className="text-xs font-semibold text-slate-400 hover:text-slate-600 shrink-0"
+            >
+              ล้าง
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 16-Column Central Table */}
       <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-xs">
-        <table className="w-full min-w-[1380px] text-left text-xs">
+        <table className="w-full min-w-[1440px] text-left text-xs">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50/80 font-bold text-slate-700">
-              <th className="py-3 pl-4 pr-2">#</th>
-              <th className="px-2 py-3">วันที่เบิก</th>
-              <th className="px-2 py-3">เลขที่เอกสาร</th>
-              <th className="px-2 py-3">เจ้าหน้าที่ผู้เบิก</th>
-              <th className="px-2 py-3">ประเภท/วัตถุประสงค์</th>
-              <th className="px-2 py-3 text-right">ยอดเบิกรับ (บาท)</th>
-              <th className="px-2 py-3">คำร้อง/ผู้รับ</th>
-              <th className="px-2 py-3">หมวดหมู่รายจ่าย</th>
-              <th className="px-2 py-3">วันที่จ่ายจริง</th>
-              <th className="px-2 py-3 text-right">จ่ายจริง (บาท)</th>
-              <th className="px-2 py-3 text-right">เงินคงเหลือคืน</th>
-              <th className="px-2 py-3">วันที่คืน</th>
-              <th className="px-2 py-3 text-center">หลักฐาน</th>
-              <th className="px-2 py-3 text-center">สถานะ</th>
-              <th className="px-2 py-3">ผู้ตรวจสอบ</th>
-              <th className="py-3 pl-2 pr-4 text-center">จัดการ</th>
+              <th className="py-3.5 pl-4 pr-2 whitespace-nowrap">#</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">วันที่เบิก</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">เลขที่เอกสาร</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">เจ้าหน้าที่ผู้เบิก</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">ประเภท/วัตถุประสงค์</th>
+              <th className="px-2.5 py-3.5 text-right whitespace-nowrap">ยอดเบิกรับ (บาท)</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">คำร้อง/ผู้รับ</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">หมวดหมู่รายจ่าย</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">วันที่จ่ายจริง</th>
+              <th className="px-2.5 py-3.5 text-right whitespace-nowrap">จ่ายจริง (บาท)</th>
+              <th className="px-2.5 py-3.5 text-right whitespace-nowrap">เงินคงเหลือคืน</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">วันที่คืน</th>
+              <th className="px-2.5 py-3.5 text-center whitespace-nowrap">หลักฐาน</th>
+              <th className="px-2.5 py-3.5 text-center whitespace-nowrap">สถานะ</th>
+              <th className="px-2.5 py-3.5 whitespace-nowrap">ผู้ตรวจสอบ</th>
+              <th className="py-3.5 pl-2 pr-4 text-center whitespace-nowrap">จัดการ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {items.length === 0 ? (
               <tr>
-                <td colSpan={16} className="py-10 text-center text-slate-400">
+                <td colSpan={16} className="py-12 text-center text-slate-400">
                   ไม่พบรายการเบิกจ่ายเงินสดตามเงื่อนไข
                 </td>
               </tr>
             ) : (
               items.map((it, idx) => (
                 <tr key={`reg-${it.id}-${it.index ?? idx}`} className="transition hover:bg-slate-50/80">
-                  <td className="py-3 pl-4 pr-2 font-medium text-slate-400">{it.index}</td>
-                  <td className="px-2 py-3 text-slate-600">{it.date}</td>
-                  <td className="px-2 py-3 font-semibold text-slate-900">{it.documentNo}</td>
-                  <td className="px-2 py-3 font-medium text-slate-800">{it.staffName}</td>
-                  <td className="px-2 py-3">
+                  <td className="py-3.5 pl-4 pr-2 font-medium text-slate-400 whitespace-nowrap">{it.index}</td>
+                  <td className="px-2.5 py-3.5 text-slate-600 whitespace-nowrap">{it.date}</td>
+                  <td className="px-2.5 py-3.5 font-semibold text-slate-900 whitespace-nowrap">{it.documentNo}</td>
+                  <td className="px-2.5 py-3.5 font-medium text-slate-800 whitespace-nowrap">{it.staffName}</td>
+                  <td className="px-2.5 py-3.5 min-w-[180px]">
                     <span
                       className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
                         it.purposeType === 'ช่วยเหลือ'
@@ -259,31 +262,35 @@ export function FinanceCashControlRegister({
                     >
                       {it.purposeType}
                     </span>
-                    <div className="mt-0.5 truncate text-[11px] text-slate-500 max-w-[140px]">{it.purpose}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-500 max-w-[200px] xl:max-w-[280px]" title={it.purpose}>
+                      {it.purpose}
+                    </div>
                   </td>
-                  <td className="px-2 py-3 text-right font-bold text-slate-900">
+                  <td className="px-2.5 py-3.5 text-right font-bold text-slate-900 whitespace-nowrap tabular-nums">
                     ฿{fmt(it.withdrawnAmount)}
                   </td>
-                  <td className="px-2 py-3 text-slate-600">
+                  <td className="px-2.5 py-3.5 min-w-[160px]">
                     {it.applicationNo !== '-' ? (
                       <div>
-                        <div className="font-semibold text-teal-700">{it.applicationNo}</div>
-                        <div className="text-[11px] text-slate-500">{it.beneficiaryName}</div>
+                        <div className="font-semibold text-teal-700 whitespace-nowrap">{it.applicationNo}</div>
+                        <div className="text-[11px] text-slate-500 truncate max-w-[180px]" title={it.beneficiaryName}>
+                          {it.beneficiaryName}
+                        </div>
                       </div>
                     ) : (
                       <span className="text-slate-400">-</span>
                     )}
                   </td>
-                  <td className="px-2 py-3 text-slate-600">{it.expenseCategory}</td>
-                  <td className="px-2 py-3 text-slate-600">{it.actualPaidDate}</td>
-                  <td className="px-2 py-3 text-right font-bold text-indigo-700">
+                  <td className="px-2.5 py-3.5 text-slate-600 whitespace-nowrap">{it.expenseCategory}</td>
+                  <td className="px-2.5 py-3.5 text-slate-600 whitespace-nowrap">{it.actualPaidDate}</td>
+                  <td className="px-2.5 py-3.5 text-right font-bold text-indigo-700 whitespace-nowrap tabular-nums">
                     {it.actualPaidAmount > 0 ? `฿${fmt(it.actualPaidAmount)}` : '-'}
                   </td>
-                  <td className="px-2 py-3 text-right font-bold text-emerald-700">
+                  <td className="px-2.5 py-3.5 text-right font-bold text-emerald-700 whitespace-nowrap tabular-nums">
                     {it.refundAmount > 0 ? `฿${fmt(it.refundAmount)}` : '-'}
                   </td>
-                  <td className="px-2 py-3 text-slate-600">{it.refundDate}</td>
-                  <td className="px-2 py-3 text-center">
+                  <td className="px-2.5 py-3.5 text-slate-600 whitespace-nowrap">{it.refundDate}</td>
+                  <td className="px-2.5 py-3.5 text-center whitespace-nowrap">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                         it.proofStatus === 'ครบถ้วน'
@@ -296,7 +303,7 @@ export function FinanceCashControlRegister({
                       {it.proofStatus}
                     </span>
                   </td>
-                  <td className="px-2 py-3 text-center">
+                  <td className="px-2.5 py-3.5 text-center whitespace-nowrap">
                     <span
                       className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
                         it.itemStatus === 'เคลียร์แล้ว'
@@ -311,8 +318,8 @@ export function FinanceCashControlRegister({
                       {it.itemStatus}
                     </span>
                   </td>
-                  <td className="px-2 py-3 text-slate-600">{it.approverName}</td>
-                  <td className="py-3 pl-2 pr-4 text-center">
+                  <td className="px-2.5 py-3.5 text-slate-600 whitespace-nowrap">{it.approverName}</td>
+                  <td className="py-3.5 pl-2 pr-4 text-center whitespace-nowrap">
                     <button
                       type="button"
                       onClick={() => setSelectedItem(it)}

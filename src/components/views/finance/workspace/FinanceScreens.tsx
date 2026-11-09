@@ -601,30 +601,30 @@ export function MovementScreen({
       {/* WORKSPACE VIEW SELECTOR TABS                       */}
       {/* ================================================== */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveView('register')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition ${
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
               activeView === 'register'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
             }`}
           >
-            <TableProperties className="h-4 w-4" />
+            <TableProperties className="h-4 w-4 shrink-0" />
             ทะเบียนควบคุมการเบิกและตัดยอดเงินสด
           </button>
 
           <button
             type="button"
             onClick={() => setActiveView('reconciliation')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition ${
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
               activeView === 'reconciliation'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
             }`}
           >
-            <Scale className="h-4 w-4" />
+            <Scale className="h-4 w-4 shrink-0" />
             การกระทบยอด 3 ทาง (Reconciliation)
             {reconcileData?.isBalanced && (
               <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
@@ -634,13 +634,13 @@ export function MovementScreen({
           <button
             type="button"
             onClick={() => setActiveView('movements')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition ${
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
               activeView === 'movements'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
             }`}
           >
-            <History className="h-4 w-4" />
+            <History className="h-4 w-4 shrink-0" />
             ประวัติธุรกรรมและการเคลื่อนไหว
           </button>
         </div>
@@ -683,7 +683,7 @@ export function MovementScreen({
             </button>
           </div>
 
-          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             <label className="text-[11px] text-slate-400">
               ช่วงวันที่
               <span className="mt-1 flex items-center gap-1 rounded-xl border border-slate-200 px-2">

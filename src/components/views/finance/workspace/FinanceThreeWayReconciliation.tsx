@@ -48,7 +48,7 @@ export function FinanceThreeWayReconciliation({
     return (
       <div className="space-y-4">
         <div className="h-32 animate-pulse rounded-3xl border border-slate-200 bg-white p-6 shadow-xs"></div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white p-4 shadow-xs"></div>
           ))}
@@ -176,7 +176,7 @@ export function FinanceThreeWayReconciliation({
           )}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {checks.map((chk) => (
             <div
               key={chk.id}

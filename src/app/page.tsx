@@ -272,7 +272,11 @@ export default function Home() {
         {/* 3. Main Content (Primary scrollable viewport area, distinct bounds, no double scrollbars) */}
         <main
           id="main-content-scroll"
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8 w-full max-w-7xl mx-auto focus:outline-hidden touch-scroll"
+          className={`flex-1 min-h-0 overflow-y-auto overscroll-contain focus:outline-hidden touch-scroll w-full ${
+            currentView === 'finance'
+              ? 'p-3 sm:p-5 lg:px-6 lg:py-5 max-w-none m-0'
+              : 'p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto'
+          }`}
         >
           {currentView === 'dashboard' && (
             <ExecutiveDashboard

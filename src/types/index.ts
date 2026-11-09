@@ -1547,8 +1547,93 @@ export interface PaymentVoucher {
   proofName?: string;
   notes?: string;
   rejectionReason?: string;
+  assistanceTypeId?: string;
+  assistanceFormat?: string;
+  approvedAmountSatang?: number;
+  paidBeforeSatang?: number;
+  idempotencyKey?: string;
+  ledgerTransactionId?: string;
+  moneyType?: 'zakat' | 'sadaqah' | 'operational_admin' | 'restricted';
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type FinanceDocumentStatus = 'draft' | 'pending_review' | 'pending_approval' | 'approved' | 'posted' | 'rejected' | 'cancelled';
+export type FinanceMoneyType = 'zakat' | 'sadaqah' | 'operational_admin' | 'restricted';
+
+export interface FinanceMovementDocument {
+  id: string;
+  documentNo: string;
+  kind: 'deposit' | 'withdraw' | 'transfer';
+  documentDate: string;
+  sourceBankAccountId?: string;
+  targetBankAccountId?: string;
+  purpose: string;
+  notes?: string;
+  attachmentUrl?: string;
+  status: FinanceDocumentStatus;
+  totalSatang: number;
+  preparedById: string;
+  preparedByName: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  idempotencyKey?: string;
+  postedAt?: string;
+  lines: FinanceMovementLine[];
+}
+
+export interface FinanceMovementLine {
+  id: string;
+  documentId: string;
+  lineNo: number;
+  description: string;
+  moneyType: FinanceMoneyType;
+  bankAccountId?: string;
+  counterpartyBankAccountId?: string;
+  fundAccountId?: string;
+  purpose?: string;
+  amountSatang: number;
+  responsibleName?: string;
+  proofUrl?: string;
+  status: FinanceDocumentStatus;
+  ledgerTransactionId?: string;
+}
+
+export interface AdminExpenseDocument {
+  id: string;
+  documentNo: string;
+  documentDate: string;
+  fundAccountId: string;
+  bankAccountId?: string;
+  moneyType: 'operational_admin' | 'restricted';
+  purpose: string;
+  notes?: string;
+  attachmentUrl?: string;
+  status: FinanceDocumentStatus;
+  totalSatang: number;
+  preparedById: string;
+  preparedByName: string;
+  approvedById?: string;
+  approvedByName?: string;
+  idempotencyKey?: string;
+  postedAt?: string;
+  lines: AdminExpenseLine[];
+}
+
+export interface AdminExpenseLine {
+  id: string;
+  documentId: string;
+  lineNo: number;
+  categoryId: string;
+  description: string;
+  amountSatang: number;
+  expenseDate: string;
+  payeeName?: string;
+  paymentMethod?: string;
+  proofUrl?: string;
+  notes?: string;
+  ledgerTransactionId?: string;
 }
 
 export interface CreatePaymentVoucherInput {
@@ -1565,6 +1650,8 @@ export interface CreatePaymentVoucherInput {
   cashReceiverName?: string;
   cashReceiverPosition?: string;
   notes?: string;
+  proofUrl?: string;
+  submitForReview?: boolean;
 }
 
 export interface ApprovePaymentVoucherInput {

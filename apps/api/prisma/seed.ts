@@ -130,6 +130,11 @@ async function main() {
     { email: 'treasurer@zms.local', displayName: 'เหรัญญิกมูลนิธิ (Treasurer)', roleCode: 'TREASURER' },
     { email: 'approver@zms.local', displayName: 'ผู้มีอำนาจอนุมัติ (Approver)', roleCode: 'APPROVER' },
     { email: 'auditor@zms.local', displayName: 'ผู้ตรวจสอบภายใน (Auditor)', roleCode: 'AUDITOR' },
+    { email: 'admin@zakatfoundation.or.th', displayName: 'อิบรอฮีม มานะชัย (Super Admin)', roleCode: 'SUPER_ADMIN' },
+    { email: 'exec@zakatfoundation.or.th', displayName: 'ดร. อับดุลลอฮ์ สัจจะธรรม (Executive)', roleCode: 'ADMIN' },
+    { email: 'officer@zakatfoundation.or.th', displayName: 'อุสมาน เจริญสุข (Officer)', roleCode: 'ASSISTANCE_OFFICER' },
+    { email: 'finance@zakatfoundation.or.th', displayName: 'ฟาติมะฮ์ หวังดี (Finance)', roleCode: 'FINANCE_OFFICER' },
+    { email: 'approver@zakatfoundation.or.th', displayName: 'อิหม่ามฟารุก อาลี (Approver)', roleCode: 'APPROVER' },
   ];
 
   for (const u of usersData) {

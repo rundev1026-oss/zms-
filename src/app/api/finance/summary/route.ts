@@ -1,21 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { proxyToNest } from '@/lib/apiProxy';
+import { NextResponse } from 'next/server';
+import { FinancialService } from '@/services/financialService';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const res = await proxyToNest('/finance/summary', request, { method: 'GET' });
-    const json = await res.json();
-
-    if (!res.ok) {
-      return NextResponse.json(
-        { success: false, error: json.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลสรุปงบประมาณ' },
-        { status: res.status }
-      );
-    }
+    const funds = await FinancialService.getFunds();
+    const banks = await FinancialService.getBankAccounts();
 
     return NextResponse.json({
       success: true,
-      data: json,
+      data: {
+        totalReceived: funds.reduce((sum, fund) => sum + fund.totalReceived, 0),
+        totalAvailable: funds.reduce((sum, fund) => sum + fund.availableAmount, 0),
+        totalCommitted: funds.reduce((sum, fund) => sum + fund.committedAmount, 0),
+        totalDisbursed: funds.reduce((sum, fund) => sum + fund.disbursedAmount, 0),
+        fundsCount: funds.length,
+        bankCount: banks.filter((bank) => bank.status === 'active').length,
+      },
     });
   } catch (error: any) {
     return NextResponse.json(
@@ -24,4 +24,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

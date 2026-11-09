@@ -15,8 +15,22 @@
  * 6. Parser & Validator สำหรับตรวจสอบโครงสร้าง EMVCo, Tags, Amount, Reference และ CRC
  */
 
-import QRCode from 'qrcode';
 import { validatePromptPay, PromptPayType } from './promptpayValidator';
+
+// Helper to lazily load qrcode library without breaking top-level bundle resolution
+async function getQrCode() {
+  try {
+    const mod = await import('qrcode');
+    return (mod as any).default || mod;
+  } catch {
+    try {
+      const reqMod = eval('require')('qrcode');
+      return reqMod.default || reqMod;
+    } catch (e: any) {
+      throw new Error(`Cannot load 'qrcode' module: ${e?.message || e}`);
+    }
+  }
+}
 
 // EMVCo MPM Main Tags
 export const EMVCO_TAGS = {
@@ -307,6 +321,7 @@ export async function generateDynamicPromptPayQr(
  * Uses local in-memory qrcode library without external network calls
  */
 export async function generateQrDataUrl(payload: string): Promise<string> {
+  const QRCode = await getQrCode();
   return await QRCode.toDataURL(payload, {
     errorCorrectionLevel: 'M',
     margin: 2,
@@ -322,6 +337,7 @@ export async function generateQrDataUrl(payload: string): Promise<string> {
  * 7. Generate QR Code SVG string locally
  */
 export async function generateQrSvg(payload: string): Promise<string> {
+  const QRCode = await getQrCode();
   return await QRCode.toString(payload, {
     type: 'svg',
     errorCorrectionLevel: 'M',

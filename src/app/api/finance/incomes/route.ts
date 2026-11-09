@@ -20,3 +20,21 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { id, input, actor } = body;
+    if (!id || !input || !actor) {
+      return NextResponse.json({ success: false, error: 'ข้อมูลไม่ครบถ้วน' }, { status: 400 });
+    }
+    const result = await FinancialService.updateIncome(id, input, actor);
+    return NextResponse.json({ success: true, data: result });
+  } catch (error: any) {
+    const isConflict = String(error.message || '').includes('ตรวจพบธุรกรรมซ้ำ');
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: isConflict ? 409 : 400 }
+    );
+  }
+}

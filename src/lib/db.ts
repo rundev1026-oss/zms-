@@ -661,17 +661,6 @@ export async function initDb(): Promise<void> {
     try { await db.execute(`ALTER TABLE application_documents ADD COLUMN uploaded_by_name TEXT;`); } catch {}
   }
 
-  // Ensure anchor record exists for standalone beneficiary registry documents
-  try {
-    await db.execute(`
-      INSERT OR IGNORE INTO assistance_applications (
-        id, application_no, beneficiary_id, status, applied_date, assistance_type
-      ) VALUES (
-        'REGISTRY-DOCS', 'REGISTRY-DOCS', 'system', 'submitted', '1 ม.ค. 2569', 'เอกสารทะเบียนผู้มีสิทธิ์'
-      );
-    `);
-  } catch {}
-
   // Safe backfill: ensure all existing beneficiaries have a registration_no and registration_status
   try {
     const unregBeneficiaries = await db.execute(`SELECT id, created_at FROM beneficiaries WHERE registration_no IS NULL OR registration_no = '' ORDER BY created_at ASC`);
@@ -1045,8 +1034,7 @@ export async function initDb(): Promise<void> {
       await db.execute(`UPDATE users SET first_name = 'ยูซุฟ', last_name = 'มีลาภ', branch_id = 'br-hq', department_id = 'dept-public' WHERE id = 'u-6' AND branch_id IS NULL;`);
     }
 
-    // Ensure test member accounts u-6 (registered) and u-7 (unregistered)
-    await db.execute(`UPDATE users SET national_id = '1100200000006', beneficiary_id = 'ben-yusuf-006' WHERE id = 'u-6' AND (national_id IS NULL OR national_id = '');`);
+    await db.execute(`UPDATE users SET national_id = '1100200000006' WHERE id = 'u-6' AND (national_id IS NULL OR national_id = '');`);
 
     const user7 = await db.execute("SELECT id FROM users WHERE id = 'u-7'");
     if (user7.rows.length === 0) {
@@ -1054,26 +1042,6 @@ export async function initDb(): Promise<void> {
         ('u-7', 'areefin.unreg@email.com', 'อารีฟีน ไร้ทะเบียน', 'อารีฟีน', 'ไร้ทะเบียน', 'member', 'สมาชิกทั่วไป (Member)', '082-111-2233', 'สำนักงานใหญ่ กรุงเทพฯ', 'br-hq', 'dept-public', 'active', 'completed', '${defaultHash}', '${salt}', '1100200000007', '17 ต.ค. 2569 10:00');`);
     }
 
-    // Ensure member u-6 has a valid qualified beneficiary registry
-    const benYusuf = await db.execute("SELECT id FROM beneficiaries WHERE member_id = 'u-6' OR national_id = '1100200000006'");
-    if (benYusuf.rows.length === 0) {
-      const hhId = 'hh-yusuf-006';
-      await db.execute({
-        sql: `INSERT OR IGNORE INTO households (id, household_no, address, province, district, subdistrict, community, housing_condition, monthly_income, monthly_expense)
-              VALUES (?, 'HH-2569-0006', '12/4 ซอยเจริญผล', 'กรุงเทพมหานคร', 'มีนบุรี', 'แสนแสบ', 'ชุมชนนูรุ้ลยะกีน', 'normal', 8500, 7000)`,
-        args: [hhId],
-      });
-      await db.execute({
-        sql: `INSERT OR IGNORE INTO beneficiaries (
-          id, household_id, member_id, full_name, national_id, phone, email, asnaf_category,
-          title_prefix, birth_date, age, occupation, marital_status, registration_no, registration_status, registered_date, branch_id, branch_name
-        ) VALUES (?, ?, 'u-6', 'นาย ยูซุฟ มีลาภ', '1100200000006', '082-999-4455', 'yusuf.donor@email.com', 'miskin',
-          'นาย', '1988-06-15', 38, 'รับจ้างทั่วไป', 'married', 'REG-2569-0006', 'qualified', '2569-10-01', 'br-hq', 'สำนักงานใหญ่ กรุงเทพมหานคร')`,
-        args: ['ben-yusuf-006', hhId],
-      });
-    } else {
-      await db.execute(`UPDATE beneficiaries SET member_id = 'u-6' WHERE national_id = '1100200000006' AND (member_id IS NULL OR member_id = '');`);
-    }
   }
 
 
@@ -1485,6 +1453,26 @@ export async function initDb(): Promise<void> {
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_pv_voucher_no ON payment_vouchers(voucher_no);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_pv_application_id ON payment_vouchers(application_id);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_pv_status ON payment_vouchers(status);`);
+  } catch {}
+
+  const pvCols = await db.execute(`PRAGMA table_info(payment_vouchers)`);
+  const pvColNames = pvCols.rows.map((c) => String(c.name));
+  const pvNewCols: [string, string][] = [
+    ['assistance_type_id', 'TEXT'],
+    ['assistance_format', 'TEXT'],
+    ['approved_amount_satang', 'INTEGER'],
+    ['paid_before_satang', 'INTEGER'],
+    ['idempotency_key', 'TEXT'],
+    ['ledger_transaction_id', 'TEXT'],
+    ['money_type', 'TEXT'],
+  ];
+  for (const [name, def] of pvNewCols) {
+    if (!pvColNames.includes(name)) {
+      try { await db.execute(`ALTER TABLE payment_vouchers ADD COLUMN ${name} ${def};`); } catch {}
+    }
+  }
+  try {
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pv_idempotency ON payment_vouchers(idempotency_key) WHERE idempotency_key IS NOT NULL;`);
   } catch {}
 
   // 2.1 Bank Account Change History (Audit Log for all account modifications)
@@ -2144,6 +2132,212 @@ export async function initDb(): Promise<void> {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Multi-item movement and admin-expense documents post into financial_transactions.
+  // Amounts are integer satang. No meeting-resolution table: that source does not exist yet.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS finance_movement_documents (
+      id TEXT PRIMARY KEY,
+      document_no TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK (kind IN ('deposit', 'withdraw', 'transfer')),
+      document_date TEXT NOT NULL,
+      source_bank_account_id TEXT,
+      target_bank_account_id TEXT,
+      purpose TEXT NOT NULL,
+      notes TEXT,
+      attachment_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending_review', 'pending_approval', 'approved', 'posted', 'rejected', 'cancelled')),
+      total_satang INTEGER NOT NULL DEFAULT 0 CHECK (total_satang >= 0),
+      prepared_by_id TEXT NOT NULL,
+      prepared_by_name TEXT NOT NULL,
+      approved_by_id TEXT,
+      approved_by_name TEXT,
+      approved_at TEXT,
+      idempotency_key TEXT,
+      posted_at TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (source_bank_account_id) REFERENCES bank_accounts(id),
+      FOREIGN KEY (target_bank_account_id) REFERENCES bank_accounts(id),
+      FOREIGN KEY (prepared_by_id) REFERENCES users(id)
+    );
+  `);
+  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fmd_idempotency ON finance_movement_documents(idempotency_key) WHERE idempotency_key IS NOT NULL;`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_fmd_status ON finance_movement_documents(status);`);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS finance_movement_lines (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      line_no INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      money_type TEXT NOT NULL CHECK (money_type IN ('zakat', 'sadaqah', 'operational_admin', 'restricted')),
+      bank_account_id TEXT,
+      counterparty_bank_account_id TEXT,
+      fund_account_id TEXT,
+      purpose TEXT,
+      amount_satang INTEGER NOT NULL CHECK (amount_satang > 0),
+      responsible_name TEXT,
+      proof_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending_review', 'pending_approval', 'approved', 'posted', 'rejected', 'cancelled')),
+      ledger_transaction_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (document_id, line_no),
+      FOREIGN KEY (document_id) REFERENCES finance_movement_documents(id),
+      FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+      FOREIGN KEY (counterparty_bank_account_id) REFERENCES bank_accounts(id),
+      FOREIGN KEY (fund_account_id) REFERENCES fund_accounts(id),
+      FOREIGN KEY (ledger_transaction_id) REFERENCES financial_transactions(id)
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_fml_document ON finance_movement_lines(document_id);`);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS meeting_resolutions (
+      id TEXT PRIMARY KEY,
+      resolution_no TEXT NOT NULL UNIQUE,
+      meeting_no TEXT NOT NULL,
+      meeting_date TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      money_type TEXT NOT NULL CHECK (money_type IN ('zakat', 'sadaqah', 'operational_admin', 'restricted')),
+      approved_satang INTEGER NOT NULL CHECK (approved_satang > 0),
+      prepared_by_id TEXT NOT NULL,
+      prepared_by_name TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  const withdrawalCols = await db.execute(`PRAGMA table_info(cash_flow_withdrawals)`);
+  if (!withdrawalCols.rows.some((column) => String(column.name) === 'meeting_resolution_id')) {
+    try { await db.execute(`ALTER TABLE cash_flow_withdrawals ADD COLUMN meeting_resolution_id TEXT;`); } catch {}
+  }
+  const fmlCols = await db.execute(`PRAGMA table_info(finance_movement_lines)`);
+  if (!fmlCols.rows.some((column) => String(column.name) === 'ledger_counter_transaction_id')) {
+    try { await db.execute(`ALTER TABLE finance_movement_lines ADD COLUMN ledger_counter_transaction_id TEXT;`); } catch {}
+  }
+  const fmdCols = await db.execute(`PRAGMA table_info(finance_movement_documents)`);
+  if (!fmdCols.rows.some((column) => String(column.name) === 'reversed_at')) {
+    try { await db.execute(`ALTER TABLE finance_movement_documents ADD COLUMN reversed_at TEXT;`); } catch {}
+  }
+  const aedCols = await db.execute(`PRAGMA table_info(admin_expense_documents)`);
+  if (!aedCols.rows.some((column) => String(column.name) === 'reversed_at')) {
+    try { await db.execute(`ALTER TABLE admin_expense_documents ADD COLUMN reversed_at TEXT;`); } catch {}
+  }
+  await db.execute(`
+    CREATE TRIGGER IF NOT EXISTS trg_fmd_no_delete_posted
+    BEFORE DELETE ON finance_movement_documents
+    FOR EACH ROW
+    WHEN OLD.status IN ('approved', 'posted')
+    BEGIN
+      SELECT RAISE(ABORT, 'posted movement document cannot be deleted');
+    END;
+  `);
+  await db.execute(`
+    CREATE TRIGGER IF NOT EXISTS trg_fml_no_delete_posted
+    BEFORE DELETE ON finance_movement_lines
+    FOR EACH ROW
+    WHEN OLD.status IN ('approved', 'posted') OR OLD.ledger_transaction_id IS NOT NULL
+    BEGIN
+      SELECT RAISE(ABORT, 'posted movement line cannot be deleted');
+    END;
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS admin_expense_documents (
+      id TEXT PRIMARY KEY,
+      document_no TEXT NOT NULL UNIQUE,
+      document_date TEXT NOT NULL,
+      fund_account_id TEXT NOT NULL,
+      bank_account_id TEXT,
+      money_type TEXT NOT NULL DEFAULT 'operational_admin' CHECK (money_type IN ('operational_admin', 'restricted')),
+      purpose TEXT NOT NULL,
+      notes TEXT,
+      attachment_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending_review', 'pending_approval', 'approved', 'posted', 'rejected', 'cancelled')),
+      total_satang INTEGER NOT NULL DEFAULT 0 CHECK (total_satang >= 0),
+      prepared_by_id TEXT NOT NULL,
+      prepared_by_name TEXT NOT NULL,
+      approved_by_id TEXT,
+      approved_by_name TEXT,
+      approved_at TEXT,
+      idempotency_key TEXT,
+      posted_at TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (fund_account_id) REFERENCES fund_accounts(id),
+      FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+      FOREIGN KEY (prepared_by_id) REFERENCES users(id)
+    );
+  `);
+  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_aed_idempotency ON admin_expense_documents(idempotency_key) WHERE idempotency_key IS NOT NULL;`);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS admin_expense_lines (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      line_no INTEGER NOT NULL,
+      category_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      amount_satang INTEGER NOT NULL CHECK (amount_satang > 0),
+      expense_date TEXT NOT NULL,
+      payee_name TEXT,
+      payment_method TEXT,
+      proof_url TEXT,
+      notes TEXT,
+      ledger_transaction_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (document_id, line_no),
+      FOREIGN KEY (document_id) REFERENCES admin_expense_documents(id),
+      FOREIGN KEY (category_id) REFERENCES admin_expense_categories(id),
+      FOREIGN KEY (ledger_transaction_id) REFERENCES financial_transactions(id)
+    );
+  `);
+  await db.execute(`
+    CREATE TRIGGER IF NOT EXISTS trg_aed_no_delete_posted
+    BEFORE DELETE ON admin_expense_documents
+    FOR EACH ROW
+    WHEN OLD.status IN ('approved', 'posted')
+    BEGIN
+      SELECT RAISE(ABORT, 'posted admin expense document cannot be deleted');
+    END;
+  `);
+  await db.execute(`
+    CREATE TRIGGER IF NOT EXISTS trg_ael_no_delete_posted
+    BEFORE DELETE ON admin_expense_lines
+    FOR EACH ROW
+    WHEN OLD.ledger_transaction_id IS NOT NULL
+    BEGIN
+      SELECT RAISE(ABORT, 'posted admin expense line cannot be deleted');
+    END;
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS finance_approval_events (
+      id TEXT PRIMARY KEY,
+      document_type TEXT NOT NULL CHECK (document_type IN ('movement', 'admin_expense', 'payment_voucher')),
+      document_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      actor_name TEXT NOT NULL,
+      actor_role TEXT NOT NULL,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (actor_id) REFERENCES users(id)
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_fae_document ON finance_approval_events(document_type, document_id);`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS accounting_reference_snapshots (
+      id TEXT PRIMARY KEY,
+      captured_at TEXT NOT NULL,
+      source_table TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      payload TEXT NOT NULL
+    );
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ars_source ON accounting_reference_snapshots(source_table, source_id);`);
 
   // Migration columns for financial_transactions
   const ftCols = await db.execute(`PRAGMA table_info(financial_transactions)`);

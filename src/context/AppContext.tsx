@@ -785,6 +785,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       donorName?: string;
       usageRestriction?: string;
       receiptNo?: string;
+      receivedDate?: string;
     }
   ): Promise<boolean> => {
     try {

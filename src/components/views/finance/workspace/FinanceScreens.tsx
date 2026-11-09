@@ -1,10 +1,18 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, Plus, Search } from 'lucide-react';
+import { Download, Plus, Search, Building2, Banknote, ArrowLeftRight, RefreshCw, TableProperties, Scale, History } from 'lucide-react';
 import type { AsnafAllocation, BankAccount, CashFlowWorkflow, FinancialTransaction, FundAccount } from '@/types';
 import { AdminExpenseModal, AssistancePaymentModal, CashPosition, MovementDocuments } from './FinanceDocuments';
 import { CashCycle } from './CashCycleDialogs';
+import { FinanceKpiCards, type KpiData } from './FinanceKpiCards';
+import { FinanceMovementModalDeposit } from './FinanceMovementModalDeposit';
+import { FinanceMovementModalWithdraw } from './FinanceMovementModalWithdraw';
+import { FinanceMovementModalTransfer } from './FinanceMovementModalTransfer';
+import { FinanceCashControlRegister, type RegisterItem } from './FinanceCashControlRegister';
+import { FinanceThreeWayReconciliation, type ReconciliationData } from './FinanceThreeWayReconciliation';
+import { FinanceModalCashAidDisburse } from './FinanceModalCashAidDisburse';
+import { FinanceModalCashAdminExpense } from './FinanceModalCashAdminExpense';
 
 function baht(value: number) {
   const amount = Number.isFinite(value) ? value : 0;
@@ -321,6 +329,27 @@ export function MovementScreen({
   actor: { id: string; name: string; role: string };
   onChanged?: () => void;
 }) {
+  // Views & Modals state
+  const [activeView, setActiveView] = useState<'register' | 'reconciliation' | 'movements'>('register');
+  const [isDepositOpen, setIsDepositOpen] = useState(false);
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [isAidModalOpen, setIsAidModalOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+
+  // Data State
+  const [kpiData, setKpiData] = useState<KpiData | null>(null);
+  const [loadingKpi, setLoadingKpi] = useState(true);
+
+  const [reconcileData, setReconcileData] = useState<ReconciliationData | null>(null);
+  const [loadingReconcile, setLoadingReconcile] = useState(true);
+
+  const [registerItems, setRegisterItems] = useState<RegisterItem[]>([]);
+  const [registerTab, setRegisterTab] = useState('all');
+  const [registerSearch, setRegisterSearch] = useState('');
+  const [loadingRegister, setLoadingRegister] = useState(true);
+
+  // Movement history state
   const [tab, setTab] = useState<'deposit' | 'withdraw' | 'transfer'>('withdraw');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [workflowId, setWorkflowId] = useState<string | null>(null);
@@ -332,40 +361,54 @@ export function MovementScreen({
   const [branch, setBranch] = useState('all');
   const [status, setStatus] = useState('all');
   const [workflows, setWorkflows] = useState<CashFlowWorkflow[]>([]);
-  const [loadingFlows, setLoadingFlows] = useState(true);
+  const [loadingFlows, setLoadingFlows] = useState(false);
   const [flowError, setFlowError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [composer, setComposer] = useState(false);
-  const [kind, setKind] = useState<'withdraw' | 'deposit' | 'transfer'>('withdraw');
-  const [amount, setAmount] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [note, setNote] = useState('');
-  const [proof, setProof] = useState('');
-  const [eventDate, setEventDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [sourceBank, setSourceBank] = useState(banks.find((bank) => bank.status === 'active')?.id || '');
-  const [targetBank, setTargetBank] = useState('');
-  const [fundType, setFundType] = useState('zakat');
-  const [formError, setFormError] = useState('');
-  const posted = rows.filter((tx) => tx.status !== 'cancelled');
-  const deposits = posted.filter((tx) => tx.type === 'income');
-  const transfers = posted.filter((tx) => (tx.type as string) === 'transfer' || (tx.type as string) === 'bank_transfer_out' || (tx.type as string) === 'bank_transfer_in');
-  const pool = tab === 'deposit' ? deposits : transfers;
-  const moneyTypes = Array.from(new Set(rows.map((tx) => tx.moneyType).filter((value): value is NonNullable<FinancialTransaction['moneyType']> => Boolean(value))));
-  const visible = pool.filter((tx) => {
-    if (!inRange(tx.date, from, to)) return false;
-    if (money !== 'all' && tx.moneyType !== money) return false;
-    if (bankId !== 'all' && tx.bankAccountId !== bankId) return false;
-    if (status !== 'all' && tx.status !== status) return false;
-    const q = query.trim().toLowerCase();
-    if (q && !`${tx.transactionNo} ${tx.payerOrPayee} ${tx.category} ${tx.referenceNo} ${tx.fundName}`.toLowerCase().includes(q)) return false;
-    return true;
-  });
-  const selected = visible.find((tx) => tx.id === selectedId) || visible[0] || null;
-  const field = 'mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none';
-  const bankOf = (id?: string) => banks.find((bank) => bank.id === id);
-  const branches = Array.from(new Set(banks.map((bank) => bank.branchName).filter((value): value is string => Boolean(value))));
-  const canCreate = ['finance', 'super_admin', 'executive'].includes(actor.role);
-  const canApprove = ['executive', 'super_admin'].includes(actor.role);
+
+  // Fetch KPI
+  async function loadKpi() {
+    setLoadingKpi(true);
+    try {
+      const res = await fetch('/api/finance/workflow-actions?view=kpi');
+      const body = await res.json();
+      if (body.success && body.data) setKpiData(body.data);
+    } catch (e) {
+      console.error('Error loading KPI balances:', e);
+    } finally {
+      setLoadingKpi(false);
+    }
+  }
+
+  // Fetch Reconciliation
+  async function loadReconciliation() {
+    setLoadingReconcile(true);
+    try {
+      const res = await fetch('/api/finance/workflow-actions?view=reconciliation');
+      const body = await res.json();
+      if (body.success && body.data) setReconcileData(body.data);
+    } catch (e) {
+      console.error('Error loading reconciliation:', e);
+    } finally {
+      setLoadingReconcile(false);
+    }
+  }
+
+  // Fetch Register
+  async function loadRegister() {
+    setLoadingRegister(true);
+    try {
+      const p = new URLSearchParams({ view: 'register', tab: registerTab, search: registerSearch });
+      const res = await fetch(`/api/finance/workflow-actions?${p.toString()}`);
+      const body = await res.json();
+      if (body.success && body.data) setRegisterItems(body.data);
+    } catch (e) {
+      console.error('Error loading register:', e);
+    } finally {
+      setLoadingRegister(false);
+    }
+  }
+
+  // Fetch Workflows
   async function loadWorkflows(preferId?: string) {
     setLoadingFlows(true);
     setFlowError('');
@@ -382,7 +425,48 @@ export function MovementScreen({
       setLoadingFlows(false);
     }
   }
-  useEffect(() => { loadWorkflows(); }, []);
+
+  function refreshAll() {
+    loadKpi();
+    loadReconciliation();
+    loadRegister();
+    loadWorkflows();
+    onChanged?.();
+  }
+
+  useEffect(() => {
+    loadKpi();
+    loadReconciliation();
+    loadWorkflows();
+  }, []);
+
+  useEffect(() => {
+    loadRegister();
+  }, [registerTab, registerSearch]);
+
+  const posted = rows.filter((tx) => tx.status !== 'cancelled');
+  const deposits = posted.filter((tx) => tx.type === 'income');
+  const transfers = posted.filter((tx) => (tx.type as string) === 'transfer' || (tx.type as string) === 'bank_transfer_out' || (tx.type as string) === 'bank_transfer_in');
+  const pool = tab === 'deposit' ? deposits : transfers;
+  const moneyTypes = Array.from(new Set(rows.map((tx) => tx.moneyType).filter((value): value is NonNullable<FinancialTransaction['moneyType']> => Boolean(value))));
+
+  const visible = pool.filter((tx) => {
+    if (!inRange(tx.date, from, to)) return false;
+    if (money !== 'all' && tx.moneyType !== money) return false;
+    if (bankId !== 'all' && tx.bankAccountId !== bankId) return false;
+    if (status !== 'all' && tx.status !== status) return false;
+    const q = query.trim().toLowerCase();
+    if (q && !`${tx.transactionNo} ${tx.payerOrPayee} ${tx.category} ${tx.referenceNo} ${tx.fundName}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const selected = visible.find((tx) => tx.id === selectedId) || visible[0] || null;
+  const field = 'mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none';
+  const bankOf = (id?: string) => banks.find((bank) => bank.id === id);
+  const branches = Array.from(new Set(banks.map((bank) => bank.branchName).filter((value): value is string => Boolean(value))));
+  const canCreate = ['finance', 'super_admin', 'executive'].includes(actor.role);
+  const canApprove = ['executive', 'super_admin'].includes(actor.role);
+
   const visibleFlows = workflows.filter((wf) => {
     const bank = bankOf(wf.step1BankAccountId);
     if (branch !== 'all' && bank?.branchName !== branch) return false;
@@ -396,13 +480,11 @@ export function MovementScreen({
     if (keyword && !`${wf.workflowNo} ${wf.title} ${wf.step1OperatorName} ${wf.step1Notes || ''}`.toLowerCase().includes(keyword)) return false;
     return true;
   });
+
   const selectedFlow = visibleFlows.find((wf) => wf.id === workflowId) || visibleFlows[0] || null;
-  const openFlows = workflows.filter((wf) => wf.overallStatus !== 'cancelled');
-  const movedTotal = openFlows.reduce((sum, wf) => sum + Number(wf.step1WithdrawAmount || 0), 0);
-  const awaitingTotal = workflows.filter((wf) => wf.step1Status === 'pending_approval' || wf.step1Status === 'draft').reduce((sum, wf) => sum + Number(wf.step1WithdrawAmount || 0), 0);
+
   async function mutateFlow(method: 'POST' | 'PUT' | 'DELETE', payload?: Record<string, unknown>, removeId?: string) {
     setBusy(true);
-    setFormError('');
     setFlowError('');
     try {
       const response = await fetch(method === 'DELETE'
@@ -419,325 +501,639 @@ export function MovementScreen({
       setBusy(false);
     }
   }
-  async function submitRequest() {
-    const value = Number(amount);
-    const source = bankOf(sourceBank);
-    const target = bankOf(targetBank);
-    if (!Number.isFinite(value) || value <= 0) { setFormError('จำนวนเงินต้องมากกว่า 0'); return; }
-    if (!purpose.trim()) { setFormError('ต้องระบุวัตถุประสงค์'); return; }
-    if (!actor.name.trim()) { setFormError('ต้องมีผู้รับผิดชอบ'); return; }
-    if (kind !== 'deposit' && !source) { setFormError('ต้องเลือกบัญชีต้นทาง'); return; }
-    if (kind !== 'withdraw' && !target) { setFormError('ต้องเลือกบัญชีปลายทาง'); return; }
-    if (kind === 'transfer' && sourceBank === targetBank) { setFormError('บัญชีต้นทางและปลายทางต้องไม่ใช่บัญชีเดียวกัน'); return; }
-    const accepted = (bank?: BankAccount) => !bank?.moneyTypes?.length || bank.moneyTypes.includes(fundType) || (fundType === 'admin' && bank.moneyTypes.includes('operational'));
-    if ((source && !accepted(source)) || (target && !accepted(target))) { setFormError('ประเภทเงินไม่ตรงกับบัญชีที่เลือก'); return; }
-    if (kind === 'withdraw' && source && value > source.currentBalance) { setFormError('ยอดเงินในบัญชีต้นทางไม่พอ'); return; }
-    try {
-      if (kind === 'withdraw') {
-        const body = await mutateFlow('POST', { input: { title: purpose.trim(), bankAccountId: sourceBank, withdrawAmount: value, notes: note.trim(), fundType, eventDate, withdrawnByName: actor.name, proofUrl: proof.trim(), status: 'draft' } });
-        setComposer(false);
-        await loadWorkflows(body.data?.id);
-        setTab('withdraw');
-      } else {
-        const response = await fetch('/api/finance/transfers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: kind,
-            actor,
-            input: kind === 'deposit'
-              ? { bankAccountId: targetBank, amount: value, depositDate: eventDate, referenceNo: purpose.trim(), notes: note.trim(), slipUrl: proof.trim() }
-              : { sourceBankAccountId: sourceBank, targetBankAccountId: targetBank, amount: value, transferDate: eventDate, referenceNo: purpose.trim(), notes: note.trim(), slipUrl: proof.trim() },
-          }),
-        });
-        const body = await response.json();
-        if (!response.ok || !body.success) throw new Error(body.error || 'บันทึกไม่สำเร็จ');
-        setComposer(false);
-        setTab(kind);
-        onChanged?.();
-      }
-      setAmount('');
-      setPurpose('');
-      setNote('');
-      setProof('');
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ');
-    }
-  }
+
   async function advance(next: 'pending_approval' | 'approved' | 'completed') {
     if (!selectedFlow) return;
     if (next === 'completed' && !window.confirm('ยืนยันการถอนจากธนาคาร ระบบจะตัดยอดบัญชีและบันทึกสมุดบัญชี')) return;
     try {
-      await mutateFlow('PUT', { step: 1, workflowId: selectedFlow.id, input: { status: next, proofUrl: proof.trim() || selectedFlow.step1ProofUrl, notes: note.trim() || selectedFlow.step1Notes } });
+      await mutateFlow('PUT', { step: 1, workflowId: selectedFlow.id, input: { status: next, proofUrl: selectedFlow.step1ProofUrl, notes: selectedFlow.step1Notes } });
       await loadWorkflows(selectedFlow.id);
-      if (next === 'completed') onChanged?.();
+      refreshAll();
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ');
     }
   }
+
   async function removeDraft() {
     if (!selectedFlow) return;
     try {
       await mutateFlow('DELETE', undefined, selectedFlow.id);
       setWorkflowId(null);
       await loadWorkflows();
+      refreshAll();
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : 'ลบแบบร่างไม่สำเร็จ');
     }
   }
+
   function exportVisible() {
     const source = tab === 'withdraw' ? visibleFlows : visible;
     downloadCsv(`movements-${tab}.csv`, ['เลขที่', 'วันที่', 'ประเภท', 'ผู้เกี่ยวข้อง', 'จำนวน', 'สถานะ'], source.map((item) => 'workflowNo' in item
       ? [item.workflowNo, item.step1Date, 'ถอน', item.step1OperatorName, String(item.step1WithdrawAmount), workflowBadge(item).label]
       : [item.transactionNo, item.date, kindLabel(item), item.payerOrPayee, String(item.amount), statusText(item)]));
   }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={exportVisible} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-          <Download className="h-4 w-4" />
-          ส่งออก
-        </button>
-        {canCreate ? (
-          <button type="button" onClick={() => { setKind(tab); setFormError(''); setComposer(true); }} className="inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white">
-            <Plus className="h-4 w-4" />
-            สร้างคำขอเคลื่อนย้ายเงิน
+    <div className="space-y-6">
+      {/* ================================================== */}
+      {/* TOP HEADER: 3 PRIMARY ACTION BUTTONS & VIEW SWITCH */}
+      {/* ================================================== */}
+      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-xs lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-wider text-teal-700">ZMS Financial Management</div>
+          <h1 className="text-xl font-extrabold text-slate-800">
+            ระบบฝาก ถอน โอน และควบคุมเงินสด (Cash Flow & Ledger Control)
+          </h1>
+          <p className="mt-0.5 text-xs text-slate-500">
+            บริหารจัดการเชื่อมโยง 3 บัญชี: ธนาคาร · เหรัญญิก · เงินสดเจ้าหน้าที่ พร้อมลงสมุดบัญชีแยกประเภทอัตโนมัติ
+          </p>
+        </div>
+
+        {/* 3 Prominent Colored Buttons */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Button 1: ฝากเงิน (Teal #0D9488) */}
+          <button
+            type="button"
+            onClick={() => setIsDepositOpen(true)}
+            className="inline-flex items-center gap-2 rounded-2xl bg-[#0D9488] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-700/20 transition hover:bg-[#0f766e] active:scale-[0.98]"
+          >
+            <Building2 className="h-4 w-4" />
+            ฝากเงิน
           </button>
-        ) : null}
+
+          {/* Button 2: ถอนเงิน (Amber #D97706) */}
+          <button
+            type="button"
+            onClick={() => setIsWithdrawOpen(true)}
+            className="inline-flex items-center gap-2 rounded-2xl bg-[#D97706] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-amber-700/20 transition hover:bg-[#b45309] active:scale-[0.98]"
+          >
+            <Banknote className="h-4 w-4" />
+            ถอนเงิน
+          </button>
+
+          {/* Button 3: โอนเงิน (Blue #2563EB) */}
+          <button
+            type="button"
+            onClick={() => setIsTransferOpen(true)}
+            className="inline-flex items-center gap-2 rounded-2xl bg-[#2563EB] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-700/20 transition hover:bg-blue-700 active:scale-[0.98]"
+          >
+            <ArrowLeftRight className="h-4 w-4" />
+            โอนเงิน
+          </button>
+
+          <button
+            type="button"
+            onClick={refreshAll}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            title="รีเฟรชข้อมูลทั้งหมด"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 md:grid-cols-2 xl:grid-cols-5">
-        <label className="text-[11px] text-slate-400">ช่วงวันที่
-          <span className="mt-1 flex items-center gap-1 rounded-xl border border-slate-200 px-2">
-            <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="w-full bg-transparent py-2 text-xs outline-none" />
-            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="w-full bg-transparent py-2 text-xs outline-none" />
-          </span>
-        </label>
-        <label className="text-[11px] text-slate-400">ประเภทเงิน
-          <select value={money} onChange={(event) => setMoney(event.target.value)} className={field}>
-            <option value="all">ทุกประเภท</option>
-            {moneyTypes.map((item) => <option key={item} value={item}>{moneyTypeText(item)}</option>)}
-          </select>
-        </label>
-        <label className="text-[11px] text-slate-400">บัญชีธนาคาร
-          <select value={bankId} onChange={(event) => setBankId(event.target.value)} className={field}>
-            <option value="all">ทุกบัญชี</option>
-            {banks.map((bank) => <option key={bank.id} value={bank.id}>{bank.bankName} · {bank.accountName}</option>)}
-          </select>
-        </label>
-        <label className="text-[11px] text-slate-400">สถานะ
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className={field}>
-            <option value="all">ทุกสถานะ</option>
-            <option value="pending">รอตรวจสอบ</option>
-            <option value="completed">ลงบัญชีแล้ว</option>
-            <option value="reversed">ยกเลิก</option>
-          </select>
-        </label>
-        <label className="text-[11px] text-slate-400">สาขา
-          <select value={branch} onChange={(event) => setBranch(event.target.value)} className={field}>
-            <option value="all">ทุกสาขา</option>
-            {branches.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </label>
-        <label className="text-[11px] text-slate-400">ค้นหา
-          <span className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 px-3">
-            <Search className="h-4 w-4 text-slate-400" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="เลขที่ ชื่อ หรือหมวด" className="w-full bg-transparent py-2 text-sm outline-none" />
-          </span>
-        </label>
+
+      {/* ================================================== */}
+      {/* 3 KPI ACCOUNT CARDS (BANK, TREASURER, STAFF CASH)  */}
+      {/* ================================================== */}
+      <FinanceKpiCards data={kpiData} loading={loadingKpi} />
+
+      {/* ================================================== */}
+      {/* WORKSPACE VIEW SELECTOR TABS                       */}
+      {/* ================================================== */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveView('register')}
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition ${
+              activeView === 'register'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <TableProperties className="h-4 w-4" />
+            ทะเบียนควบคุมการเบิกและตัดยอดเงินสด
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('reconciliation')}
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition ${
+              activeView === 'reconciliation'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Scale className="h-4 w-4" />
+            การกระทบยอด 3 ทาง (Reconciliation)
+            {reconcileData?.isBalanced && (
+              <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('movements')}
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition ${
+              activeView === 'movements'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <History className="h-4 w-4" />
+            ประวัติธุรกรรมและการเคลื่อนไหว
+          </button>
+        </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Navy label="ยอดเงินเคลื่อนย้ายทั้งหมด" value={baht(movedTotal)} hint={`${openFlows.length} คำขอที่ยังไม่ยกเลิก`} />
-        <Light label="เงินในธนาคาร" value={baht(bankTotal)} hint={`${banks.filter((bank) => bank.status === 'active').length} บัญชีที่ใช้งาน`} />
-        <Light label="เงินสดในความรับผิดชอบ" value={baht(cash)} />
-        <Light label="เงินที่รอตรวจสอบ" value={baht(awaitingTotal)} hint="แบบร่างและรายการที่ส่งตรวจสอบแล้ว" />
-      </div>
-      <CashPosition />
-      <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-xs text-emerald-800">คำขอถอนถูกบันทึกเป็นแบบร่างก่อน ยอดธนาคารจะถูกตัดเมื่อยืนยันการถอนจากธนาคารแล้วเท่านั้น การฝากและโอนระหว่างบัญชีบันทึกเข้าสมุดทันที</div>
-      <MovementDocuments banks={banks} actor={actor} onChanged={onChanged} />
-      {flowError ? <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-[#DC2626]">{flowError}</div> : null}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Card>
-          <div className="flex border-b border-slate-100">
-            {([['deposit', 'ฝาก', deposits.length], ['withdraw', 'ถอน', visibleFlows.length], ['transfer', 'โอน', transfers.length]] as const).map(([id, label, count]) => (
-              <button key={id} type="button" onClick={() => { setTab(id); setSelectedId(null); }} className={`flex-1 px-4 py-3 text-sm font-semibold ${tab === id ? 'border-b-2 border-[#0D9488] text-[#0D9488]' : 'text-slate-500'}`}>{label} <span className="text-[11px] font-medium text-slate-400">{count}</span></button>
-            ))}
+
+      {/* ================================================== */}
+      {/* VIEW CONTENT                                       */}
+      {/* ================================================== */}
+      {activeView === 'register' && (
+        <FinanceCashControlRegister
+          items={registerItems}
+          activeTab={registerTab}
+          onTabChange={setRegisterTab}
+          searchQuery={registerSearch}
+          onSearchChange={setRegisterSearch}
+          onRefresh={refreshAll}
+          onOpenAidModal={() => setIsAidModalOpen(true)}
+          onOpenAdminModal={() => setIsAdminModalOpen(true)}
+        />
+      )}
+
+      {activeView === 'reconciliation' && (
+        <FinanceThreeWayReconciliation
+          data={reconcileData}
+          loading={loadingReconcile}
+          onRefresh={refreshAll}
+        />
+      )}
+
+      {activeView === 'movements' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={exportVisible}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+            >
+              <Download className="h-4 w-4" />
+              ส่งออก
+            </button>
           </div>
-          <div className="max-h-[560px] overflow-y-auto">
-            {tab === 'withdraw' ? (
-              loadingFlows ? <div className="px-4 py-8 text-center text-sm text-slate-400">กำลังโหลดคำขอ</div>
-              : visibleFlows.length === 0 ? <div className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีคำขอถอนตามเงื่อนไข</div>
-              : visibleFlows.map((wf) => {
-                const badge = workflowBadge(wf);
-                return (
-                  <button key={wf.id} type="button" onClick={() => setWorkflowId(wf.id)} className={`block w-full border-t border-slate-100 px-4 py-3 text-left ${selectedFlow?.id === wf.id ? 'bg-emerald-50/70' : ''}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-[#0e2744]">{wf.workflowNo}</div>
-                        <div className="text-[11px] text-slate-400">{wf.title} · {wf.step1OperatorName}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold">{baht(wf.step1WithdrawAmount)}</div>
-                        <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
-                      </div>
-                    </div>
+
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 md:grid-cols-2 xl:grid-cols-5">
+            <label className="text-[11px] text-slate-400">
+              ช่วงวันที่
+              <span className="mt-1 flex items-center gap-1 rounded-xl border border-slate-200 px-2">
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(event) => setFrom(event.target.value)}
+                  className="w-full bg-transparent py-2 text-xs outline-none"
+                />
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                  className="w-full bg-transparent py-2 text-xs outline-none"
+                />
+              </span>
+            </label>
+            <label className="text-[11px] text-slate-400">
+              ประเภทเงิน
+              <select value={money} onChange={(event) => setMoney(event.target.value)} className={field}>
+                <option value="all">ทุกประเภท</option>
+                {moneyTypes.map((item) => (
+                  <option key={item} value={item}>
+                    {moneyTypeText(item)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-[11px] text-slate-400">
+              บัญชีธนาคาร
+              <select value={bankId} onChange={(event) => setBankId(event.target.value)} className={field}>
+                <option value="all">ทุกบัญชี</option>
+                {banks.map((bank) => (
+                  <option key={bank.id} value={bank.id}>
+                    {bank.bankName} · {bank.accountName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-[11px] text-slate-400">
+              สถานะ
+              <select value={status} onChange={(event) => setStatus(event.target.value)} className={field}>
+                <option value="all">ทุกสถานะ</option>
+                <option value="pending">รอตรวจสอบ</option>
+                <option value="completed">ลงบัญชีแล้ว</option>
+                <option value="reversed">ยกเลิก</option>
+              </select>
+            </label>
+            <label className="text-[11px] text-slate-400">
+              สาขา
+              <select value={branch} onChange={(event) => setBranch(event.target.value)} className={field}>
+                <option value="all">ทุกสาขา</option>
+                {branches.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-[11px] text-slate-400">
+              ค้นหา
+              <span className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 px-3">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="เลขที่ ชื่อ หรือหมวด"
+                  className="w-full bg-transparent py-2 text-sm outline-none"
+                />
+              </span>
+            </label>
+          </div>
+
+          {flowError ? (
+            <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-[#DC2626]">{flowError}</div>
+          ) : null}
+
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <Card>
+              <div className="flex border-b border-slate-100">
+                {([
+                  ['deposit', 'ฝาก', deposits.length],
+                  ['withdraw', 'ถอน', visibleFlows.length],
+                  ['transfer', 'โอน', transfers.length],
+                ] as const).map(([id, label, count]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => {
+                      setTab(id);
+                      setSelectedId(null);
+                    }}
+                    className={`flex-1 px-4 py-3 text-sm font-semibold ${
+                      tab === id ? 'border-b-2 border-[#0D9488] text-[#0D9488]' : 'text-slate-500'
+                    }`}
+                  >
+                    {label} <span className="text-[11px] font-medium text-slate-400">{count}</span>
                   </button>
-                );
-              })
-            ) : visible.length === 0 ? <div className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีรายการตามเงื่อนไข</div> : visible.map((tx) => (
-              <button key={tx.id} type="button" onClick={() => setSelectedId(tx.id)} className={`block w-full border-t border-slate-100 px-4 py-3 text-left ${selected?.id === tx.id ? 'bg-emerald-50/70' : ''}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-[#0e2744]">{tx.transactionNo}</div>
-                    <div className="text-[11px] text-slate-400">{tx.category || kindLabel(tx)} · {tx.payerOrPayee}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold">{baht(tx.amount)}</div>
-                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusClass(tx)}`}>{statusText(tx)}</span>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </Card>
-        <Card className="p-4">
-          {tab === 'withdraw' && selectedFlow ? (
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold text-[#0e2744]">{selectedFlow.workflowNo}</div>
-                  <div className="mt-1 text-xs text-slate-500">{selectedFlow.title}</div>
-                </div>
-                <StatusBadge tone={workflowBadge(selectedFlow).tone}>{workflowBadge(selectedFlow).label}</StatusBadge>
-              </div>
-              <div className="rounded-2xl bg-[#0B2545] px-4 py-4 text-white">
-                <div className="text-[11px] text-slate-300">จำนวนคำขอถอน</div>
-                <div className="mt-1 text-xl font-bold">{baht(selectedFlow.step1WithdrawAmount)}</div>
-              </div>
-              <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                <div>บัญชี <span className="font-semibold text-slate-700">{selectedFlow.step1BankAccountName || bankOf(selectedFlow.step1BankAccountId)?.accountName || '—'}</span></div>
-                <div>ประเภทเงิน <span className="font-semibold text-slate-700">{moneyTypeText(selectedFlow.step1FundType || '')}</span></div>
-                <div>ผู้ทำรายการ <span className="font-semibold text-slate-700">{selectedFlow.step1OperatorName || '—'}</span></div>
-                <div>เหรัญญิก <span className="font-semibold text-slate-700">{selectedFlow.step2TreasurerName || '—'}</span></div>
-              </div>
-              <div className="space-y-3">
-                {movementTimeline(selectedFlow).map((step, index) => (
-                  <div key={step.title} className="flex gap-3">
-                    <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${step.tone === 'success' ? 'bg-[#0D9488] text-white' : step.tone === 'pending' ? 'bg-[#F59E0B] text-white' : step.tone === 'rejected' ? 'bg-[#DC2626] text-white' : 'bg-slate-200 text-[#64748B]'}`}>{index + 1}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-semibold text-[#0B2545]">{step.title}</div>
-                        <StatusBadge tone={step.tone}>{step.label}</StatusBadge>
-                      </div>
-                      <div className="text-[11px] text-slate-400">{step.who || 'ยังไม่ระบุผู้รับผิดชอบ'}</div>
-                    </div>
-                  </div>
                 ))}
               </div>
-              {selectedFlow.step1ProofUrl ? <a href={selectedFlow.step1ProofUrl} className="block truncate text-xs font-semibold text-[#0D9488]" target="_blank" rel="noreferrer">หลักฐาน: {selectedFlow.step1ProofName || selectedFlow.step1ProofUrl}</a> : <p className="text-xs text-slate-400">ยังไม่มีหลักฐานการถอน</p>}
-              {selectedFlow.step1Notes ? <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{selectedFlow.step1Notes}</p> : null}
-              <div className="flex flex-wrap gap-2">
-                {selectedFlow.step1Status === 'draft' && canCreate ? <button type="button" disabled={busy} onClick={() => advance('pending_approval')} className="rounded-xl bg-[#F59E0B] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">ส่งให้ตรวจสอบ</button> : null}
-                {selectedFlow.step1Status === 'pending_approval' && canApprove ? <button type="button" disabled={busy} onClick={() => advance('approved')} className="rounded-xl bg-[#2563EB] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">อนุมัติ</button> : null}
-                {selectedFlow.step1Status === 'approved' && canCreate ? <button type="button" disabled={busy} onClick={() => advance('completed')} className="rounded-xl bg-[#0D9488] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">ยืนยันถอนจากธนาคาร</button> : null}
-                {(selectedFlow.step1Status === 'draft' || selectedFlow.step1Status === 'pending_approval') && canCreate ? <button type="button" disabled={busy} onClick={removeDraft} className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-[#DC2626] disabled:opacity-50">ลบแบบร่าง</button> : null}
+              <div className="max-h-[560px] overflow-y-auto">
+                {tab === 'withdraw' ? (
+                  loadingFlows ? (
+                    <div className="px-4 py-8 text-center text-sm text-slate-400">กำลังโหลดคำขอ</div>
+                  ) : visibleFlows.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีคำขอถอนตามเงื่อนไข</div>
+                  ) : (
+                    visibleFlows.map((wf) => {
+                      const badge = workflowBadge(wf);
+                      return (
+                        <button
+                          key={wf.id}
+                          type="button"
+                          onClick={() => setWorkflowId(wf.id)}
+                          className={`block w-full border-t border-slate-100 px-4 py-3 text-left ${
+                            selectedFlow?.id === wf.id ? 'bg-emerald-50/70' : ''
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-[#0e2744]">{wf.workflowNo}</div>
+                              <div className="text-[11px] text-slate-400">
+                                {wf.title} · {wf.step1OperatorName}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold">{baht(wf.step1WithdrawAmount)}</div>
+                              <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )
+                ) : visible.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีรายการตามเงื่อนไข</div>
+                ) : (
+                  visible.map((tx) => (
+                    <button
+                      key={tx.id}
+                      type="button"
+                      onClick={() => setSelectedId(tx.id)}
+                      className={`block w-full border-t border-slate-100 px-4 py-3 text-left ${
+                        selected?.id === tx.id ? 'bg-emerald-50/70' : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-[#0e2744]">{tx.transactionNo}</div>
+                          <div className="text-[11px] text-slate-400">
+                            {tx.category || kindLabel(tx)} · {tx.payerOrPayee}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold">{baht(tx.amount)}</div>
+                          <span
+                            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusClass(
+                              tx
+                            )}`}
+                          >
+                            {statusText(tx)}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
-              <CashCycle workflow={selectedFlow} actor={actor} onChanged={() => loadWorkflows(selectedFlow.id)} />
-            </div>
-          ) : tab === 'withdraw' ? <p className="text-sm text-slate-400">ไม่มีคำขอให้เปิด</p> : selected ? (
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold text-[#0e2744]">{selected.transactionNo}</div>
-                  <div className="mt-1 text-xs text-slate-500">{kindLabel(selected)} · {selected.category || '—'}</div>
+            </Card>
+
+            <Card className="p-4">
+              {tab === 'withdraw' && selectedFlow ? (
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-[#0e2744]">{selectedFlow.workflowNo}</div>
+                      <div className="mt-1 text-xs text-slate-500">{selectedFlow.title}</div>
+                    </div>
+                    <StatusBadge tone={workflowBadge(selectedFlow).tone}>
+                      {workflowBadge(selectedFlow).label}
+                    </StatusBadge>
+                  </div>
+                  <div className="rounded-2xl bg-[#0B2545] px-4 py-4 text-white">
+                    <div className="text-[11px] text-slate-300">จำนวนคำขอถอน</div>
+                    <div className="mt-1 text-xl font-bold">{baht(selectedFlow.step1WithdrawAmount)}</div>
+                  </div>
+                  <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                    <div>
+                      บัญชี{' '}
+                      <span className="font-semibold text-slate-700">
+                        {selectedFlow.step1BankAccountName ||
+                          bankOf(selectedFlow.step1BankAccountId)?.accountName ||
+                          '—'}
+                      </span>
+                    </div>
+                    <div>
+                      ประเภทเงิน{' '}
+                      <span className="font-semibold text-slate-700">
+                        {moneyTypeText(selectedFlow.step1FundType || '')}
+                      </span>
+                    </div>
+                    <div>
+                      ผู้ทำรายการ{' '}
+                      <span className="font-semibold text-slate-700">
+                        {selectedFlow.step1OperatorName || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      เหรัญญิก{' '}
+                      <span className="font-semibold text-slate-700">
+                        {selectedFlow.step2TreasurerName || '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {movementTimeline(selectedFlow).map((step, index) => (
+                      <div key={step.title} className="flex gap-3">
+                        <div
+                          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                            step.tone === 'success'
+                              ? 'bg-[#0D9488] text-white'
+                              : step.tone === 'pending'
+                              ? 'bg-[#F59E0B] text-white'
+                              : step.tone === 'rejected'
+                              ? 'bg-[#DC2626] text-white'
+                              : 'bg-slate-200 text-[#64748B]'
+                          }`}
+                        >
+                          {index + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-[#0B2545]">{step.title}</div>
+                            <StatusBadge tone={step.tone}>{step.label}</StatusBadge>
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            {step.who || 'ยังไม่ระบุผู้รับผิดชอบ'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedFlow.step1ProofUrl ? (
+                    <a
+                      href={selectedFlow.step1ProofUrl}
+                      className="block truncate text-xs font-semibold text-[#0D9488]"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      หลักฐาน: {selectedFlow.step1ProofName || selectedFlow.step1ProofUrl}
+                    </a>
+                  ) : (
+                    <p className="text-xs text-slate-400">ยังไม่มีหลักฐานการถอน</p>
+                  )}
+                  {selectedFlow.step1Notes ? (
+                    <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      {selectedFlow.step1Notes}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    {selectedFlow.step1Status === 'draft' && canCreate ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => advance('pending_approval')}
+                        className="rounded-xl bg-[#F59E0B] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        ส่งให้ตรวจสอบ
+                      </button>
+                    ) : null}
+                    {selectedFlow.step1Status === 'pending_approval' && canApprove ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => advance('approved')}
+                        className="rounded-xl bg-[#2563EB] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        อนุมัติ
+                      </button>
+                    ) : null}
+                    {selectedFlow.step1Status === 'approved' && canCreate ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => advance('completed')}
+                        className="rounded-xl bg-[#0D9488] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        ยืนยันถอนจากธนาคาร
+                      </button>
+                    ) : null}
+                    {(selectedFlow.step1Status === 'draft' ||
+                      selectedFlow.step1Status === 'pending_approval') &&
+                    canCreate ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={removeDraft}
+                        className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-[#DC2626] disabled:opacity-50"
+                      >
+                        ลบแบบร่าง
+                      </button>
+                    ) : null}
+                  </div>
+                  <CashCycle
+                    workflow={selectedFlow}
+                    actor={actor}
+                    onChanged={() => {
+                      loadWorkflows(selectedFlow.id);
+                      refreshAll();
+                    }}
+                  />
                 </div>
-                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusClass(selected)}`}>{statusText(selected)}</span>
-              </div>
-              <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                <div>วันที่ <span className="font-semibold text-slate-700">{thaiDate(selected.date)}</span></div>
-                <div>ช่องทาง <span className="font-semibold text-slate-700">{paymentLabel(selected.paymentMethod)}</span></div>
-                <div>ผู้เกี่ยวข้อง <span className="font-semibold text-slate-700">{selected.payerOrPayee || '—'}</span></div>
-                <div>กองทุน <span className="font-semibold text-slate-700">{selected.fundName || '—'}</span></div>
-                <div>บัญชี <span className="font-semibold text-slate-700">{bankOf(selected.bankAccountId)?.accountName || 'ไม่ผูกบัญชี'}</span></div>
-                <div>เลขอ้างอิง <span className="font-semibold text-slate-700">{selected.referenceNo || '—'}</span></div>
-              </div>
-              <div className="rounded-2xl bg-[#0B2545] px-4 py-4 text-white">
-                <div className="flex items-end justify-between gap-3">
-                  <div className="text-[11px] text-slate-300">จำนวนตามสมุดบัญชี</div>
-                  <div className="text-xl font-bold">{baht(selected.amount)}</div>
+              ) : tab === 'withdraw' ? (
+                <p className="text-sm text-slate-400">ไม่มีคำขอให้เปิด</p>
+              ) : selected ? (
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-[#0e2744]">{selected.transactionNo}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {kindLabel(selected)} · {selected.category || '—'}
+                      </div>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusClass(
+                        selected
+                      )}`}
+                    >
+                      {statusText(selected)}
+                    </span>
+                  </div>
+                  <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                    <div>
+                      วันที่ <span className="font-semibold text-slate-700">{thaiDate(selected.date)}</span>
+                    </div>
+                    <div>
+                      ช่องทาง{' '}
+                      <span className="font-semibold text-slate-700">
+                        {paymentLabel(selected.paymentMethod)}
+                      </span>
+                    </div>
+                    <div>
+                      ผู้เกี่ยวข้อง{' '}
+                      <span className="font-semibold text-slate-700">
+                        {selected.payerOrPayee || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      กองทุน{' '}
+                      <span className="font-semibold text-slate-700">{selected.fundName || '—'}</span>
+                    </div>
+                    <div>
+                      บัญชี{' '}
+                      <span className="font-semibold text-slate-700">
+                        {bankOf(selected.bankAccountId)?.accountName || 'ไม่ผูกบัญชี'}
+                      </span>
+                    </div>
+                    <div>
+                      เลขอ้างอิง{' '}
+                      <span className="font-semibold text-slate-700">
+                        {selected.referenceNo || '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-[#0B2545] px-4 py-4 text-white">
+                    <div className="flex items-end justify-between gap-3">
+                      <div className="text-[11px] text-slate-300">จำนวนตามสมุดบัญชี</div>
+                      <div className="text-xl font-bold">{baht(selected.amount)}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">ผู้บันทึก</span>
+                      <span>
+                        {selected.recordedBy || '—'} · {thaiDate(selected.date)}
+                      </span>
+                    </div>
+                    {selected.verifiedBy ? (
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-500">ผู้ตรวจ</span>
+                        <span>
+                          {selected.verifiedBy}
+                          {selected.verifiedAt ? ` · ${thaiDate(selected.verifiedAt)}` : ''}
+                        </span>
+                      </div>
+                    ) : null}
+                    {selected.reversedBy ? (
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-500">กลับรายการ</span>
+                        <span>
+                          {selected.reversedBy}
+                          {selected.reversalReason ? ` · ${selected.reversalReason}` : ''}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                  {selected.notes ? (
+                    <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      {selected.notes}
+                    </p>
+                  ) : null}
                 </div>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between gap-3"><span className="text-slate-500">ผู้บันทึก</span><span>{selected.recordedBy || '—'} · {thaiDate(selected.date)}</span></div>
-                {selected.verifiedBy ? <div className="flex justify-between gap-3"><span className="text-slate-500">ผู้ตรวจ</span><span>{selected.verifiedBy}{selected.verifiedAt ? ` · ${thaiDate(selected.verifiedAt)}` : ''}</span></div> : null}
-                {selected.reversedBy ? <div className="flex justify-between gap-3"><span className="text-slate-500">กลับรายการ</span><span>{selected.reversedBy}{selected.reversalReason ? ` · ${selected.reversalReason}` : ''}</span></div> : null}
-              </div>
-              {selected.notes ? <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{selected.notes}</p> : null}
-            </div>
-          ) : <p className="text-sm text-slate-400">ไม่มีรายการให้เปิด</p>}
-        </Card>
-      </div>
-      {composer ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
-          <form onSubmit={(event) => { event.preventDefault(); submitRequest(); }} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
-            <div className="text-lg font-bold text-[#0B2545]">สร้างคำขอเคลื่อนย้ายเงิน</div>
-            <div className="mt-4 grid gap-3">
-              <label className="text-xs text-slate-500">ประเภท
-                <select value={kind} onChange={(event) => setKind(event.target.value as 'withdraw' | 'deposit' | 'transfer')} className={field}>
-                  <option value="withdraw">ถอนเงิน</option>
-                  <option value="deposit">ฝากเงิน</option>
-                  <option value="transfer">โอนเงิน</option>
-                </select>
-              </label>
-              <label className="text-xs text-slate-500">ประเภทเงิน
-                <select value={fundType} onChange={(event) => setFundType(event.target.value)} className={field}>
-                  <option value="zakat">ซะกาต</option>
-                  <option value="sadaqah">ศอดะเกาะห์</option>
-                  <option value="admin">เงินบริหาร</option>
-                </select>
-              </label>
-              {kind !== 'deposit' ? (
-                <label className="text-xs text-slate-500">บัญชีต้นทาง
-                  <select value={sourceBank} onChange={(event) => setSourceBank(event.target.value)} className={field}>
-                    {banks.filter((bank) => bank.status === 'active').map((bank) => <option key={bank.id} value={bank.id}>{bank.accountName} · {baht(bank.currentBalance)}</option>)}
-                  </select>
-                </label>
-              ) : null}
-              {kind !== 'withdraw' ? (
-                <label className="text-xs text-slate-500">บัญชีปลายทาง
-                  <select value={targetBank} onChange={(event) => setTargetBank(event.target.value)} className={field}>
-                    <option value="">เลือกบัญชี</option>
-                    {banks.filter((bank) => bank.status === 'active').map((bank) => <option key={bank.id} value={bank.id}>{bank.accountName}</option>)}
-                  </select>
-                </label>
-              ) : null}
-              <label className="text-xs text-slate-500">จำนวนเงิน
-                <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" className={field} />
-              </label>
-              <label className="text-xs text-slate-500">วันที่ทำรายการ
-                <input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} className={field} />
-              </label>
-              <label className="text-xs text-slate-500">วัตถุประสงค์
-                <input value={purpose} onChange={(event) => setPurpose(event.target.value)} className={field} />
-              </label>
-              <label className="text-xs text-slate-500">ผู้รับผิดชอบ
-                <input value={actor.name} readOnly className={field} />
-              </label>
-              <label className="text-xs text-slate-500">หมายเหตุ
-                <textarea value={note} onChange={(event) => setNote(event.target.value)} className={field} rows={2} />
-              </label>
-              <label className="text-xs text-slate-500">หลักฐาน (ลิงก์หรือชื่อไฟล์)
-                <input value={proof} onChange={(event) => setProof(event.target.value)} className={field} />
-              </label>
-            </div>
-            <p className="mt-3 text-[11px] text-slate-400">{kind === 'withdraw' ? 'คำขอถอนจะถูกเก็บเป็นแบบร่าง และยังไม่ตัดเงินในบัญชี' : 'การฝากหรือโอนจะบันทึกเข้าสมุดบัญชีทันที'}</p>
-            {formError ? <p className="mt-2 text-xs text-[#DC2626]">{formError}</p> : null}
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setComposer(false)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold">ยกเลิก</button>
-              <button type="submit" disabled={busy} className="rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? 'กำลังบันทึก...' : 'บันทึกคำขอ'}</button>
-            </div>
-          </form>
+              ) : (
+                <p className="text-sm text-slate-400">ไม่มีรายการให้เปิด</p>
+              )}
+            </Card>
+          </div>
         </div>
-      ) : null}
+      )}
+
+      {/* ================================================== */}
+      {/* 3 TRANSACTION MODALS + 2 CASH PAYMENT MODALS      */}
+      {/* ================================================== */}
+      <FinanceMovementModalDeposit
+        isOpen={isDepositOpen}
+        onClose={() => setIsDepositOpen(false)}
+        banks={banks}
+        actor={actor}
+        onSuccess={refreshAll}
+      />
+
+      <FinanceMovementModalWithdraw
+        isOpen={isWithdrawOpen}
+        onClose={() => setIsWithdrawOpen(false)}
+        banks={banks}
+        actor={actor}
+        onSuccess={refreshAll}
+      />
+
+      <FinanceMovementModalTransfer
+        isOpen={isTransferOpen}
+        onClose={() => setIsTransferOpen(false)}
+        banks={banks}
+        actor={actor}
+        onSuccess={refreshAll}
+      />
+
+      <FinanceModalCashAidDisburse
+        isOpen={isAidModalOpen}
+        onClose={() => setIsAidModalOpen(false)}
+        actor={actor}
+        onSuccess={refreshAll}
+      />
+
+      <FinanceModalCashAdminExpense
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        actor={actor}
+        onSuccess={refreshAll}
+      />
     </div>
   );
 }

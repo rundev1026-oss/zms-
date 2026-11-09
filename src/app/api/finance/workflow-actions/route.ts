@@ -41,16 +41,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: res.rows });
     }
 
-    if (view === 'categories') {
-      await initDb();
-      const db = getDb();
-      const res = await db.execute(`
-        SELECT id, code, name, group_name
-        FROM admin_expense_categories
-        WHERE is_active = 1
-        ORDER BY order_index, code
-      `);
-      return NextResponse.json({ success: true, data: res.rows });
+    if (view === 'categories' || view === 'admin_categories') {
+      const items = await FinancialWorkflowService.getAdminExpenseCategoriesList();
+      return NextResponse.json({ success: true, data: items });
+    }
+
+    if (view === 'eligible_applications') {
+      const search = searchParams.get('search') || '';
+      const items = await FinancialWorkflowService.getEligibleAssistanceApplications(search);
+      return NextResponse.json({ success: true, data: items });
+    }
+
+    if (view === 'batch_list') {
+      const tab = searchParams.get('tab') || 'all';
+      const search = searchParams.get('search') || '';
+      const result = await FinancialWorkflowService.getBatchDisbursementList({ tab, search });
+      return NextResponse.json({ success: true, data: result });
+    }
+
+    if (view === 'batch_detail') {
+      const workflowId = searchParams.get('workflowId') || searchParams.get('id');
+      if (!workflowId) {
+        return NextResponse.json({ success: false, error: 'ต้องระบุ workflowId' }, { status: 400 });
+      }
+      const result = await FinancialWorkflowService.getBatchDisbursementDetail(workflowId);
+      if (!result) {
+        return NextResponse.json({ success: false, error: 'ไม่พบข้อมูลรอบการเบิก' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, data: result });
     }
 
     return NextResponse.json({ success: false, error: 'ไม่พบ view ที่ระบุ' }, { status: 400 });
@@ -90,6 +108,49 @@ export async function POST(req: NextRequest) {
 
     if (action === 'disburse_admin') {
       const result = await FinancialWorkflowService.deductAdminExpenseCash(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    // =========================================================================
+    // TWO-ROLE BATCH DISBURSEMENT ACTIONS
+    // =========================================================================
+    if (action === 'create_batch') {
+      const result = await FinancialWorkflowService.createBatchDisbursement(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 201 });
+    }
+
+    if (action === 'submit_batch') {
+      const result = await FinancialWorkflowService.submitBatchForApproval(input.workflowId, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'treasurer_review') {
+      const result = await FinancialWorkflowService.treasurerReviewBatch(input.workflowId, input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'handover_cash') {
+      const result = await FinancialWorkflowService.handoverBatchCash(input.workflowId, input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'confirm_receipt') {
+      const result = await FinancialWorkflowService.staffConfirmCashReceipt(input.workflowId, input.handoverId, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'settle_item') {
+      const result = await FinancialWorkflowService.settleBatchLineItem(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'record_refund') {
+      const result = await FinancialWorkflowService.recordBatchRefund(input.workflowId, input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'close_round') {
+      const result = await FinancialWorkflowService.closeBatchRound(input.workflowId, input, actor);
       return NextResponse.json({ success: true, data: result }, { status: 200 });
     }
 

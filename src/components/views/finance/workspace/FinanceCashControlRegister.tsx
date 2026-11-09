@@ -55,6 +55,8 @@ export function FinanceCashControlRegister({
   onRefresh,
   onOpenAidModal,
   onOpenAdminModal,
+  onOpenCreateBatch,
+  onOpenSettlement,
 }: {
   items: RegisterItem[];
   activeTab: string;
@@ -64,6 +66,8 @@ export function FinanceCashControlRegister({
   onRefresh?: () => void;
   onOpenAidModal?: () => void;
   onOpenAdminModal?: () => void;
+  onOpenCreateBatch?: () => void;
+  onOpenSettlement?: (workflowId: string) => void;
 }) {
   const [selectedItem, setSelectedItem] = useState<RegisterItem | null>(null);
 
@@ -145,6 +149,15 @@ export function FinanceCashControlRegister({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenCreateBatch && (
+            <button
+              type="button"
+              onClick={onOpenCreateBatch}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-teal-700 bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-2xs transition hover:bg-teal-800"
+            >
+              <Plus className="h-3.5 w-3.5" /> สร้างรอบเบิกเงิน (Batch)
+            </button>
+          )}
           {onOpenAidModal && (
             <button
               type="button"
@@ -393,7 +406,20 @@ export function FinanceCashControlRegister({
               )}
             </div>
 
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex items-center justify-between">
+              {onOpenSettlement ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = selectedItem.id;
+                    setSelectedItem(null);
+                    onOpenSettlement(id);
+                  }}
+                  className="rounded-xl border border-teal-600 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-800 transition hover:bg-teal-100"
+                >
+                  เปิดหน้าต่างตัดยอด / คืนเงิน
+                </button>
+              ) : <div />}
               <button
                 type="button"
                 onClick={() => setSelectedItem(null)}

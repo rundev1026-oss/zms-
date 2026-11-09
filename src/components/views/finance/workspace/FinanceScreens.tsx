@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, Plus, Search, Building2, Banknote, ArrowLeftRight, RefreshCw, TableProperties, Scale, History } from 'lucide-react';
+import { Download, Plus, Search, Building2, Banknote, ArrowLeftRight, RefreshCw, TableProperties, Scale, History, Inbox, Layers, FileText } from 'lucide-react';
 import type { AsnafAllocation, BankAccount, CashFlowWorkflow, FinancialTransaction, FundAccount } from '@/types';
 import { AdminExpenseModal, AssistancePaymentModal, CashPosition, MovementDocuments } from './FinanceDocuments';
 import { CashCycle } from './CashCycleDialogs';
@@ -13,6 +13,9 @@ import { FinanceCashControlRegister, type RegisterItem } from './FinanceCashCont
 import { FinanceThreeWayReconciliation, type ReconciliationData } from './FinanceThreeWayReconciliation';
 import { FinanceModalCashAidDisburse } from './FinanceModalCashAidDisburse';
 import { FinanceModalCashAdminExpense } from './FinanceModalCashAdminExpense';
+import { FinanceTreasurerInbox } from './FinanceTreasurerInbox';
+import { FinanceBatchDisbursementModal } from './FinanceBatchDisbursementModal';
+import { FinanceStaffBatchSettlementModal } from './FinanceStaffBatchSettlementModal';
 
 function baht(value: number) {
   const amount = Number.isFinite(value) ? value : 0;
@@ -330,12 +333,17 @@ export function MovementScreen({
   onChanged?: () => void;
 }) {
   // Views & Modals state
-  const [activeView, setActiveView] = useState<'register' | 'reconciliation' | 'movements'>('register');
+  const [activeView, setActiveView] = useState<'treasurer_inbox' | 'register' | 'reconciliation' | 'movements'>(
+    actor.role === 'finance' ? 'treasurer_inbox' : 'register'
+  );
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
   const [isAidModalOpen, setIsAidModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isBatchCreateOpen, setIsBatchCreateOpen] = useState(false);
+  const [settlementWorkflowId, setSettlementWorkflowId] = useState<string | null>(null);
+  const [inboxPendingCount, setInboxPendingCount] = useState<number>(0);
 
   // Data State
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
@@ -426,11 +434,25 @@ export function MovementScreen({
     }
   }
 
+  // Fetch Inbox counts for Treasurer tab badge
+  async function loadInboxCounts() {
+    try {
+      const res = await fetch('/api/finance/workflow-actions?view=batch_list');
+      const body = await res.json();
+      if (body.success && body.data?.counts) {
+        setInboxPendingCount((body.data.counts.pending_approval || 0) + (body.data.counts.pending_closing || 0));
+      }
+    } catch (e) {
+      // silently ignore
+    }
+  }
+
   function refreshAll() {
     loadKpi();
     loadReconciliation();
     loadRegister();
     loadWorkflows();
+    loadInboxCounts();
     onChanged?.();
   }
 
@@ -438,6 +460,7 @@ export function MovementScreen({
     loadKpi();
     loadReconciliation();
     loadWorkflows();
+    loadInboxCounts();
   }, []);
 
   useEffect(() => {
@@ -581,6 +604,16 @@ export function MovementScreen({
             โอนเงิน
           </button>
 
+          {/* Button 4: สร้างรอบเบิกเงิน (Batch Disbursement) */}
+          <button
+            type="button"
+            onClick={() => setIsBatchCreateOpen(true)}
+            className="inline-flex items-center gap-2 rounded-2xl bg-teal-800 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-900/20 transition hover:bg-teal-900 active:scale-[0.98]"
+          >
+            <Layers className="h-4 w-4" />
+            สร้างรอบเบิกเงิน (Batch)
+          </button>
+
           <button
             type="button"
             onClick={refreshAll}
@@ -602,6 +635,24 @@ export function MovementScreen({
       {/* ================================================== */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveView('treasurer_inbox')}
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
+              activeView === 'treasurer_inbox'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Inbox className="h-4 w-4 shrink-0 text-teal-600" />
+            กล่องงานเหรัญญิก (Treasurer Inbox)
+            {inboxPendingCount > 0 && (
+              <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] font-black text-white">
+                {inboxPendingCount}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveView('register')}
@@ -649,6 +700,14 @@ export function MovementScreen({
       {/* ================================================== */}
       {/* VIEW CONTENT                                       */}
       {/* ================================================== */}
+      {activeView === 'treasurer_inbox' && (
+        <FinanceTreasurerInbox
+          actor={actor}
+          onRefreshParent={refreshAll}
+          onOpenCreateBatch={() => setIsBatchCreateOpen(true)}
+        />
+      )}
+
       {activeView === 'register' && (
         <FinanceCashControlRegister
           items={registerItems}
@@ -659,6 +718,8 @@ export function MovementScreen({
           onRefresh={refreshAll}
           onOpenAidModal={() => setIsAidModalOpen(true)}
           onOpenAdminModal={() => setIsAdminModalOpen(true)}
+          onOpenCreateBatch={() => setIsBatchCreateOpen(true)}
+          onOpenSettlement={(id) => setSettlementWorkflowId(id)}
         />
       )}
 
@@ -1134,6 +1195,25 @@ export function MovementScreen({
         actor={actor}
         onSuccess={refreshAll}
       />
+
+      {/* Two-Role Batch Disbursement & Staff Settlement Modals */}
+      <FinanceBatchDisbursementModal
+        isOpen={isBatchCreateOpen}
+        onClose={() => setIsBatchCreateOpen(false)}
+        banks={banks}
+        actor={actor}
+        onSuccess={refreshAll}
+      />
+
+      {settlementWorkflowId && (
+        <FinanceStaffBatchSettlementModal
+          workflowId={settlementWorkflowId}
+          isOpen={!!settlementWorkflowId}
+          onClose={() => setSettlementWorkflowId(null)}
+          actor={actor}
+          onSettled={refreshAll}
+        />
+      )}
     </div>
   );
 }

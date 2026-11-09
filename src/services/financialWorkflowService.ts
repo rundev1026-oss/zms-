@@ -1244,4 +1244,1630 @@ export class FinancialWorkflowService {
       status: 'cleared',
     };
   }
+
+  // =========================================================================
+  // TWO-ROLE BATCH DISBURSEMENT SYSTEM (PHASES 2 - 10)
+  // =========================================================================
+
+  /**
+   * Fetch approved applications eligible for batch aid disbursement
+   */
+  static async getEligibleAssistanceApplications(searchQuery: string = '') {
+    await initDb();
+    const db = getDb();
+    const q = `%${searchQuery.trim()}%`;
+
+    const res = await db.execute({
+      sql: `
+        SELECT 
+          a.id,
+          a.application_no,
+          a.beneficiary_id,
+          COALESCE(b.full_name, a.assigned_officer_name, 'ผู้ขอรับความช่วยเหลือ') as beneficiary_name,
+          COALESCE(b.national_id, '-') as national_id,
+          a.asnaf_category,
+          COALESCE(a.approved_amount, a.requested_amount, 0) as approved_amount,
+          COALESCE(a.disbursed_amount, 0) as disbursed_amount,
+          a.status
+        FROM assistance_applications a
+        LEFT JOIN beneficiaries b ON b.id = a.beneficiary_id
+        WHERE (a.status IN ('approved', 'in_progress', 'ready_for_disbursement') OR a.approved_amount > 0)
+          AND (
+            a.application_no LIKE ? OR 
+            b.full_name LIKE ? OR 
+            b.national_id LIKE ? OR 
+            a.asnaf_category LIKE ?
+          )
+        ORDER BY a.created_at DESC
+        LIMIT 60
+      `,
+      args: [q, q, q, q],
+    });
+
+    return res.rows.map((r: any) => ({
+      id: String(r.id),
+      applicationNo: String(r.application_no),
+      beneficiaryId: String(r.beneficiary_id),
+      beneficiaryName: String(r.beneficiary_name),
+      nationalId: String(r.national_id),
+      asnafCategory: String(r.asnaf_category || 'ผู้มีสิทธิ์รับซะกาต'),
+      approvedAmount: Number(r.approved_amount || 0),
+      disbursedAmount: Number(r.disbursed_amount || 0),
+      remainingAmount: Math.max(0, Number(r.approved_amount || 0) - Number(r.disbursed_amount || 0)),
+      status: String(r.status),
+    }));
+  }
+
+  /**
+   * Fetch active admin expense categories for batch line items
+   */
+  static async getAdminExpenseCategoriesList() {
+    await initDb();
+    const db = getDb();
+
+    const res = await db.execute(`
+      SELECT id, code, name, group_name, budget_limit
+      FROM admin_expense_categories
+      WHERE is_active = 1
+      ORDER BY order_index ASC, code ASC
+    `);
+
+    return res.rows.map((r: any) => ({
+      id: String(r.id),
+      code: String(r.code),
+      name: String(r.name),
+      groupName: String(r.group_name || 'ทั่วไป'),
+      budgetLimit: Number(r.budget_limit || 0),
+    }));
+  }
+
+  /**
+   * ROLE A: Office Staff creates a multi-item batch disbursement
+   */
+  static async createBatchDisbursement(input: {
+    title: string;
+    fundType?: string;
+    bankAccountId: string;
+    notes?: string;
+    submitImmediately?: boolean;
+    items: Array<{
+      type: 'aid' | 'admin';
+      applicationId?: string;
+      beneficiaryId?: string;
+      beneficiaryName?: string;
+      nationalId?: string;
+      asnafCategory?: string;
+      assistanceType?: string;
+      approvedAmount?: number;
+      thisDisbursementAmount?: number;
+      categoryId?: string;
+      categoryName?: string;
+      description?: string;
+      amount?: number;
+      payeeName?: string;
+      notes?: string;
+    }>;
+  }, actor: ActorContext) {
+    await initDb();
+    const db = getDb();
+
+    if (!input.title || input.title.trim().length === 0) {
+      throw new Error('กรุณาระบุวัตถุประสงค์หรือชื่อรอบการเบิกเงิน');
+    }
+    if (!input.bankAccountId) {
+      throw new Error('กรุณาเลือกบัญชีธนาคารต้นทาง');
+    }
+    if (!input.items || input.items.length === 0) {
+      throw new Error('ต้องมีรายการย่อยอย่างน้อย 1 รายการในรอบการเบิก');
+    }
+
+    const aidItems = input.items.filter((it) => it.type === 'aid');
+    const adminItems = input.items.filter((it) => it.type === 'admin');
+
+    const totalAidAmount = round2(
+      aidItems.reduce((sum, it) => sum + (Number(it.thisDisbursementAmount) || 0), 0)
+    );
+    const totalAdminAmount = round2(
+      adminItems.reduce((sum, it) => sum + (Number(it.amount) || 0), 0)
+    );
+    const totalBatchAmount = round2(totalAidAmount + totalAdminAmount);
+
+    if (totalBatchAmount <= 0) {
+      throw new Error('ยอดรวมของรอบการเบิกต้องมากกว่า 0 บาท');
+    }
+
+    const thaiYear = new Date().getFullYear() + 543;
+    const batchNo = `WD-${thaiYear}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const workflowId = `wf-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const dateNow = new Date().toISOString().slice(0, 10);
+    const initialStatus = input.submitImmediately ? 'pending_approval' : 'draft';
+
+    // 1. Insert cash_flow_workflows (The Batch Header)
+    await db.execute({
+      sql: `
+        INSERT INTO cash_flow_workflows (
+          id, workflow_no, title,
+          step1_bank_account_id, step1_withdraw_amount, step1_date,
+          step1_operator_id, step1_operator_name, step1_status,
+          step1_fund_type, step1_notes,
+          step2_treasurer_id, step2_treasurer_name, step2_status,
+          overall_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'custodian-ruslan', 'นายรุสลัน หะสาเมาะ', 'pending', ?)
+      `,
+      args: [
+        workflowId,
+        batchNo,
+        input.title.trim(),
+        input.bankAccountId,
+        totalBatchAmount,
+        dateNow,
+        actor.id,
+        actor.name,
+        initialStatus,
+        input.fundType || 'zakat',
+        input.notes || null,
+        initialStatus,
+      ],
+    });
+
+    // 2. Insert Aid Voucher & Disbursement Line Items
+    if (aidItems.length > 0) {
+      const aidVoucherId = `cw-aid-${Date.now()}-${randomUUID().slice(0, 4)}`;
+      const aidVoucherNo = `${batchNo}-AID`;
+
+      await db.execute({
+        sql: `
+          INSERT INTO cash_flow_withdrawals (
+            id, workflow_id, withdrawal_no, voucher_type,
+            amount, requested_amount, approved_amount,
+            withdrawal_datetime, withdrawer_id, withdrawer_name,
+            target_asnaf, purpose, status, handover_status, clearance_status
+          ) VALUES (?, ?, ?, 'aid_disbursement', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'not_required')
+        `,
+        args: [
+          aidVoucherId,
+          workflowId,
+          aidVoucherNo,
+          totalAidAmount,
+          totalAidAmount,
+          totalAidAmount,
+          dateNow,
+          actor.id,
+          actor.name,
+          aidItems[0].asnafCategory || 'ผู้มีสิทธิ์รับซะกาต',
+          input.title,
+          initialStatus,
+        ],
+      });
+
+      for (let i = 0; i < aidItems.length; i++) {
+        const item = aidItems[i];
+        const lineId = `di-${Date.now()}-${i + 1}-${randomUUID().slice(0, 4)}`;
+        const disbAmt = round2(Number(item.thisDisbursementAmount) || 0);
+        const appAmt = round2(Number(item.approvedAmount) || disbAmt);
+
+        await db.execute({
+          sql: `
+            INSERT INTO cash_flow_disbursement_items (
+              id, withdrawal_id, workflow_id,
+              application_id, beneficiary_id, beneficiary_name, national_id,
+              asnaf_category, assistance_type,
+              approved_amount, disbursed_amount_before, this_disbursement_amount, remaining_balance,
+              notes, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+          `,
+          args: [
+            lineId,
+            aidVoucherId,
+            workflowId,
+            item.applicationId || `app-${Date.now()}-${i}`,
+            item.beneficiaryId || `ben-${Date.now()}-${i}`,
+            item.beneficiaryName || 'ผู้มีสิทธิ์รับซะกาต',
+            item.nationalId || '-',
+            item.asnafCategory || 'ยากจน/ขัดสน',
+            item.assistanceType || 'เงินสงเคราะห์ตามมติ',
+            appAmt,
+            disbAmt,
+            Math.max(0, appAmt - disbAmt),
+            item.notes || null,
+            initialStatus === 'pending_approval' ? 'pending' : 'draft',
+          ],
+        });
+      }
+    }
+
+    // 3. Insert Admin Voucher & Clearance Line Items
+    if (adminItems.length > 0) {
+      const adminVoucherId = `cw-adm-${Date.now()}-${randomUUID().slice(0, 4)}`;
+      const adminVoucherNo = `${batchNo}-ADM`;
+
+      await db.execute({
+        sql: `
+          INSERT INTO cash_flow_withdrawals (
+            id, workflow_id, withdrawal_no, voucher_type,
+            amount, requested_amount, approved_amount,
+            withdrawal_datetime, withdrawer_id, withdrawer_name,
+            target_asnaf, purpose, status, handover_status, clearance_status
+          ) VALUES (?, ?, ?, 'office_expense', ?, ?, ?, ?, ?, ?, 'ค่าบริหาร', ?, ?, 'pending', 'pending_clearance')
+        `,
+        args: [
+          adminVoucherId,
+          workflowId,
+          adminVoucherNo,
+          totalAdminAmount,
+          totalAdminAmount,
+          totalAdminAmount,
+          dateNow,
+          actor.id,
+          actor.name,
+          input.title,
+          initialStatus,
+        ],
+      });
+
+      for (let i = 0; i < adminItems.length; i++) {
+        const item = adminItems[i];
+        const lineId = `cli-${Date.now()}-${i + 1}-${randomUUID().slice(0, 4)}`;
+        const lineAmt = round2(Number(item.amount) || 0);
+
+        await db.execute({
+          sql: `
+            INSERT INTO cash_flow_clearance_items (
+              id, withdrawal_id, workflow_id,
+              expense_date, description, amount,
+              category_code, category_name, notes, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          args: [
+            lineId,
+            adminVoucherId,
+            workflowId,
+            dateNow,
+            item.description || item.categoryName || 'ค่าใช้จ่ายบริหารสำนักงาน',
+            lineAmt,
+            item.categoryId || 'OFFICE_EXPENSE',
+            item.categoryName || 'ค่าใช้จ่ายบริหาร',
+            item.notes || null,
+            initialStatus === 'pending_approval' ? 'pending' : 'draft',
+          ],
+        });
+      }
+    }
+
+    // 4. Log Audit Event & Approval Event if submitted
+    if (input.submitImmediately) {
+      await db.execute({
+        sql: `
+          INSERT INTO finance_approval_events (
+            id, document_type, document_id, action, from_status, to_status,
+            actor_id, actor_name, actor_role, note
+          ) VALUES (?, 'payment_voucher', ?, 'SUBMIT', 'draft', 'pending_approval', ?, ?, ?, ?)
+        `,
+        args: [
+          `fae-${Date.now()}`,
+          workflowId,
+          actor.id,
+          actor.name,
+          actor.role,
+          `เจ้าหน้าที่จัดทำคำขอเบิกเงินเป็นรอบและยื่นเสนอขออนุมัติ ยอดรวม ฿${totalBatchAmount.toLocaleString('th-TH')}`,
+        ],
+      });
+    }
+
+    await db.execute({
+      sql: `
+        INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
+        VALUES (?, ?, ?, ?, ?, 'CREATE_BATCH_DISBURSEMENT', 'cash_flow_workflow', ?, ?)
+      `,
+      args: [
+        `log-${Date.now()}`,
+        new Date().toISOString(),
+        actor.id,
+        actor.name,
+        actor.role,
+        workflowId,
+        `สร้างรอบเบิก ${batchNo} จำนวน ${input.items.length} รายการ ยอดรวม ฿${totalBatchAmount.toLocaleString('th-TH')} สถานะ ${initialStatus}`,
+      ],
+    });
+
+    return {
+      success: true,
+      workflowId,
+      batchNo,
+      totalAmount: totalBatchAmount,
+      itemCount: input.items.length,
+      status: initialStatus,
+    };
+  }
+
+  /**
+   * ROLE A: Submit existing draft batch for treasurer approval
+   */
+  static async submitBatchForApproval(workflowId: string, actor: ActorContext) {
+    await initDb();
+    const db = getDb();
+
+    const wfRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_workflows WHERE id = ?`,
+      args: [workflowId],
+    });
+    if (wfRes.rows.length === 0) throw new Error('ไม่พบข้อมูลรอบการเบิกที่ระบุ');
+
+    const wf = wfRes.rows[0];
+    if (wf.step1_status !== 'draft' && wf.step1_status !== 'rejected_for_revision') {
+      throw new Error(`ไม่สามารถยื่นขออนุมัติได้ เนื่องจากสถานะปัจจุบันคือ ${wf.step1_status}`);
+    }
+
+    // Count items
+    const disbCount = await db.execute({
+      sql: `SELECT COUNT(*) as c FROM cash_flow_disbursement_items WHERE workflow_id = ?`,
+      args: [workflowId],
+    });
+    const clearCount = await db.execute({
+      sql: `SELECT COUNT(*) as c FROM cash_flow_clearance_items WHERE workflow_id = ?`,
+      args: [workflowId],
+    });
+    const totalItems = Number(disbCount.rows[0]?.c || 0) + Number(clearCount.rows[0]?.c || 0);
+
+    if (totalItems === 0) {
+      throw new Error('ไม่สามารถส่งขออนุมัติรอบเบิกที่ไม่มีรายการย่อยได้');
+    }
+
+    await db.execute({
+      sql: `UPDATE cash_flow_workflows SET step1_status = 'pending_approval', overall_status = 'pending_approval', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      args: [workflowId],
+    });
+
+    await db.execute({
+      sql: `UPDATE cash_flow_withdrawals SET status = 'pending_approval', updated_at = CURRENT_TIMESTAMP WHERE workflow_id = ?`,
+      args: [workflowId],
+    });
+
+    await db.execute({
+      sql: `
+        INSERT INTO finance_approval_events (
+          id, document_type, document_id, action, from_status, to_status,
+          actor_id, actor_name, actor_role, note
+        ) VALUES (?, 'payment_voucher', ?, 'SUBMIT', ?, 'pending_approval', ?, ?, ?, ?)
+      `,
+      args: [
+        `fae-${Date.now()}`,
+        workflowId,
+        String(wf.step1_status),
+        actor.id,
+        actor.name,
+        actor.role,
+        'เจ้าหน้าที่ส่งรอบเบิกเข้าสู่การพิจารณาอนุมัติของเหรัญญิก',
+      ],
+    });
+
+    return { success: true, workflowId, status: 'pending_approval' };
+  }
+
+  /**
+   * ROLE B: Treasurer Approval Decision (Approve / Reject / Return for Revision)
+   */
+  static async treasurerReviewBatch(
+    workflowId: string,
+    input: { decision: 'approve' | 'reject' | 'return_for_revision'; reason?: string },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    // Check permissions
+    if (actor.role !== 'finance' && actor.role !== 'super_admin' && actor.role !== 'approver' && actor.role !== 'executive') {
+      throw new Error('เฉพาะฝ่ายเหรัญญิกหรือผู้มีอำนาจอนุมัติเท่านั้นที่สามารถพิจารณารอบเบิกได้');
+    }
+
+    const wfRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_workflows WHERE id = ?`,
+      args: [workflowId],
+    });
+    if (wfRes.rows.length === 0) throw new Error('ไม่พบข้อมูลรอบการเบิก');
+
+    const wf = wfRes.rows[0];
+
+    // Prevent self-approval (Unless super_admin emergency override)
+    if (String(wf.step1_operator_id) === actor.id && actor.role !== 'super_admin') {
+      throw new Error('ไม่อนุญาตให้ผู้จัดทำคำขออนุมัติรายการของตนเอง (Segregation of Duties)');
+    }
+
+    if (wf.step1_status !== 'pending_approval') {
+      throw new Error(`รอบการเบิกนี้ไม่ได้อยู่ในสถานะรออนุมัติ (สถานะปัจจุบัน: ${wf.step1_status})`);
+    }
+
+    if ((input.decision === 'reject' || input.decision === 'return_for_revision') && (!input.reason || input.reason.trim().length === 0)) {
+      throw new Error('กรุณาระบุเหตุผลในการไม่อนุมัติหรือส่งกลับแก้ไข');
+    }
+
+    const timestampNow = new Date().toISOString();
+
+    if (input.decision === 'approve') {
+      await db.execute({
+        sql: `
+          UPDATE cash_flow_workflows SET 
+            step1_status = 'approved',
+            step1_approver_id = ?,
+            step1_approver_name = ?,
+            step2_status = 'pending_handover',
+            overall_status = 'approved',
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        args: [actor.id, actor.name, workflowId],
+      });
+
+      await db.execute({
+        sql: `
+          UPDATE cash_flow_withdrawals SET
+            status = 'approved',
+            approver_id = ?,
+            approver_name = ?,
+            handover_status = 'not_handed_over',
+            updated_at = CURRENT_TIMESTAMP
+          WHERE workflow_id = ?
+        `,
+        args: [actor.id, actor.name, workflowId],
+      });
+
+      await db.execute({
+        sql: `
+          INSERT INTO finance_approval_events (
+            id, document_type, document_id, action, from_status, to_status,
+            actor_id, actor_name, actor_role, note
+          ) VALUES (?, 'payment_voucher', ?, 'APPROVE', 'pending_approval', 'approved', ?, ?, ?, ?)
+        `,
+        args: [
+          `fae-${Date.now()}`,
+          workflowId,
+          actor.id,
+          actor.name,
+          actor.role,
+          input.reason || 'เหรัญญิกตรวจสอบความถูกต้องและอนุมัติรอบเบิกเรียบร้อย',
+        ],
+      });
+
+      return { success: true, workflowId, decision: 'approve', status: 'approved' };
+    }
+
+    if (input.decision === 'return_for_revision') {
+      await db.execute({
+        sql: `
+          UPDATE cash_flow_workflows SET 
+            step1_status = 'rejected_for_revision',
+            step1_notes = ?,
+            overall_status = 'rejected_for_revision',
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        args: [input.reason || 'ส่งกลับแก้ไข', workflowId],
+      });
+
+      await db.execute({
+        sql: `UPDATE cash_flow_withdrawals SET status = 'rejected_for_revision', updated_at = CURRENT_TIMESTAMP WHERE workflow_id = ?`,
+        args: [workflowId],
+      });
+
+      await db.execute({
+        sql: `
+          INSERT INTO finance_approval_events (
+            id, document_type, document_id, action, from_status, to_status,
+            actor_id, actor_name, actor_role, note
+          ) VALUES (?, 'payment_voucher', ?, 'RETURN_FOR_REVISION', 'pending_approval', 'rejected_for_revision', ?, ?, ?, ?)
+        `,
+        args: [
+          `fae-${Date.now()}`,
+          workflowId,
+          actor.id,
+          actor.name,
+          actor.role,
+          input.reason || 'ส่งกลับแก้ไขเอกสาร',
+        ],
+      });
+
+      return { success: true, workflowId, decision: 'return_for_revision', status: 'rejected_for_revision' };
+    }
+
+    // decision === 'reject'
+    await db.execute({
+      sql: `
+        UPDATE cash_flow_workflows SET 
+          step1_status = 'rejected',
+          step1_notes = ?,
+          overall_status = 'cancelled',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [input.reason || 'ไม่อนุมัติ', workflowId],
+    });
+
+    await db.execute({
+      sql: `UPDATE cash_flow_withdrawals SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE workflow_id = ?`,
+      args: [workflowId],
+    });
+
+    await db.execute({
+      sql: `
+        INSERT INTO finance_approval_events (
+          id, document_type, document_id, action, from_status, to_status,
+          actor_id, actor_name, actor_role, note
+        ) VALUES (?, 'payment_voucher', ?, 'REJECT', 'pending_approval', 'cancelled', ?, ?, ?, ?)
+      `,
+      args: [
+        `fae-${Date.now()}`,
+        workflowId,
+        actor.id,
+        actor.name,
+        actor.role,
+        input.reason || 'ไม่อนุมัติคำขอเบิกเงิน',
+      ],
+    });
+
+    return { success: true, workflowId, decision: 'reject', status: 'cancelled' };
+  }
+
+  /**
+   * ROLE B: Treasurer records actual cash handover to Office Staff
+   */
+  static async handoverBatchCash(
+    workflowId: string,
+    input: {
+      actualAmount: number;
+      handoverDate: string;
+      proofUrl?: string;
+      notes?: string;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    if (actor.role !== 'finance' && actor.role !== 'super_admin') {
+      throw new Error('เฉพาะฝ่ายเหรัญญิกเท่านั้นที่สามารถบันทึกการส่งมอบเงินสดได้');
+    }
+
+    const wfRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_workflows WHERE id = ?`,
+      args: [workflowId],
+    });
+    if (wfRes.rows.length === 0) throw new Error('ไม่พบข้อมูลรอบการเบิก');
+
+    const wf = wfRes.rows[0];
+    if (wf.step1_status !== 'approved') {
+      throw new Error('ไม่สามารถส่งมอบเงินสดได้ เนื่องจากรอบเบิกยังไม่ได้รับการอนุมัติ');
+    }
+
+    const handedAmount = round2(Number(input.actualAmount) || 0);
+    if (handedAmount <= 0) {
+      throw new Error('จำนวนเงินที่ส่งมอบจริงต้องมากกว่า 0 บาท');
+    }
+
+    const handoverNo = `HND-${new Date().getFullYear() + 543}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const handoverId = `hnd-${Date.now()}-${randomUUID().slice(0, 4)}`;
+    const handoverDate = input.handoverDate || new Date().toISOString().slice(0, 10);
+    const handoverTime = new Date().toTimeString().slice(0, 8);
+
+    // Get primary withdrawal id
+    const wthRes = await db.execute({
+      sql: `SELECT id FROM cash_flow_withdrawals WHERE workflow_id = ? LIMIT 1`,
+      args: [workflowId],
+    });
+    const withdrawalId = String(wthRes.rows[0]?.id || `wth-${Date.now()}`);
+
+    // Insert into finance_handover_records (Awaiting staff confirmation)
+    await db.execute({
+      sql: `
+        INSERT INTO finance_handover_records (
+          id, withdrawal_id, workflow_id, handover_no,
+          handover_date, handover_time,
+          handed_over_by_id, handed_over_by_name,
+          received_by_id, received_by_name,
+          amount, handover_method, proof_url, proof_name,
+          status, recorded_by_id, recorded_by_name,
+          confirmed_by_id, confirmed_by_name, confirmed_at, notes
+        ) VALUES (
+          ?, ?, ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, 'cash', ?, ?,
+          'pending_verification', ?, ?,
+          '', '', '', ?
+        )
+      `,
+      args: [
+        handoverId,
+        withdrawalId,
+        workflowId,
+        handoverNo,
+        handoverDate,
+        handoverTime,
+        actor.id,
+        actor.name,
+        String(wf.step1_operator_id),
+        String(wf.step1_operator_name),
+        handedAmount,
+        input.proofUrl || 'https://placehold.co/400x300.png?text=Handover+Receipt',
+        'ใบส่งมอบเงินสด.pdf',
+        actor.id,
+        actor.name,
+        input.notes || 'เหรัญญิกบันทึกการส่งมอบเงินสดแก่เจ้าหน้าที่สำนักงาน',
+      ],
+    });
+
+    // Update workflow status to pending staff receipt
+    await db.execute({
+      sql: `
+        UPDATE cash_flow_workflows SET
+          step2_handover_person_id = ?,
+          step2_handover_person_name = ?,
+          step2_handover_amount = ?,
+          step2_handover_datetime = ?,
+          step2_status = 'handed_over',
+          overall_status = 'pending_staff_receipt',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [actor.id, actor.name, handedAmount, `${handoverDate}T${handoverTime}`, workflowId],
+    });
+
+    await db.execute({
+      sql: `
+        UPDATE cash_flow_withdrawals SET
+          handover_status = 'pending_verification',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE workflow_id = ?
+      `,
+      args: [workflowId],
+    });
+
+    return {
+      success: true,
+      handoverId,
+      handoverNo,
+      amount: handedAmount,
+      status: 'pending_staff_receipt',
+    };
+  }
+
+  /**
+   * ROLE A: Office Staff confirms cash receipt -> POSTS DOUBLE-ENTRY GENERAL LEDGER
+   */
+  static async staffConfirmCashReceipt(workflowId: string, handoverId: string, actor: ActorContext) {
+    await initDb();
+    const db = getDb();
+
+    const wfRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_workflows WHERE id = ?`,
+      args: [workflowId],
+    });
+    if (wfRes.rows.length === 0) throw new Error('ไม่พบข้อมูลรอบการเบิก');
+    const wf = wfRes.rows[0];
+
+    // Verify actor is the recipient staff or super_admin
+    if (String(wf.step1_operator_id) !== actor.id && actor.role !== 'super_admin') {
+      throw new Error('เฉพาะเจ้าหน้าที่ผู้จัดทำคำขอเบิกเท่านั้นที่สามารถกดยืนยันรับเงินสดได้');
+    }
+
+    const hndRes = await db.execute({
+      sql: `SELECT * FROM finance_handover_records WHERE id = ? OR (workflow_id = ? AND status = 'pending_verification') LIMIT 1`,
+      args: [handoverId, workflowId],
+    });
+    if (hndRes.rows.length === 0) throw new Error('ไม่พบข้อมูลการส่งมอบเงินที่รอการยืนยัน');
+    const hnd = hndRes.rows[0];
+
+    const amount = Number(hnd.amount || 0);
+    const dateFormatted = new Date().toLocaleDateString('th-TH');
+    const timestampNow = new Date().toISOString();
+    const journalNo = `JV-HND-${new Date().getFullYear() + 543}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const txnNo = `TXN-HND-${Date.now()}`;
+
+    // 1. Update handover record
+    await db.execute({
+      sql: `
+        UPDATE finance_handover_records SET
+          status = 'fully_handed_over',
+          confirmed_by_id = ?,
+          confirmed_by_name = ?,
+          confirmed_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [actor.id, actor.name, hnd.id],
+    });
+
+    // 2. Update workflow status to disbursed (active float)
+    await db.execute({
+      sql: `
+        UPDATE cash_flow_workflows SET
+          step2_deposit_amount = ?,
+          step2_status = 'completed',
+          step3_status = 'received',
+          overall_status = 'disbursed',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [amount, workflowId],
+    });
+
+    await db.execute({
+      sql: `
+        UPDATE cash_flow_withdrawals SET
+          status = 'disbursed',
+          handover_status = 'fully_handed_over',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE workflow_id = ?
+      `,
+      args: [workflowId],
+    });
+
+    // 3. POST DOUBLE-ENTRY GENERAL LEDGER
+    // Debit: 1030-01 (เงินสดยืมทดรองเจ้าหน้าที่ / Staff Cash Float)
+    // Credit: 1020-01 (เงินสดในมือเหรัญญิก / Treasurer Cash Float)
+    await db.execute({
+      sql: `INSERT INTO general_ledger_entries (
+        id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+        account_code, account_name, account_category, entry_type, amount, currency,
+        description, created_by
+      ) VALUES (?, ?, ?, 'app-system-internal', 'ben-system-internal', ?, '1030-01', 'เงินสดยืมทดรองเจ้าหน้าที่', 'asset', 'debit', ?, 'THB', ?, ?)`,
+      args: [
+        `gl-deb-hnd-${Date.now()}`,
+        journalNo,
+        txnNo,
+        dateFormatted,
+        amount,
+        `เจ้าหน้าที่ (${actor.name}) ยืนยันรับมอบเงินสดจากเหรัญญิกสำหรับรอบ ${wf.workflow_no}`,
+        actor.name,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO general_ledger_entries (
+        id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+        account_code, account_name, account_category, entry_type, amount, currency,
+        description, created_by
+      ) VALUES (?, ?, ?, 'app-system-internal', 'ben-system-internal', ?, '1020-01', 'เงินสดในมือเหรัญญิก', 'asset', 'credit', ?, 'THB', ?, ?)`,
+      args: [
+        `gl-crd-hnd-${Date.now()}`,
+        journalNo,
+        txnNo,
+        dateFormatted,
+        amount,
+        `เหรัญญิกส่งมอบเงินสดแก่เจ้าหน้าที่ (${actor.name}) สำหรับรอบ ${wf.workflow_no}`,
+        actor.name,
+      ],
+    });
+
+    // 4. Audit Log
+    await db.execute({
+      sql: `
+        INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
+        VALUES (?, ?, ?, ?, ?, 'CONFIRM_CASH_RECEIPT', 'cash_flow_workflow', ?, ?)
+      `,
+      args: [
+        `log-${Date.now()}`,
+        timestampNow,
+        actor.id,
+        actor.name,
+        actor.role,
+        workflowId,
+        `เจ้าหน้าที่ (${actor.name}) ยืนยันรับเงินสด ฿${amount.toLocaleString('th-TH')} จากเหรัญญิกเรียบร้อย และลงบัญชีแยกประเภทแล้ว`,
+      ],
+    });
+
+    return {
+      success: true,
+      workflowId,
+      amount,
+      journalNo,
+      status: 'disbursed',
+    };
+  }
+
+  /**
+   * ROLE A: Office Staff settles a line item (จ่ายเงินช่วยเหลือ หรือจ่ายค่าบริหารจริง พร้อมแนบหลักฐาน)
+   */
+  static async settleBatchLineItem(
+    input: {
+      workflowId: string;
+      itemId: string;
+      itemType: 'aid' | 'admin';
+      actualPaidAmount: number;
+      paidDate: string;
+      proofUrl?: string;
+      notes?: string;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    const wfRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_workflows WHERE id = ?`,
+      args: [input.workflowId],
+    });
+    if (wfRes.rows.length === 0) throw new Error('ไม่พบข้อมูลรอบการเบิก');
+
+    const amount = round2(Number(input.actualPaidAmount) || 0);
+    if (amount <= 0) throw new Error('ยอดเงินที่จ่ายจริงต้องมากกว่า 0 บาท');
+
+    const paidDate = input.paidDate || new Date().toISOString().slice(0, 10);
+    const dateFormatted = new Date().toLocaleDateString('th-TH');
+    const journalNo = `JV-SETTLE-${new Date().getFullYear() + 543}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const txnNo = `TXN-SETTLE-${Date.now()}`;
+
+    if (input.itemType === 'aid') {
+      const itemRes = await db.execute({
+        sql: `SELECT * FROM cash_flow_disbursement_items WHERE id = ?`,
+        args: [input.itemId],
+      });
+      if (itemRes.rows.length === 0) throw new Error('ไม่พบรายการย่อยการช่วยเหลือ');
+      const item = itemRes.rows[0];
+
+      // Update item status
+      await db.execute({
+        sql: `
+          UPDATE cash_flow_disbursement_items SET
+            this_disbursement_amount = ?,
+            status = 'confirmed',
+            notes = COALESCE(?, notes),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        args: [amount, input.notes || null, input.itemId],
+      });
+
+      // Update assistance application
+      if (item.application_id && !String(item.application_id).startsWith('app-system')) {
+        await db.execute({
+          sql: `
+            UPDATE assistance_applications SET
+              disbursed_amount = ?,
+              disbursement_date = ?,
+              payment_status = 'completed',
+              status = 'disbursed',
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `,
+          args: [amount, paidDate, item.application_id],
+        });
+      }
+
+      // POST DOUBLE-ENTRY GL
+      // Debit: 5010-01 (ค่าใช้จ่ายเงินสงเคราะห์ซะกาตตามอัสนัฟ)
+      // Credit: 1030-01 (เงินสดยืมทดรองเจ้าหน้าที่)
+      await db.execute({
+        sql: `INSERT INTO general_ledger_entries (
+          id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+          account_code, account_name, account_category, entry_type, amount, currency,
+          description, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, '5010-01', 'ค่าใช้จ่ายเงินสงเคราะห์ซะกาตตามอัสนัฟ', 'expense', 'debit', ?, 'THB', ?, ?)`,
+        args: [
+          `gl-deb-aid-${Date.now()}`,
+          journalNo,
+          txnNo,
+          String(item.application_id || 'app-system-internal'),
+          String(item.beneficiary_id || 'ben-system-internal'),
+          dateFormatted,
+          amount,
+          `จ่ายเงินสงเคราะห์ซะกาตแก่ ${item.beneficiary_name} (${item.asnaf_category})`,
+          actor.name,
+        ],
+      });
+
+      await db.execute({
+        sql: `INSERT INTO general_ledger_entries (
+          id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+          account_code, account_name, account_category, entry_type, amount, currency,
+          description, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, '1030-01', 'เงินสดยืมทดรองเจ้าหน้าที่', 'asset', 'credit', ?, 'THB', ?, ?)`,
+        args: [
+          `gl-crd-aid-${Date.now()}`,
+          journalNo,
+          txnNo,
+          String(item.application_id || 'app-system-internal'),
+          String(item.beneficiary_id || 'ben-system-internal'),
+          dateFormatted,
+          amount,
+          `ตัดจ่ายเงินสดในมือเจ้าหน้าที่ (${actor.name}) แก่ ${item.beneficiary_name}`,
+          actor.name,
+        ],
+      });
+    } else {
+      // itemType === 'admin'
+      const itemRes = await db.execute({
+        sql: `SELECT * FROM cash_flow_clearance_items WHERE id = ?`,
+        args: [input.itemId],
+      });
+      if (itemRes.rows.length === 0) throw new Error('ไม่พบรายการย่อยค่าบริหาร');
+      const item = itemRes.rows[0];
+
+      await db.execute({
+        sql: `
+          UPDATE cash_flow_clearance_items SET
+            amount = ?,
+            expense_date = ?,
+            receipt_url = COALESCE(?, receipt_url),
+            status = 'accepted',
+            notes = COALESCE(?, notes),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        args: [amount, paidDate, input.proofUrl || null, input.notes || null, input.itemId],
+      });
+
+      // POST DOUBLE-ENTRY GL
+      // Debit: 5020-01 (ค่าใช้จ่ายดำเนินงานบริหารสำนักงาน)
+      // Credit: 1030-01 (เงินสดยืมทดรองเจ้าหน้าที่)
+      await db.execute({
+        sql: `INSERT INTO general_ledger_entries (
+          id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+          account_code, account_name, account_category, entry_type, amount, currency,
+          description, created_by
+        ) VALUES (?, ?, ?, 'app-system-internal', 'ben-system-internal', ?, '5020-01', 'ค่าใช้จ่ายดำเนินงานบริหารสำนักงาน', 'expense', 'debit', ?, 'THB', ?, ?)`,
+        args: [
+          `gl-deb-adm-${Date.now()}`,
+          journalNo,
+          txnNo,
+          dateFormatted,
+          amount,
+          `จ่ายค่าใช้จ่ายบริหาร: ${item.description || item.category_name}`,
+          actor.name,
+        ],
+      });
+
+      await db.execute({
+        sql: `INSERT INTO general_ledger_entries (
+          id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+          account_code, account_name, account_category, entry_type, amount, currency,
+          description, created_by
+        ) VALUES (?, ?, ?, 'app-system-internal', 'ben-system-internal', ?, '1030-01', 'เงินสดยืมทดรองเจ้าหน้าที่', 'asset', 'credit', ?, 'THB', ?, ?)`,
+        args: [
+          `gl-crd-adm-${Date.now()}`,
+          journalNo,
+          txnNo,
+          dateFormatted,
+          amount,
+          `ตัดจ่ายเงินสดในมือเจ้าหน้าที่ (${actor.name}) สำหรับค่าบริหารสำนักงาน`,
+          actor.name,
+        ],
+      });
+    }
+
+    return {
+      success: true,
+      workflowId: input.workflowId,
+      itemId: input.itemId,
+      amount,
+      journalNo,
+      status: 'confirmed',
+    };
+  }
+
+  /**
+   * ROLE A: Record Cash Refund back to Treasurer
+   */
+  static async recordBatchRefund(
+    workflowId: string,
+    input: {
+      refundAmount: number;
+      refundDate?: string;
+      reason: string;
+      proofUrl?: string;
+    },
+    actor: ActorContext
+  ) {
+    await initDb();
+    const db = getDb();
+
+    const refundAmount = round2(Number(input.refundAmount) || 0);
+    if (refundAmount <= 0) throw new Error('ยอดเงินที่ส่งคืนต้องมากกว่า 0 บาท');
+    if (!input.reason || input.reason.trim().length === 0) {
+      throw new Error('กรุณาระบุเหตุผลการส่งคืนเงินสด');
+    }
+
+    const wfRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_workflows WHERE id = ?`,
+      args: [workflowId],
+    });
+    if (wfRes.rows.length === 0) throw new Error('ไม่พบข้อมูลรอบการเบิก');
+    const wf = wfRes.rows[0];
+
+    const refundNo = `REF-${new Date().getFullYear() + 543}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const refundId = `ref-${Date.now()}-${randomUUID().slice(0, 4)}`;
+    const refundDate = input.refundDate || new Date().toISOString().slice(0, 10);
+    const dateFormatted = new Date().toLocaleDateString('th-TH');
+    const journalNo = `JV-REF-${new Date().getFullYear() + 543}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const txnNo = `TXN-REF-${Date.now()}`;
+
+    // Insert into assistance_refund_records
+    await db.execute({
+      sql: `
+        INSERT INTO assistance_refund_records (
+          id, refund_no, workflow_id, refund_date, refund_time, refund_datetime,
+          refund_amount, refund_reason,
+          returned_by_id, returned_by_name,
+          received_by_id, received_by_name,
+          proof_url, status
+        ) VALUES (
+          ?, ?, ?, ?, '12:00:00', ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, 'completed'
+        )
+      `,
+      args: [
+        refundId,
+        refundNo,
+        workflowId,
+        refundDate,
+        `${refundDate} 12:00:00`,
+        refundAmount,
+        input.reason.trim(),
+        actor.id,
+        actor.name,
+        String(wf.step2_treasurer_id || 'custodian-ruslan'),
+        String(wf.step2_treasurer_name || 'นายรุสลัน หะสาเมาะ'),
+        input.proofUrl || 'https://placehold.co/400x300.png?text=Refund+Slip',
+      ],
+    });
+
+    // Update withdrawal clearance_returned_amount
+    await db.execute({
+      sql: `
+        UPDATE cash_flow_withdrawals SET
+          clearance_returned_amount = COALESCE(clearance_returned_amount, 0) + ?,
+          clearance_return_date = ?,
+          clearance_status = 'cleared',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE workflow_id = ?
+      `,
+      args: [refundAmount, refundDate, workflowId],
+    });
+
+    // POST DOUBLE-ENTRY GL
+    // Debit: 1020-01 (เงินสดในมือเหรัญญิก / Treasurer Cash Float)
+    // Credit: 1030-01 (เงินสดยืมทดรองเจ้าหน้าที่ / Staff Cash Float)
+    await db.execute({
+      sql: `INSERT INTO general_ledger_entries (
+        id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+        account_code, account_name, account_category, entry_type, amount, currency,
+        description, created_by
+      ) VALUES (?, ?, ?, 'app-system-internal', 'ben-system-internal', ?, '1020-01', 'เงินสดในมือเหรัญญิก', 'asset', 'debit', ?, 'THB', ?, ?)`,
+      args: [
+        `gl-deb-ref-${Date.now()}`,
+        journalNo,
+        txnNo,
+        dateFormatted,
+        refundAmount,
+        `เหรัญญิกรับคืนเงินสดคงเหลือจากเจ้าหน้าที่ (${actor.name}) สำหรับรอบ ${wf.workflow_no}`,
+        actor.name,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO general_ledger_entries (
+        id, journal_no, transaction_id, application_id, beneficiary_id, entry_date,
+        account_code, account_name, account_category, entry_type, amount, currency,
+        description, created_by
+      ) VALUES (?, ?, ?, 'app-system-internal', 'ben-system-internal', ?, '1030-01', 'เงินสดยืมทดรองเจ้าหน้าที่', 'asset', 'credit', ?, 'THB', ?, ?)`,
+      args: [
+        `gl-crd-ref-${Date.now()}`,
+        journalNo,
+        txnNo,
+        dateFormatted,
+        refundAmount,
+        `เจ้าหน้าที่ (${actor.name}) ส่งคืนเงินสดคงเหลือเข้ามือเหรัญญิก`,
+        actor.name,
+      ],
+    });
+
+    return {
+      success: true,
+      refundId,
+      refundNo,
+      amount: refundAmount,
+      journalNo,
+    };
+  }
+
+  /**
+   * ROLE B: Treasurer inspects equation & closes the batch round
+   */
+  static async closeBatchRound(workflowId: string, input: { notes?: string }, actor: ActorContext) {
+    await initDb();
+    const db = getDb();
+
+    if (actor.role !== 'finance' && actor.role !== 'super_admin' && actor.role !== 'approver') {
+      throw new Error('เฉพาะฝ่ายเหรัญญิกหรือผู้ดูแลระบบเท่านั้นที่สามารถอนุมัติปิดรอบได้');
+    }
+
+    const detail = await this.getBatchDisbursementDetail(workflowId);
+    if (!detail) throw new Error('ไม่พบข้อมูลรอบการเบิก');
+
+    const totalHandedOver = detail.totalHandedOver;
+    const totalActualDisbursed = detail.totalActualDisbursed;
+    const totalRefunded = detail.totalRefunded;
+    const remainingFloat = round2(totalHandedOver - (totalActualDisbursed + totalRefunded));
+
+    // Update workflow closing record
+    await db.execute({
+      sql: `
+        UPDATE cash_flow_workflows SET
+          step5_reconciled_amount = ?,
+          step5_remaining_cash = ?,
+          step5_auditor_id = ?,
+          step5_auditor_name = ?,
+          step5_closed_at = CURRENT_TIMESTAMP,
+          step5_status = 'completed',
+          step5_notes = ?,
+          overall_status = 'completed',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [
+        totalActualDisbursed + totalRefunded,
+        remainingFloat,
+        actor.id,
+        actor.name,
+        input.notes || `เหรัญญิกตรวจสอบปิดรอบสมบูรณ์ (จ่ายจริง ฿${totalActualDisbursed.toLocaleString('th-TH')}, คืนเงิน ฿${totalRefunded.toLocaleString('th-TH')}, คงเหลือความรับผิดชอบ ฿${remainingFloat.toLocaleString('th-TH')})`,
+        workflowId,
+      ],
+    });
+
+    await db.execute({
+      sql: `UPDATE cash_flow_withdrawals SET status = 'completed', clearance_status = 'cleared', updated_at = CURRENT_TIMESTAMP WHERE workflow_id = ?`,
+      args: [workflowId],
+    });
+
+    await db.execute({
+      sql: `
+        INSERT INTO finance_approval_events (
+          id, document_type, document_id, action, from_status, to_status,
+          actor_id, actor_name, actor_role, note
+        ) VALUES (?, 'payment_voucher', ?, 'CLOSE_ROUND', 'disbursed', 'completed', ?, ?, ?, ?)
+      `,
+      args: [
+        `fae-${Date.now()}`,
+        workflowId,
+        actor.id,
+        actor.name,
+        actor.role,
+        input.notes || 'ตรวจสอบกระทบยอดปิดรอบเรียบร้อย',
+      ],
+    });
+
+    return {
+      success: true,
+      workflowId,
+      totalHandedOver,
+      totalActualDisbursed,
+      totalRefunded,
+      remainingFloat,
+      isBalanced: remainingFloat === 0,
+      status: 'completed',
+    };
+  }
+
+  /**
+   * Fetch Batch Disbursement list with 7-Tab Filtering for Treasurer & Officer
+   */
+  static async getBatchDisbursementList(filters: {
+    tab?: string;
+    search?: string;
+    role?: string;
+    userId?: string;
+  }) {
+    await initDb();
+    const db = getDb();
+
+    const tab = filters.tab || 'all';
+    const search = `%${(filters.search || '').trim()}%`;
+
+    const allRowsRes = await db.execute({
+      sql: `
+        SELECT 
+          w.id,
+          w.workflow_no,
+          w.title,
+          w.step1_withdraw_amount,
+          w.step1_date,
+          w.step1_operator_id,
+          w.step1_operator_name,
+          w.step1_status,
+          w.step1_fund_type,
+          w.step2_treasurer_name,
+          w.step2_handover_amount,
+          w.step2_status,
+          w.overall_status,
+          w.created_at,
+          COALESCE(d_cnt.c, 0) as aid_count,
+          COALESCE(c_cnt.c, 0) as admin_count,
+          COALESCE(d_sum.s, 0) as aid_spent,
+          COALESCE(c_sum.s, 0) as admin_spent,
+          COALESCE(r_sum.s, 0) as refunded_amount
+        FROM cash_flow_workflows w
+        LEFT JOIN (
+          SELECT workflow_id, COUNT(*) as c FROM cash_flow_disbursement_items GROUP BY workflow_id
+        ) d_cnt ON d_cnt.workflow_id = w.id
+        LEFT JOIN (
+          SELECT workflow_id, COUNT(*) as c FROM cash_flow_clearance_items GROUP BY workflow_id
+        ) c_cnt ON c_cnt.workflow_id = w.id
+        LEFT JOIN (
+          SELECT workflow_id, SUM(this_disbursement_amount) as s FROM cash_flow_disbursement_items WHERE status = 'confirmed' GROUP BY workflow_id
+        ) d_sum ON d_sum.workflow_id = w.id
+        LEFT JOIN (
+          SELECT workflow_id, SUM(amount) as s FROM cash_flow_clearance_items WHERE status = 'accepted' GROUP BY workflow_id
+        ) c_sum ON c_sum.workflow_id = w.id
+        LEFT JOIN (
+          SELECT workflow_id, SUM(refund_amount) as s FROM assistance_refund_records WHERE status = 'completed' GROUP BY workflow_id
+        ) r_sum ON r_sum.workflow_id = w.id
+        WHERE (w.workflow_no LIKE ? OR w.title LIKE ? OR w.step1_operator_name LIKE ?)
+        ORDER BY w.created_at DESC
+      `,
+      args: [search, search, search],
+    });
+
+    const items = allRowsRes.rows.map((r: any) => {
+      const step1Status = String(r.step1_status || 'draft');
+      const step2Status = String(r.step2_status || 'pending');
+      const overallStatus = String(r.overall_status || 'draft');
+      const aidCount = Number(r.aid_count || 0);
+      const adminCount = Number(r.admin_count || 0);
+      const totalAmount = Number(r.step1_withdraw_amount || 0);
+      const actualDisbursed = Number(r.aid_spent || 0) + Number(r.admin_spent || 0);
+      const refunded = Number(r.refunded_amount || 0);
+      const handedAmount = Number(r.step2_handover_amount || totalAmount);
+
+      return {
+        id: String(r.id),
+        workflowNo: String(r.workflow_no),
+        title: String(r.title),
+        date: String(r.step1_date || '').slice(0, 10),
+        operatorId: String(r.step1_operator_id || ''),
+        operatorName: String(r.step1_operator_name || 'เจ้าหน้าที่'),
+        treasurerName: String(r.step2_treasurer_name || 'เหรัญญิก'),
+        fundType: String(r.step1_fund_type || 'zakat'),
+        totalAmount,
+        handedAmount,
+        actualDisbursed,
+        refunded,
+        remainingResponsibility: Math.max(0, handedAmount - (actualDisbursed + refunded)),
+        itemCount: aidCount + adminCount,
+        aidCount,
+        adminCount,
+        step1Status,
+        step2Status,
+        overallStatus,
+        createdAt: String(r.created_at || ''),
+      };
+    });
+
+    // Compute Badge counts for the 7 Tabs
+    const badgeCounts = {
+      all: items.length,
+      pending_approval: items.filter((it) => it.step1Status === 'pending_approval').length,
+      revision: items.filter((it) => it.step1Status === 'rejected_for_revision').length,
+      approved: items.filter((it) => it.step1Status === 'approved' && it.step2Status === 'pending').length,
+      pending_handover: items.filter((it) => it.step1Status === 'approved' && (it.step2Status === 'pending' || it.step2Status === 'pending_handover')).length,
+      pending_receipt: items.filter((it) => it.overallStatus === 'pending_staff_receipt').length,
+      pending_closing: items.filter((it) => it.overallStatus === 'disbursed' || it.overallStatus === 'in_progress').length,
+      closed: items.filter((it) => it.overallStatus === 'completed').length,
+    };
+
+    // Filter by selected tab
+    let filteredItems = items;
+    if (tab === 'pending_approval') {
+      filteredItems = items.filter((it) => it.step1Status === 'pending_approval');
+    } else if (tab === 'revision') {
+      filteredItems = items.filter((it) => it.step1Status === 'rejected_for_revision');
+    } else if (tab === 'approved') {
+      filteredItems = items.filter((it) => it.step1Status === 'approved');
+    } else if (tab === 'pending_handover') {
+      filteredItems = items.filter((it) => it.step1Status === 'approved' && (it.step2Status === 'pending' || it.step2Status === 'pending_handover'));
+    } else if (tab === 'pending_receipt') {
+      filteredItems = items.filter((it) => it.overallStatus === 'pending_staff_receipt');
+    } else if (tab === 'pending_closing') {
+      filteredItems = items.filter((it) => it.overallStatus === 'disbursed' || it.overallStatus === 'in_progress');
+    } else if (tab === 'closed') {
+      filteredItems = items.filter((it) => it.overallStatus === 'completed');
+    }
+
+    return {
+      items: filteredItems,
+      badgeCounts,
+      totalCount: items.length,
+    };
+  }
+
+  /**
+   * Fetch full batch disbursement details including line items, handovers, refunds, and approval trail
+   */
+  static async getBatchDisbursementDetail(workflowId: string) {
+    await initDb();
+    const db = getDb();
+
+    let realWorkflowId = workflowId;
+    let wfRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_workflows WHERE id = ? OR workflow_no = ?`,
+      args: [workflowId, workflowId],
+    });
+    if (wfRes.rows.length === 0) {
+      // Check if it's a withdrawal id
+      const wRes = await db.execute({
+        sql: `SELECT workflow_id FROM cash_flow_withdrawals WHERE id = ? OR withdrawal_no = ? LIMIT 1`,
+        args: [workflowId, workflowId],
+      });
+      if (wRes.rows.length > 0 && wRes.rows[0].workflow_id) {
+        realWorkflowId = String(wRes.rows[0].workflow_id);
+        wfRes = await db.execute({
+          sql: `SELECT * FROM cash_flow_workflows WHERE id = ?`,
+          args: [realWorkflowId],
+        });
+      }
+    }
+    if (wfRes.rows.length === 0) return null;
+    const wf = wfRes.rows[0];
+
+    // Child vouchers
+    const vouchersRes = await db.execute({
+      sql: `SELECT * FROM cash_flow_withdrawals WHERE workflow_id = ?`,
+      args: [realWorkflowId],
+    });
+
+    // Aid line items
+    const aidItemsRes = await db.execute({
+      sql: `
+        SELECT 
+          d.*,
+          COALESCE(b.full_name, d.beneficiary_name) as full_name,
+          COALESCE(a.application_no, d.application_id) as app_no
+        FROM cash_flow_disbursement_items d
+        LEFT JOIN beneficiaries b ON b.id = d.beneficiary_id
+        LEFT JOIN assistance_applications a ON a.id = d.application_id
+        WHERE d.workflow_id = ?
+        ORDER BY d.created_at ASC
+      `,
+      args: [realWorkflowId],
+    });
+
+    // Admin line items
+    const adminItemsRes = await db.execute({
+      sql: `
+        SELECT *
+        FROM cash_flow_clearance_items
+        WHERE workflow_id = ?
+        ORDER BY created_at ASC
+      `,
+      args: [realWorkflowId],
+    });
+
+    // Handover records
+    const handoversRes = await db.execute({
+      sql: `
+        SELECT *
+        FROM finance_handover_records
+        WHERE workflow_id = ?
+        ORDER BY created_at DESC
+      `,
+      args: [realWorkflowId],
+    });
+
+    // Refund records
+    const refundsRes = await db.execute({
+      sql: `
+        SELECT *
+        FROM assistance_refund_records
+        WHERE workflow_id = ?
+        ORDER BY created_at DESC
+      `,
+      args: [realWorkflowId],
+    });
+
+    // Approval events
+    const approvalsRes = await db.execute({
+      sql: `
+        SELECT *
+        FROM finance_approval_events
+        WHERE document_id = ?
+        ORDER BY created_at DESC
+      `,
+      args: [realWorkflowId],
+    });
+
+    const aidItems = aidItemsRes.rows.map((r: any) => ({
+      id: String(r.id),
+      applicationId: String(r.application_id),
+      applicationNo: String(r.app_no || r.application_id),
+      beneficiaryId: String(r.beneficiary_id),
+      beneficiaryName: String(r.full_name || r.beneficiary_name),
+      nationalId: String(r.national_id || '-'),
+      asnafCategory: String(r.asnaf_category),
+      assistanceType: String(r.assistance_type || 'เงินสงเคราะห์ตามมติ'),
+      approvedAmount: Number(r.approved_amount || 0),
+      thisDisbursementAmount: Number(r.this_disbursement_amount || 0),
+      status: String(r.status),
+      notes: r.notes ? String(r.notes) : '',
+    }));
+
+    const adminItems = adminItemsRes.rows.map((r: any) => ({
+      id: String(r.id),
+      description: String(r.description),
+      amount: Number(r.amount || 0),
+      categoryCode: String(r.category_code),
+      categoryName: String(r.category_name || 'ค่าใช้จ่ายบริหาร'),
+      expenseDate: String(r.expense_date || ''),
+      receiptUrl: r.receipt_url ? String(r.receipt_url) : '',
+      status: String(r.status),
+      notes: r.notes ? String(r.notes) : '',
+    }));
+
+    const handovers = handoversRes.rows.map((r: any) => ({
+      id: String(r.id),
+      handoverNo: String(r.handover_no),
+      handoverDate: String(r.handover_date),
+      handoverTime: String(r.handover_time || ''),
+      handedOverByName: String(r.handed_over_by_name),
+      receivedByName: String(r.received_by_name),
+      amount: Number(r.amount || 0),
+      proofUrl: String(r.proof_url || ''),
+      status: String(r.status),
+      confirmedAt: r.confirmed_at ? String(r.confirmed_at) : null,
+      notes: r.notes ? String(r.notes) : '',
+    }));
+
+    const refunds = refundsRes.rows.map((r: any) => ({
+      id: String(r.id),
+      refundNo: String(r.refund_no),
+      refundDate: String(r.refund_date),
+      amount: Number(r.refund_amount || 0),
+      reason: String(r.refund_reason),
+      returnedByName: String(r.returned_by_name),
+      receivedByName: String(r.received_by_name),
+      proofUrl: String(r.proof_url || ''),
+      status: String(r.status),
+    }));
+
+    const approvalEvents = approvalsRes.rows.map((r: any) => ({
+      id: String(r.id),
+      action: String(r.action),
+      fromStatus: r.from_status ? String(r.from_status) : null,
+      toStatus: String(r.to_status),
+      actorName: String(r.actor_name),
+      actorRole: String(r.actor_role),
+      note: r.note ? String(r.note) : '',
+      createdAt: String(r.created_at),
+    }));
+
+    const totalWithdrawAmount = Number(wf.step1_withdraw_amount || 0);
+    const totalHandedOver = handovers
+      .filter((h) => h.status === 'fully_handed_over')
+      .reduce((s, h) => s + h.amount, 0) || Number(wf.step2_handover_amount || 0);
+
+    const totalActualAidDisbursed = aidItems
+      .filter((it) => it.status === 'confirmed')
+      .reduce((s, it) => s + it.thisDisbursementAmount, 0);
+
+    const totalActualAdminDisbursed = adminItems
+      .filter((it) => it.status === 'accepted')
+      .reduce((s, it) => s + it.amount, 0);
+
+    const totalActualDisbursed = round2(totalActualAidDisbursed + totalActualAdminDisbursed);
+    const totalRefunded = round2(refunds.filter((r) => r.status === 'completed').reduce((s, r) => s + r.amount, 0));
+    const remainingResponsibility = round2(Math.max(0, totalHandedOver - (totalActualDisbursed + totalRefunded)));
+
+    const isEquationBalanced = round2(totalHandedOver - (totalActualDisbursed + totalRefunded + remainingResponsibility)) === 0;
+
+    const latestHandover = handovers.length > 0 ? handovers[0] : null;
+    const primaryVoucher = vouchersRes.rows.length > 0 ? {
+      id: String(vouchersRes.rows[0].id),
+      voucher_number: String(vouchersRes.rows[0].withdrawal_no),
+      amount: Number(vouchersRes.rows[0].amount || 0),
+      actual_amount: Number(vouchersRes.rows[0].clearance_spent_amount || 0),
+      refund_amount: Number(vouchersRes.rows[0].clearance_returned_amount || 0),
+      recipient_type: 'staff',
+      recipient_user_id: String(vouchersRes.rows[0].withdrawer_id),
+      purpose: String(vouchersRes.rows[0].purpose || wf.title),
+      status: String(vouchersRes.rows[0].status),
+      bank_account_id: vouchersRes.rows[0].bank_account_id ? String(vouchersRes.rows[0].bank_account_id) : null,
+      fund_source_type: String(wf.step1_fund_type || 'zakat'),
+    } : {
+      id: '',
+      voucher_number: '',
+      amount: totalWithdrawAmount,
+      actual_amount: totalActualDisbursed,
+      refund_amount: totalRefunded,
+      recipient_type: 'staff',
+      recipient_user_id: String(wf.step1_operator_id),
+      purpose: String(wf.title),
+      status: String(wf.overall_status),
+      bank_account_id: String(wf.step1_bank_account_id),
+      fund_source_type: String(wf.step1_fund_type || 'zakat'),
+    };
+
+    return {
+      workflow: {
+        id: String(wf.id),
+        workflowNo: String(wf.workflow_no),
+        workflow_number: String(wf.workflow_no),
+        title: String(wf.title),
+        status: String(wf.overall_status || 'draft'),
+        fundType: String(wf.step1_fund_type || 'zakat'),
+        bankAccountId: String(wf.step1_bank_account_id),
+        withdrawAmount: totalWithdrawAmount,
+        date: String(wf.step1_date || '').slice(0, 10),
+        operatorId: String(wf.step1_operator_id),
+        operatorName: String(wf.step1_operator_name),
+        created_by_id: String(wf.step1_operator_id),
+        created_by_name: String(wf.step1_operator_name),
+        approverId: wf.step1_approver_id ? String(wf.step1_approver_id) : null,
+        approverName: wf.step1_approver_name ? String(wf.step1_approver_name) : null,
+        approved_by_id: wf.step1_approver_id ? String(wf.step1_approver_id) : null,
+        approved_by_name: wf.step1_approver_name ? String(wf.step1_approver_name) : null,
+        notes: String(wf.step1_notes || ''),
+        rejection_reason: wf.rejection_reason ? String(wf.rejection_reason) : null,
+        step1Status: String(wf.step1_status || 'draft'),
+        step2Status: String(wf.step2_status || 'pending'),
+        step5Status: String(wf.step5_status || 'pending'),
+        overallStatus: String(wf.overall_status || 'draft'),
+        createdAt: String(wf.created_at),
+        created_at: String(wf.created_at),
+        updated_at: String(wf.updated_at || wf.created_at),
+      },
+      withdrawal: primaryVoucher,
+      vouchers: vouchersRes.rows.map((r: any) => ({
+        id: String(r.id),
+        withdrawalNo: String(r.withdrawal_no),
+        voucherType: String(r.voucher_type),
+        amount: Number(r.amount || 0),
+        status: String(r.status),
+        handoverStatus: String(r.handover_status),
+      })),
+      aidItems,
+      adminItems,
+      handover: latestHandover ? {
+        id: latestHandover.id,
+        handed_over_by_id: '',
+        handed_over_by_name: latestHandover.handedOverByName,
+        received_by_id: '',
+        amount: latestHandover.amount,
+        status: latestHandover.status,
+        handed_over_at: latestHandover.handoverDate,
+        confirmed_at: latestHandover.confirmedAt,
+        proof_url: latestHandover.proofUrl,
+        notes: latestHandover.notes,
+      } : null,
+      handovers,
+      refunds,
+      approvalEvents,
+      auditEvents: approvalEvents.map((ae) => ({
+        id: ae.id,
+        action: ae.action,
+        from_status: ae.fromStatus,
+        to_status: ae.toStatus,
+        actor_id: '',
+        actor_name: ae.actorName,
+        note: ae.note,
+        created_at: ae.createdAt,
+      })),
+      equation: {
+        handedOver: totalHandedOver,
+        actualPaid: totalActualDisbursed,
+        refunded: totalRefunded,
+        remainingFloat: remainingResponsibility,
+        isBalanced: isEquationBalanced,
+      },
+      // Calculations & Equation Check
+      totalWithdrawAmount,
+      totalHandedOver,
+      totalActualDisbursed,
+      totalActualAidDisbursed,
+      totalActualAdminDisbursed,
+      totalRefunded,
+      remainingResponsibility,
+      isClosingReady: aidItems.every((it) => it.status === 'confirmed') && adminItems.every((it) => it.status === 'accepted') && remainingResponsibility === 0,
+    };
+  }
 }

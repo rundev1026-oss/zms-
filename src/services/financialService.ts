@@ -11363,7 +11363,7 @@ export class FinancialService {
     const db = getDb();
 
     // 1. Fetch application with linked beneficiary
-    const appRes = await db.execute({
+    let appRes = await db.execute({
       sql: `SELECT a.*, 
                    b.full_name as beneficiary_name, 
                    b.registration_no as beneficiary_registration_no, 
@@ -11377,6 +11377,29 @@ export class FinancialService {
             WHERE a.id = ?`,
       args: [applicationId],
     });
+
+    if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(applicationId);
+        if (synced) {
+          appRes = await db.execute({
+            sql: `SELECT a.*, 
+                         b.full_name as beneficiary_name, 
+                         b.registration_no as beneficiary_registration_no, 
+                         b.national_id, 
+                         b.asnaf_category as beneficiary_asnaf,
+                         b.branch_name as beneficiary_branch_name,
+                         b.subdistrict as beneficiary_subdistrict,
+                         b.residence_address as beneficiary_residence_address
+                  FROM assistance_applications a
+                  LEFT JOIN beneficiaries b ON b.id = a.beneficiary_id
+                  WHERE a.id = ?`,
+            args: [applicationId],
+          });
+        }
+      } catch {}
+    }
 
     if (appRes.rows.length === 0) {
       throw new Error(`ไม่พบข้อมูลคำร้องขอความช่วยเหลือ (ID: ${applicationId})`);

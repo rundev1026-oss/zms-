@@ -141,28 +141,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (json.id && (payload.assistanceFormatId || payload.assistanceFormatCode)) {
+    if (json.id) {
       try {
-        const { initDb, getDb } = await import('@/lib/db');
-        await initDb();
-        const db = getDb();
-        await db.execute({
-          sql: `UPDATE assistance_applications 
-                SET assistance_format_id = COALESCE(assistance_format_id, ?),
-                    assistance_format_code = COALESCE(assistance_format_code, ?),
-                    assistance_format_name = COALESCE(assistance_format_name, ?),
-                    delivery_method = COALESCE(delivery_method, ?)
-                WHERE id = ? OR application_no = ?`,
-          args: [
-            payload.assistanceFormatId || null,
-            payload.assistanceFormatCode || null,
-            payload.assistanceFormatName || null,
-            payload.deliveryMethod || null,
-            json.id,
-            json.applicationNo || json.id,
-          ],
+        const { upsertApplicationIntoSqlite } = await import('@/lib/syncAssistanceRequest');
+        await upsertApplicationIntoSqlite({
+          ...json,
+          ...payload,
+          id: json.id,
+          applicationNo: json.applicationNo || json.id,
         });
-      } catch {}
+      } catch (syncErr) {
+        console.error('Failed to sync application to SQLite:', syncErr);
+      }
     }
 
     return NextResponse.json({

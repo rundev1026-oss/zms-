@@ -906,9 +906,14 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
   const titlePrefix = name.prefix;
   const fullName = formatPersonName(name) || 'ไม่ระบุชื่อ';
   const cleanId = nestData.identityNumber || '';
-  const maskedId = cleanId
+  const formattedId = cleanId
     ? cleanId.length === 13
       ? `${cleanId[0]}-${cleanId.slice(1, 5)}-${cleanId.slice(5, 10)}-${cleanId.slice(10, 12)}-${cleanId[12]}`
+      : cleanId
+    : '-';
+  const maskedId = cleanId
+    ? cleanId.length === 13
+      ? `${cleanId[0]}-${cleanId.slice(1, 5)}-XXXXX-${cleanId.slice(10, 12)}-${cleanId[12]}`
       : cleanId
     : '-';
 
@@ -967,6 +972,7 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
     firstName: name.firstName,
     lastName: name.lastName,
     nationalId: cleanId,
+    nationalIdFormatted: formattedId,
     nationalIdMasked: maskedId,
     birthDate: nestData.dateOfBirth || '',
     age: nestData.ageYears ?? null,
@@ -975,12 +981,12 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
     occupation: nestData.occupation || '',
     maritalStatus: nestData.maritalStatus || '',
     asnafCategory: asnafKey,
-    address: currentAddr.addressLine || hh.address || '',
-    community: currentAddr.community || hh.community || '',
-    subdistrict: currentAddr.subdistrict || hh.subdistrict || '',
-    district: currentAddr.district || hh.district || '',
-    province: currentAddr.province || hh.province || '',
-    postcode: currentAddr.postalCode || '',
+    address: currentAddr.addressLine || hh.address || nestData.address || nestData.addressLine || '',
+    community: currentAddr.community || hh.community || nestData.community || '',
+    subdistrict: currentAddr.subdistrict || hh.subdistrict || nestData.subdistrict || '',
+    district: currentAddr.district || hh.district || nestData.district || '',
+    province: currentAddr.province || hh.province || nestData.province || '',
+    postcode: currentAddr.postalCode || hh.postalCode || hh.postcode || nestData.postalCode || nestData.postcode || '',
     latitude: numberOrNull(currentAddr.latitude ?? hh.latitude),
     longitude: numberOrNull(currentAddr.longitude ?? hh.longitude),
     residenceAddress: hh.residenceAddress || currentAddr.addressLine || '',

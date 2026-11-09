@@ -16,6 +16,11 @@ export async function GET(
       });
       if (res.ok) {
         nestData = await res.json();
+        // Keep SQLite synced with NestJS / PostgreSQL
+        try {
+          const { upsertApplicationIntoSqlite } = await import('@/lib/syncAssistanceRequest');
+          await upsertApplicationIntoSqlite(nestData.data || nestData);
+        } catch {}
       }
     } catch {}
 
@@ -86,6 +91,12 @@ export async function PATCH(
         { status: res.status }
       );
     }
+
+    // Sync updated data into SQLite
+    try {
+      const { upsertApplicationIntoSqlite } = await import('@/lib/syncAssistanceRequest');
+      await upsertApplicationIntoSqlite(json.data || json);
+    } catch {}
 
     return NextResponse.json({
       success: true,

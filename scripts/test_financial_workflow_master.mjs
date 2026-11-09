@@ -175,12 +175,23 @@ async function run() {
   } else {
     testAppId = `app-test-${Date.now()}`;
     testAppName = 'นายผู้ขอรับความช่วยเหลือ ทดสอบ';
-    testBenId = 'ben-test-1';
+    testBenId = `ben-test-${Date.now()}`;
+    const testHhId = `hh-test-${Date.now()}`;
     testAsnaf = 'faqir_miskin';
     await client.execute({
-      sql: `INSERT INTO assistance_applications (id, application_no, beneficiary_id, beneficiary_name, national_id, asnaf_category, status, approved_amount, created_at)
-            VALUES (?, 'APP-TC05-TEST', ?, ?, '1999999999999', ?, 'approved', ?, CURRENT_TIMESTAMP)`,
-      args: [testAppId, testBenId, testAppName, testAsnaf, aidAmount],
+      sql: `INSERT INTO households (id, household_no, address, district, province, community) VALUES (?, ?, 'บ้านทดสอบ', 'เมือง', 'ยะลา', 'สำนักงานกลาง')`,
+      args: [testHhId, `HH-TEST-${Date.now()}`],
+    });
+    const testNatId = `1${Date.now().toString().slice(-12)}`;
+    await client.execute({
+      sql: `INSERT INTO beneficiaries (id, household_id, full_name, national_id, phone, asnaf_category)
+            VALUES (?, ?, ?, ?, '0812345678', ?)`,
+      args: [testBenId, testHhId, testAppName, testNatId, testAsnaf],
+    });
+    await client.execute({
+      sql: `INSERT INTO assistance_applications (id, application_no, beneficiary_id, asnaf_category, status, requested_amount, approved_amount, assigned_officer_id, assigned_officer_name, applied_date, created_at)
+            VALUES (?, ?, ?, ?, 'approved', ?, ?, 'u-1', 'ผู้ดูแลระบบ', '2026-11-09', CURRENT_TIMESTAMP)`,
+      args: [testAppId, `APP-TC05-${Date.now()}`, testBenId, testAsnaf, aidAmount, aidAmount],
     });
   }
 

@@ -3750,8 +3750,8 @@ export async function initDb(): Promise<void> {
         id TEXT PRIMARY KEY,
         journal_no TEXT NOT NULL,
         transaction_id TEXT,
-        application_id TEXT NOT NULL,
-        beneficiary_id TEXT NOT NULL,
+        application_id TEXT,
+        beneficiary_id TEXT,
         entry_date TEXT NOT NULL,
         account_code TEXT NOT NULL,
         account_name TEXT NOT NULL,
@@ -3764,9 +3764,7 @@ export async function initDb(): Promise<void> {
         assistance_format_id TEXT,
         description TEXT,
         created_by TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (application_id) REFERENCES assistance_applications (id) ON DELETE CASCADE,
-        FOREIGN KEY (beneficiary_id) REFERENCES beneficiaries (id) ON DELETE CASCADE
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_gl_journal_no ON general_ledger_entries(journal_no);`);
@@ -3793,33 +3791,9 @@ export async function initDb(): Promise<void> {
     if (!aaCols.includes('journal_no')) {
       try { await db.execute(`ALTER TABLE assistance_applications ADD COLUMN journal_no TEXT;`); } catch {}
     }
-
-    // Ensure system entity exists for non-assistance internal financial GL entries
-    try {
-      await db.execute(`
-        INSERT INTO households (id, household_no, address, district, province, community)
-        VALUES ('hh-system', 'HH-SYS', 'สำนักงานมูลนิธิซะกาต', 'เมือง', 'ยะลา', 'สำนักงานกลาง')
-        ON CONFLICT(id) DO NOTHING;
-      `);
-      await db.execute(`
-        INSERT INTO beneficiaries (id, household_id, full_name, national_id, phone, asnaf_category)
-        VALUES ('ben-system-internal', 'hh-system', 'ระบบการเงินภายในมูลนิธิ (ZMS Internal Finance)', '0000000000000', '0000000000', 'operational')
-        ON CONFLICT(id) DO NOTHING;
-      `);
-      await db.execute(`
-        INSERT INTO assistance_applications (
-          id, application_no, beneficiary_id, asnaf_category, requested_amount,
-          assigned_officer_id, assigned_officer_name, applied_date,
-          request_status, assessment_status, approval_status, payment_status,
-          delivery_status, followup_status, completion_status
-        ) VALUES (
-          'app-system-internal', 'SYS-INTERNAL-TXN', 'ben-system-internal', 'operational', 0,
-          'u-1', 'ผู้ดูแลระบบ', '2026-01-01',
-          'completed', 'completed', 'approved', 'completed',
-          'delivered', 'not_required', 'completed'
-        ) ON CONFLICT(id) DO NOTHING;
-      `);
-    } catch {}
+    if (!aaCols.includes('assessment_id')) {
+      try { await db.execute(`ALTER TABLE assistance_applications ADD COLUMN assessment_id TEXT;`); } catch {}
+    }
   } catch (err) {
     console.error('Phase 10 financial schema initialization warning:', err);
   }

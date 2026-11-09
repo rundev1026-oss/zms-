@@ -43,9 +43,34 @@ describe('shared constants', () => {
       }),
       'นางสาว มารีแย ลาเต๊ะ',
     );
+    assert.equal(
+      formatPersonName({
+        prefix: 'นาย',
+        firstName: 'นายมุกลิส',
+        lastName: 'มีระยะ',
+      }),
+      'นาย มุกลิส มีระยะ',
+    );
+    assert.equal(
+      formatPersonName({
+        prefix: 'นางสาว',
+        fullName: 'นางสาวสมศรี ใจดี',
+      }),
+      'นางสาว สมศรี ใจดี',
+    );
+    assert.equal(
+      formatPersonName({
+        fullName: 'นายสมชาย สบายดี',
+      }),
+      'นาย สมชาย สบายดี',
+    );
     assert.deepEqual(
       splitPersonName({ prefix: 'นางสาว', fullName: 'นางสาว มารีแย ลาเต๊ะ' }),
       { prefix: 'นางสาว', firstName: 'มารีแย', lastName: 'ลาเต๊ะ' },
+    );
+    assert.deepEqual(
+      splitPersonName({ prefix: 'นาย', firstName: 'นายมุกลิส', lastName: 'มีระยะ' }),
+      { prefix: 'นาย', firstName: 'มุกลิส', lastName: 'มีระยะ' },
     );
   });
 });

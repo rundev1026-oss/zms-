@@ -1844,7 +1844,7 @@ export class BeneficiaryService {
     }
 
     // 2. Fetch Application & Assessment details
-    const appRes = await db.execute({
+    let appRes = await db.execute({
       sql: `SELECT a.id, a.application_no, a.assigned_officer_id, a.status, a.beneficiary_id,
                    a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.fiscal_year,
                    a.request_status, a.assessment_status, a.approval_status, a.delivery_method, a.completion_status,
@@ -1854,6 +1854,25 @@ export class BeneficiaryService {
             WHERE a.id = ?`,
       args: [applicationId],
     });
+
+    if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(applicationId);
+        if (synced) {
+          appRes = await db.execute({
+            sql: `SELECT a.id, a.application_no, a.assigned_officer_id, a.status, a.beneficiary_id,
+                         a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.fiscal_year,
+                         a.request_status, a.assessment_status, a.approval_status, a.delivery_method, a.completion_status,
+                         ass.recommended_fund_id, ass.recommended_specific_fund_id
+                  FROM assistance_applications a
+                  LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
+                  WHERE a.id = ?`,
+            args: [applicationId],
+          });
+        }
+      } catch {}
+    }
 
     if (appRes.rows.length === 0) {
       throw new Error(`ไม่พบคำร้อง ${applicationId}`);
@@ -2476,7 +2495,7 @@ export class BeneficiaryService {
     await initDb();
     const db = getDb();
 
-    const appRes = await db.execute({
+    let appRes = await db.execute({
       sql: `SELECT a.id, a.application_no, a.beneficiary_id, b.full_name as beneficiary_name,
                    a.approved_amount, a.disbursed_amount, a.status, a.journal_no,
                    fa.name as fund_name, sf.name as specific_sub_fund_name
@@ -2487,6 +2506,26 @@ export class BeneficiaryService {
             WHERE a.id = ?`,
       args: [applicationId],
     });
+
+    if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(applicationId);
+        if (synced) {
+          appRes = await db.execute({
+            sql: `SELECT a.id, a.application_no, a.beneficiary_id, b.full_name as beneficiary_name,
+                         a.approved_amount, a.disbursed_amount, a.status, a.journal_no,
+                         fa.name as fund_name, sf.name as specific_sub_fund_name
+                  FROM assistance_applications a
+                  LEFT JOIN beneficiaries b ON b.id = a.beneficiary_id
+                  LEFT JOIN fund_accounts fa ON fa.id = a.approved_fund_id
+                  LEFT JOIN faqir_miskin_sub_funds sf ON sf.id = a.approved_specific_fund_id OR sf.id = a.specific_fund_id
+                  WHERE a.id = ?`,
+            args: [applicationId],
+          });
+        }
+      } catch {}
+    }
 
     if (appRes.rows.length === 0) {
       throw new Error(`ไม่พบคำร้อง ${applicationId}`);
@@ -3026,7 +3065,7 @@ export class BeneficiaryService {
     await initDb();
     const db = getDb();
 
-    const appRes = await db.execute({
+    let appRes = await db.execute({
       sql: `SELECT a.*, b.full_name, b.national_id, b.phone,
                    ast.name as type_name, ast.code as type_code,
                    af.name as format_name, af.code as format_code
@@ -3037,6 +3076,25 @@ export class BeneficiaryService {
             WHERE a.id = ?`,
       args: [applicationId],
     });
+    if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(applicationId);
+        if (synced) {
+          appRes = await db.execute({
+            sql: `SELECT a.*, b.full_name, b.national_id, b.phone,
+                         ast.name as type_name, ast.code as type_code,
+                         af.name as format_name, af.code as format_code
+                  FROM assistance_applications a
+                  LEFT JOIN beneficiaries b ON a.beneficiary_id = b.id
+                  LEFT JOIN assistance_types ast ON a.assistance_type_id = ast.id
+                  LEFT JOIN assistance_formats af ON a.assistance_format_id = af.id
+                  WHERE a.id = ?`,
+            args: [applicationId],
+          });
+        }
+      } catch {}
+    }
     if (appRes.rows.length === 0) throw new Error(`ไม่พบคำร้อง ${applicationId}`);
     const app = appRes.rows[0];
 
@@ -3199,6 +3257,8 @@ export class BeneficiaryService {
       LEFT JOIN faqir_miskin_sub_funds sf_app ON sf_app.id = a.approved_specific_fund_id
       LEFT JOIN assistance_types ast ON ast.id = a.assistance_type_id
       WHERE a.id != 'REGISTRY-DOCS'
+        AND a.id != 'app-system-internal'
+        AND b.id != 'ben-system-internal'
     `;
 
     const args: any[] = [];
@@ -3483,8 +3543,16 @@ export class BeneficiaryService {
    * 9. Fetch Single Application by ID with full details & ledger history
    */
   static async getApplicationById(applicationId: string) {
-    const list = await this.getAllApplications();
-    const app = list.find((a: any) => a.id === applicationId || a.applicationNo === applicationId);
+    let list = await this.getAllApplications();
+    let app = list.find((a: any) => a.id === applicationId || a.applicationNo === applicationId);
+    if (!app) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        await ensureApplicationInSqlite(applicationId);
+        list = await this.getAllApplications();
+        app = list.find((a: any) => a.id === applicationId || a.applicationNo === applicationId);
+      } catch {}
+    }
     if (!app) {
       throw new Error(`ไม่พบข้อมูลคำร้องรหัส ${applicationId}`);
     }
@@ -3912,10 +3980,23 @@ export class BeneficiaryService {
     await initDb();
     const db = getDb();
 
-    const appRes = await db.execute({
+    let appRes = await db.execute({
       sql: 'SELECT id, application_no, assigned_officer_id, status FROM assistance_applications WHERE id = ?',
       args: [applicationId],
     });
+
+    if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(applicationId);
+        if (synced) {
+          appRes = await db.execute({
+            sql: 'SELECT id, application_no, assigned_officer_id, status FROM assistance_applications WHERE id = ?',
+            args: [applicationId],
+          });
+        }
+      } catch {}
+    }
 
     if (appRes.rows.length === 0) {
       throw new Error(`ไม่พบคำร้อง ${applicationId}`);
@@ -3978,6 +4059,11 @@ export class BeneficiaryService {
         `เปลี่ยนสถานะคำร้อง ${app.application_no} จาก ${app.status} เป็น ${newStatus} (${notes})`,
       ],
     });
+
+    try {
+      const { syncStatusToNest } = await import('@/lib/syncAssistanceRequest');
+      await syncStatusToNest(applicationId, newStatus, notes);
+    } catch {}
 
     return { applicationId, oldStatus: app.status, newStatus };
   }

@@ -183,7 +183,7 @@ export async function upsertApplicationIntoSqlite(app: any): Promise<boolean> {
         app.paymentStatus || 'unpaid',
         app.deliveryStatus || 'pending',
         app.followupStatus || 'pending',
-        app.completionStatus || 'in_progress',
+        ['closed', 'terminated'].includes(String(app.completionStatus || '').toLowerCase()) ? app.completionStatus : 'active',
       ],
     });
 

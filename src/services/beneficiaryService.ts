@@ -1526,7 +1526,7 @@ export class BeneficiaryService {
     if (appRes.rows.length === 0) throw new Error(`ไม่พบคำร้องหมายเลข ${applicationId}`);
     const app = appRes.rows[0];
 
-    if (String(app.completion_status || 'active') !== 'active') {
+    if (!['active', 'in_progress'].includes(String(app.completion_status || 'active').toLowerCase())) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถดำเนินการประเมินสิทธิ์ได้`);
     }
 
@@ -1576,7 +1576,7 @@ export class BeneficiaryService {
     }
 
     const app = appRes.rows[0];
-    if (String(app.completion_status || 'active') !== 'active') {
+    if (!['active', 'in_progress'].includes(String(app.completion_status || 'active').toLowerCase())) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถบันทึกผลประเมินได้`);
     }
 
@@ -1679,7 +1679,7 @@ export class BeneficiaryService {
     if (appRes.rows.length === 0) throw new Error(`ไม่พบคำร้องหมายเลข ${applicationId}`);
     const app = appRes.rows[0];
 
-    if (String(app.completion_status || 'active') !== 'active') {
+    if (!['active', 'in_progress'].includes(String(app.completion_status || 'active').toLowerCase())) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถดำเนินการได้`);
     }
 
@@ -1981,7 +1981,8 @@ export class BeneficiaryService {
       );
     }
 
-    if (String(app.completion_status || 'active') !== 'active') {
+    const compStatus = String(app.completion_status || 'active').toLowerCase();
+    if (['closed', 'terminated', 'cancelled'].includes(compStatus)) {
       throw new Error(`CANNOT_APPROVE_TERMINATED: คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถอนุมัติได้`);
     }
 
@@ -2786,7 +2787,7 @@ export class BeneficiaryService {
     if (String(app.approval_status || '') !== 'approved') {
       throw new Error(`CANNOT_DELIVER_UNAPPROVED: คำร้องนี้ยังไม่ได้รับการอนุมัติ (Approval Status ต้องเป็น approved เท่านั้น)`);
     }
-    if (String(app.completion_status || 'active') !== 'active') {
+    if (!['active', 'in_progress'].includes(String(app.completion_status || 'active').toLowerCase())) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถดำเนินการส่งมอบได้`);
     }
     if (String(app.delivery_status || '') === 'delivered') {
@@ -2859,7 +2860,7 @@ export class BeneficiaryService {
     if (String(app.approval_status || '') !== 'approved') {
       throw new Error(`CANNOT_SCHEDULE_UNAPPROVED: คำร้องนี้ยังไม่ได้รับการอนุมัติ`);
     }
-    if (String(app.completion_status || 'active') !== 'active') {
+    if (!['active', 'in_progress'].includes(String(app.completion_status || 'active').toLowerCase())) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถนัดหมายได้`);
     }
 
@@ -2992,7 +2993,7 @@ export class BeneficiaryService {
     if (appRes.rows.length === 0) throw new Error(`ไม่พบคำร้อง ${applicationId}`);
     const app = appRes.rows[0];
 
-    if (String(app.completion_status || 'active') !== 'active') {
+    if (!['active', 'in_progress'].includes(String(app.completion_status || 'active').toLowerCase())) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ ${app.completion_status}`);
     }
     if (String(app.approval_status || '') === 'approved') {

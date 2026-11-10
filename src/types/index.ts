@@ -593,6 +593,8 @@ export interface AssistanceApplication {
   assessment?: BeneficiaryAssessment;
   approvalNotes?: string;
   approvedBy?: string;
+  approvedById?: string;
+  approvedByName?: string;
   approvedDate?: string;
   disbursementProofUrl?: string;
   disbursementDate?: string;

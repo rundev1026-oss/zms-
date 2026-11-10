@@ -24,7 +24,40 @@ export async function POST(
       role: 'approver',
     };
 
-    // 1. Enforce Phase 10 Solvency Check & Fund Hold in BeneficiaryService
+    // 1. Forward to NestJS (PostgreSQL) if running — strictly enforce backend validation & SoD
+    let nestSucceeded = false;
+    let nestData: any = null;
+    try {
+      const nestRes = await proxyToNest(`/approvals/${id}/approve`, request, {
+        method: 'POST',
+        body: {
+          approvedAmount: Number(approvedAmount),
+          fundId,
+          specificFundId,
+          notes: notes || 'อนุมัติวงเงินสวัสดิการ',
+        },
+      });
+
+      const nestJson = await nestRes.json().catch(() => ({}));
+
+      if (!nestRes.ok) {
+        // If Nest is active and rejected (e.g., 400 Bad Request, 403 SoD violation, 404, etc.)
+        if (nestRes.status !== 502) {
+          const errMsg = nestJson.message || nestJson.error || 'ระบบหลักปฏิเสธการอนุมัติคำร้อง';
+          return NextResponse.json(
+            { success: false, error: errMsg },
+            { status: nestRes.status }
+          );
+        }
+      } else {
+        nestSucceeded = true;
+        nestData = nestJson.data || nestJson;
+      }
+    } catch (nestErr: any) {
+      console.warn('Nest proxy error in approve route:', nestErr?.message);
+    }
+
+    // 2. Enforce Phase 10 Solvency Check & Fund Hold in SQLite BeneficiaryService
     let localResult: any = null;
     try {
       localResult = await BeneficiaryService.approveApplication(
@@ -36,28 +69,18 @@ export async function POST(
         specificFundId
       );
     } catch (localErr: any) {
-      return NextResponse.json(
-        { success: false, error: localErr.message || 'ไม่สามารถอนุมัติตามระเบียบงบประมาณได้' },
-        { status: 422 }
-      );
+      // If Nest succeeded but SQLite failed, return error
+      if (!nestSucceeded) {
+        return NextResponse.json(
+          { success: false, error: localErr.message || 'ไม่สามารถอนุมัติตามระเบียบงบประมาณได้' },
+          { status: 422 }
+        );
+      }
     }
-
-    // 2. Also forward to Nest if running
-    try {
-      await proxyToNest(`/approvals/${id}/approve`, request, {
-        method: 'POST',
-        body: {
-          approvedAmount: Number(approvedAmount),
-          fundId,
-          specificFundId,
-          notes: notes || 'อนุมัติวงเงินสวัสดิการ',
-        },
-      });
-    } catch {}
 
     return NextResponse.json({
       success: true,
-      data: localResult,
+      data: localResult || nestData,
       message: `อนุมัติคำร้องขอรับความช่วยเหลือเรียบร้อยแล้ว วงเงิน ฿${Number(approvedAmount).toLocaleString('th-TH')}`,
     });
   } catch (error: any) {

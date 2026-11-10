@@ -254,16 +254,27 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
     const returned = applications.filter((a) => ['need_info', 'assessment'].includes(a.status));
     const rejected = applications.filter((a) => a.status === 'rejected');
 
-    const pendingAmount = pending.reduce((sum, a) => sum + (a.requestedAmount || 0), 0);
-    const approvedAmount = approved.reduce((sum, a) => sum + (a.approvedAmount || a.requestedAmount || 0), 0);
+    const pendingAmount = pending.reduce((sum, a) => sum + (Number(a.requestedAmount) || 0), 0);
+    const approvedAmount = approved.reduce((sum, a) => sum + (Number(a.approvedAmount) || Number(a.requestedAmount) || 0), 0);
+
+    if (applications.length === 0 && summaryStats) {
+      return {
+        pendingCount: summaryStats.pendingCount || 0,
+        approvedCount: summaryStats.approvedCount || 0,
+        needInfoCount: summaryStats.needInfoCount || 0,
+        rejectedCount: summaryStats.rejectedCount || 0,
+        totalPendingAmount: summaryStats.totalPendingAmount || 0,
+        totalApprovedAmount: summaryStats.totalApprovedAmount || 0,
+      };
+    }
 
     return {
-      pendingCount: summaryStats?.pendingCount ?? pending.length,
-      approvedCount: summaryStats?.approvedCount ?? approved.length,
-      needInfoCount: summaryStats?.needInfoCount ?? returned.length,
-      rejectedCount: summaryStats?.rejectedCount ?? rejected.length,
-      totalPendingAmount: summaryStats?.totalPendingAmount ?? pendingAmount,
-      totalApprovedAmount: summaryStats?.totalApprovedAmount ?? approvedAmount,
+      pendingCount: pending.length,
+      approvedCount: approved.length,
+      needInfoCount: returned.length,
+      rejectedCount: rejected.length,
+      totalPendingAmount: pendingAmount,
+      totalApprovedAmount: approvedAmount,
     };
   }, [applications, summaryStats]);
 
@@ -450,6 +461,10 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
       return;
     }
 
+    const currentId = selectedApp.id;
+    const remainingInFilter = filteredApplications.filter((a) => a.id !== currentId);
+    const nextApp = remainingInFilter.length > 0 ? remainingInFilter[0] : null;
+
     setIsSubmitting(true);
     try {
       const success = await approveApplication(
@@ -462,7 +477,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
       if (success) {
         showToast(`อนุมัติคำร้อง ${selectedApp.applicationNo} เรียบร้อยแล้ว`, 'success');
         setConfirmAction(null);
-        setSelectedAppId(null);
+        setSelectedAppId(nextApp ? nextApp.id : null);
         await Promise.all([refreshData(), fetchSummaryAndBudgetData()]);
       }
     } finally {
@@ -478,13 +493,17 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
       return;
     }
 
+    const currentId = selectedApp.id;
+    const remainingInFilter = filteredApplications.filter((a) => a.id !== currentId);
+    const nextApp = remainingInFilter.length > 0 ? remainingInFilter[0] : null;
+
     setIsSubmitting(true);
     try {
       const success = await rejectApplication(selectedApp.id, decisionNotes);
       if (success) {
         showToast(`บันทึกไม่อนุมัติคำร้อง ${selectedApp.applicationNo} เรียบร้อยแล้ว`, 'info');
         setConfirmAction(null);
-        setSelectedAppId(null);
+        setSelectedAppId(nextApp ? nextApp.id : null);
         await Promise.all([refreshData(), fetchSummaryAndBudgetData()]);
       }
     } finally {
@@ -500,13 +519,17 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
       return;
     }
 
+    const currentId = selectedApp.id;
+    const remainingInFilter = filteredApplications.filter((a) => a.id !== currentId);
+    const nextApp = remainingInFilter.length > 0 ? remainingInFilter[0] : null;
+
     setIsSubmitting(true);
     try {
       const success = await returnApplication(selectedApp.id, decisionNotes);
       if (success) {
         showToast(`ส่งกลับคำร้อง ${selectedApp.applicationNo} ให้เจ้าหน้าที่แก้ไขแล้ว`, 'info');
         setConfirmAction(null);
-        setSelectedAppId(null);
+        setSelectedAppId(nextApp ? nextApp.id : null);
         await Promise.all([refreshData(), fetchSummaryAndBudgetData()]);
       }
     } finally {
@@ -891,15 +914,67 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
           }`}
         >
           {!selectedApp ? (
-            <div className="bg-white p-12 text-center rounded-xl border border-slate-200 shadow-xs space-y-3">
-              <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
-                <FileText className="w-6 h-6" />
+            statusFilter === 'pending_approval' && computedSummary.pendingCount === 0 ? (
+              <div className="bg-white p-12 text-center rounded-xl border border-slate-200 shadow-xs space-y-4 animate-fadeIn">
+                <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-xs border border-emerald-200">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-slate-800">ไม่มีคำร้องรอการพิจารณาอนุมัติในขณะนี้</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    คำร้องขอรับความช่วยเหลือทั้งหมดได้รับการพิจารณาเรียบร้อยแล้ว หรือยังไม่มีคำร้องใหม่ส่งเข้ามาในกระบวนการพิจารณาอนุมัติ
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('approved')}
+                    className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-xs"
+                  >
+                    ดูรายการที่อนุมัติแล้ว ({computedSummary.approvedCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('all')}
+                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors shadow-2xs"
+                  >
+                    ดูคำร้องทั้งหมด ({applications.length})
+                  </button>
+                </div>
               </div>
-              <h3 className="text-sm font-bold text-slate-800">กรุณาเลือกคำร้องที่ต้องการพิจารณา</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                เลือกคำร้องจากรายการทางด้านซ้ายเพื่อเปิดดูรายละเอียด เอกสารหลักฐาน ผลการประเมินสิทธิ์ และลงมติอนุมัติ
-              </p>
-            </div>
+            ) : filteredApplications.length === 0 ? (
+              <div className="bg-white p-12 text-center rounded-xl border border-slate-200 shadow-xs space-y-3 animate-fadeIn">
+                <div className="w-14 h-14 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-200">
+                  <Search className="w-6 h-6 text-slate-400" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800">ไม่พบคำร้องตามเงื่อนไขที่เลือก</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  ลองปรับเปลี่ยนตัวกรองสถานะ หมวดหมู่อัสนัฟ หรือคำค้นหา
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStatusFilter('all');
+                    setAsnafFilter('all');
+                    setTypeFilter('all');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                >
+                  ล้างตัวกรองทั้งหมด
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white p-12 text-center rounded-xl border border-slate-200 shadow-xs space-y-3 animate-fadeIn">
+                <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800">กรุณาเลือกคำร้องที่ต้องการพิจารณา</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  เลือกคำร้องจากรายการทางด้านซ้ายเพื่อเปิดดูรายละเอียด เอกสารหลักฐาน ผลการประเมินสิทธิ์ และลงมติอนุมัติ
+                </p>
+              </div>
+            )
           ) : (
             <div className="space-y-4">
               {/* Mobile Back Button */}
@@ -1351,6 +1426,45 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                   </span>
                 </div>
 
+                {/* Status Result Banner if already decided */}
+                {selectedApp.status !== 'pending_approval' && (
+                  <div
+                    className={`p-4 rounded-xl border flex items-start gap-3 animate-fadeIn ${
+                      ['approved', 'wait_disbursement', 'disbursed'].includes(selectedApp.status)
+                        ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                        : selectedApp.status === 'rejected'
+                        ? 'bg-rose-50/80 border-rose-300 text-rose-950'
+                        : 'bg-orange-50/80 border-orange-300 text-orange-950'
+                    }`}
+                  >
+                    {['approved', 'wait_disbursement', 'disbursed'].includes(selectedApp.status) ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : selectedApp.status === 'rejected' ? (
+                      <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <RotateCcw className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="space-y-1 text-xs">
+                      <div className="font-bold text-sm">
+                        {['approved', 'wait_disbursement', 'disbursed'].includes(selectedApp.status)
+                          ? `คำร้องนี้ได้รับการพิจารณาอนุมัติแล้ว (${STATUS_CONFIG[selectedApp.status]?.label || selectedApp.status})`
+                          : selectedApp.status === 'rejected'
+                          ? 'คำร้องนี้ถูกปฏิเสธ / ไม่อนุมัติ'
+                          : 'คำร้องนี้ถูกส่งกลับให้เจ้าหน้าที่แก้ไขเพิ่มเติม'}
+                      </div>
+                      <p className="text-[11px] opacity-90 leading-relaxed">
+                        {['approved', 'wait_disbursement', 'disbursed'].includes(selectedApp.status)
+                          ? `วงเงินอนุมัติ ฿${(selectedApp.approvedAmount || selectedApp.requestedAmount)?.toLocaleString()} บาท ${
+                              selectedApp.approvedByName ? `• ผู้อนุมัติ: ${selectedApp.approvedByName}` : ''
+                            } ${selectedApp.approvedDate ? `• วันที่อนุมัติ: ${selectedApp.approvedDate}` : ''}`
+                          : selectedApp.status === 'rejected'
+                          ? `เหตุผล: ${selectedApp.rejectionReason || selectedApp.approvalNotes || 'ไม่ผ่านเกณฑ์การพิจารณา'}`
+                          : `หมายเหตุ: ${selectedApp.approvalNotes || 'กรุณาตรวจสอบเอกสารเพิ่มเติม'}`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Requested Amount */}
                   <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
@@ -1381,28 +1495,31 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                         type="number"
                         min={1}
                         required
+                        disabled={selectedApp.status !== 'pending_approval'}
                         value={approvalAmount}
                         onChange={(e) => setApprovalAmount(Math.max(0, Number(e.target.value)))}
-                        className="w-full pl-7 pr-2 py-1.5 bg-white border border-emerald-300 rounded-md font-extrabold text-slate-900 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs text-right"
+                        className="w-full pl-7 pr-2 py-1.5 bg-white border border-emerald-300 rounded-md font-extrabold text-slate-900 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs text-right disabled:bg-slate-100 disabled:text-slate-500"
                       />
                     </div>
                     {/* Quick Fill Buttons */}
-                    <div className="flex items-center justify-between gap-1 pt-1.5 text-[10px]">
-                      <button
-                        type="button"
-                        onClick={() => setApprovalAmount(selectedApp.assessment?.recommendedAmount || selectedApp.requestedAmount)}
-                        className="text-purple-700 hover:underline font-bold"
-                      >
-                        [ใช้ยอดประเมิน]
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setApprovalAmount(selectedApp.requestedAmount)}
-                        className="text-slate-600 hover:underline font-medium"
-                      >
-                        [ใช้ยอดคำขอ]
-                      </button>
-                    </div>
+                    {selectedApp.status === 'pending_approval' && (
+                      <div className="flex items-center justify-between gap-1 pt-1.5 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => setApprovalAmount(selectedApp.assessment?.recommendedAmount || selectedApp.requestedAmount)}
+                          className="text-purple-700 hover:underline font-bold"
+                        >
+                          [ใช้ยอดประเมิน]
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setApprovalAmount(selectedApp.requestedAmount)}
+                          className="text-slate-600 hover:underline font-medium"
+                        >
+                          [ใช้ยอดคำขอ]
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1452,86 +1569,101 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                 <div>
                   <textarea
                     rows={3}
+                    disabled={selectedApp.status !== 'pending_approval'}
                     value={decisionNotes}
                     onChange={(e) => setDecisionNotes(e.target.value)}
                     placeholder="ระบุความเห็น ข้อกำหนด หรือเหตุผลการพิจารณาของคณะกรรมการ..."
-                    className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all text-slate-800"
+                    className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all text-slate-800 disabled:bg-slate-100 disabled:text-slate-500"
                   />
                 </div>
 
                 {/* Quick Presets */}
-                <div className="space-y-1.5 pt-1">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
-                    ข้อความสำเร็จรูป (Quick Notes):
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {QUICK_DECISION_NOTES.map((note, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setDecisionNotes(note)}
-                        className="px-2.5 py-1 rounded-md text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors text-left"
-                      >
-                        {note.slice(0, 36)}...
-                      </button>
-                    ))}
+                {selectedApp.status === 'pending_approval' && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                      ข้อความสำเร็จรูป (Quick Notes):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_DECISION_NOTES.map((note, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setDecisionNotes(note)}
+                          className="px-2.5 py-1 rounded-md text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors text-left"
+                        >
+                          {note.slice(0, 36)}...
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* ===================================================================== */}
                 {/* ACTION BUTTONS (ส่งกลับแก้ไข / ไม่อนุมัติ / อนุมัติคำร้อง) */}
                 {/* ===================================================================== */}
-                <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
-                  {/* Return */}
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() => setConfirmAction('return')}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
-                  >
-                    <RotateCcw className="w-4 h-4 text-amber-700" />
-                    ส่งกลับแก้ไข
-                  </button>
+                {selectedApp.status !== 'pending_approval' ? (
+                  <div className="flex items-center justify-between w-full pt-4 border-t border-slate-200 animate-fadeIn">
+                    <span className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      คำร้องนี้สิ้นสุดการพิจารณาในขั้นตอนนี้แล้ว ({STATUS_CONFIG[selectedApp.status]?.label || selectedApp.status})
+                    </span>
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                      การดำเนินการถูกล็อก
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                    {/* Return */}
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setConfirmAction('return')}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCcw className="w-4 h-4 text-amber-700" />
+                      ส่งกลับแก้ไข
+                    </button>
 
-                  {/* Reject */}
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() => setConfirmAction('reject')}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
-                  >
-                    <XCircle className="w-4 h-4 text-rose-700" />
-                    ไม่อนุมัติ
-                  </button>
+                    {/* Reject */}
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setConfirmAction('reject')}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4 text-rose-700" />
+                      ไม่อนุมัติ
+                    </button>
 
-                  {/* Approve */}
-                  <button
-                    type="button"
-                    disabled={
-                      !resolvedData?.isAllSufficient ||
-                      approvalAmount <= 0 ||
-                      isSubmitting ||
-                      (Boolean(selectedApp.assessmentStatus) && selectedApp.assessmentStatus !== 'completed')
-                    }
-                    onClick={() => setConfirmAction('approve')}
-                    title={
-                      selectedApp.assessmentStatus && selectedApp.assessmentStatus !== 'completed'
-                        ? 'คำร้องนี้ต้องผ่านการประเมินสิทธิ์ให้เสร็จสิ้นก่อนจึงจะสามารถพิจารณาอนุมัติได้'
-                        : undefined
-                    }
-                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold text-white shadow-xs transition-all ${
-                      resolvedData?.isAllSufficient &&
-                      approvalAmount > 0 &&
-                      !isSubmitting &&
-                      (!selectedApp.assessmentStatus || selectedApp.assessmentStatus === 'completed')
-                        ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer shadow-sm hover:shadow'
-                        : 'bg-slate-300 cursor-not-allowed opacity-60'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                    อนุมัติคำร้อง (Approve)
-                  </button>
-                </div>
+                    {/* Approve */}
+                    <button
+                      type="button"
+                      disabled={
+                        !resolvedData?.isAllSufficient ||
+                        approvalAmount <= 0 ||
+                        isSubmitting ||
+                        (Boolean(selectedApp.assessmentStatus) && selectedApp.assessmentStatus !== 'completed')
+                      }
+                      onClick={() => setConfirmAction('approve')}
+                      title={
+                        selectedApp.assessmentStatus && selectedApp.assessmentStatus !== 'completed'
+                          ? 'คำร้องนี้ต้องผ่านการประเมินสิทธิ์ให้เสร็จสิ้นก่อนจึงจะสามารถพิจารณาอนุมัติได้'
+                          : undefined
+                      }
+                      className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold text-white shadow-xs transition-all ${
+                        resolvedData?.isAllSufficient &&
+                        approvalAmount > 0 &&
+                        !isSubmitting &&
+                        (!selectedApp.assessmentStatus || selectedApp.assessmentStatus === 'completed')
+                          ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer shadow-sm hover:shadow'
+                          : 'bg-slate-300 cursor-not-allowed opacity-60'
+                      }`}
+                    >
+                      <Check className="w-4 h-4" />
+                      อนุมัติคำร้อง (Approve)
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

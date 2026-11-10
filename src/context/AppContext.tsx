@@ -649,6 +649,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
+      // Immediate local state update for zero-latency UI transition (Phase 4)
+      setApplications((prev) =>
+        prev.map((a) =>
+          a.id === appId || a.applicationNo === appId
+            ? {
+                ...a,
+                status: 'wait_disbursement',
+                approvalStatus: 'approved',
+                paymentStatus: (a as any).deliveryMethod === 'in_kind' ? 'not_applicable' : 'wait_disbursement',
+                approvedAmount,
+                approvedFundId: fundId,
+                approvedSpecificFundId: specificFundId,
+                approvedById: currentUser.id,
+                approvedByName: currentUser.name,
+                approvedDate: new Date().toLocaleDateString('th-TH'),
+                approvalNotes: notes || 'อนุมัติวงเงินช่วยเหลือ',
+              }
+            : a
+        )
+      );
+
       showToast(`อนุมัติคำร้องสำเร็จ วงเงิน ฿${approvedAmount.toLocaleString()} บาท (กันยอดผูกพัน)`, 'success');
       await refreshData();
       return true;
@@ -682,6 +703,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
+      // Immediate local state update for zero-latency UI transition
+      setApplications((prev) =>
+        prev.map((a) =>
+          a.id === appId || a.applicationNo === appId
+            ? {
+                ...a,
+                status: 'rejected',
+                approvalStatus: 'rejected',
+                completionStatus: 'terminated',
+                rejectionReason: notes,
+                approvalNotes: notes,
+              }
+            : a
+        )
+      );
+
       showToast('บันทึกการไม่อนุมัติคำร้องเข้าสู่ฐานข้อมูลเรียบร้อย', 'info');
       await refreshData();
       return true;
@@ -692,8 +729,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const returnApplication = async (appId: string, notes: string): Promise<boolean> => {
-    await updateApplicationStatus(appId, 'need_info', notes || 'ขอข้อมูลเพิ่มเติม');
-    return true;
+    try {
+      let res = await fetch(`/api/approvals/${appId}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes,
+          targetStatus: 'need_info',
+          actor: {
+            id: currentUser.id,
+            name: currentUser.name,
+            role: currentUser.role,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        // Fallback to beneficiaries status route
+        res = await fetch(`/api/beneficiaries/${appId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'need_info',
+            notes: notes || 'ส่งกลับขอข้อมูลเพิ่มเติม',
+            actor: {
+              id: currentUser.id,
+              name: currentUser.name,
+              role: currentUser.role,
+            },
+          }),
+        });
+      }
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        showToast(json.error || 'ไม่สามารถส่งกลับคำร้องได้', 'error');
+        return false;
+      }
+
+      setApplications((prev) =>
+        prev.map((a) =>
+          a.id === appId || a.applicationNo === appId
+            ? {
+                ...a,
+                status: 'need_info',
+                approvalNotes: notes,
+              }
+            : a
+        )
+      );
+
+      showToast('ส่งกลับคำร้องเพื่อขอข้อมูลเพิ่มเติมเรียบร้อยแล้ว', 'info');
+      await refreshData();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'เกิดข้อผิดพลาดในการส่งกลับคำร้อง', 'error');
+      return false;
+    }
   };
 
   const updateApplicationStatus = async (appId: string, newStatus: ApplicationStatus, notes: string) => {

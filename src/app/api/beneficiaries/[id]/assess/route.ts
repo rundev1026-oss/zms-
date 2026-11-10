@@ -57,6 +57,13 @@ export async function POST(
         );
       }
 
+      // Automatically sync assessment into SQLite so approval gating works seamlessly
+      try {
+        await BeneficiaryService.submitAssessment(id, cleanPayload as any, actor);
+      } catch (localErr) {
+        console.warn('Failed to sync assessment into SQLite:', localErr);
+      }
+
       return NextResponse.json({
         success: true,
         data: json,

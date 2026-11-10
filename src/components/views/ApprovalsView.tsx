@@ -1229,6 +1229,15 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                   </span>
                 </div>
 
+                {selectedApp.assessmentStatus && selectedApp.assessmentStatus !== 'completed' && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2.5 text-xs text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div className="flex-1">
+                      <strong>รอการประเมินสิทธิ์:</strong> คำร้องนี้ยังไม่ผ่านการประเมินสิทธิ์ (สถานะ: &quot;รอประเมิน&quot;) ต้องผ่านการประเมินสิทธิ์ให้เสร็จสิ้นก่อนจึงจะสามารถพิจารณาอนุมัติได้
+                    </div>
+                  </div>
+                )}
+
                 {/* Score & Progress Indicator */}
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                   <div className="flex items-center justify-between">
@@ -1498,10 +1507,23 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                   {/* Approve */}
                   <button
                     type="button"
-                    disabled={!resolvedData?.isAllSufficient || approvalAmount <= 0 || isSubmitting}
+                    disabled={
+                      !resolvedData?.isAllSufficient ||
+                      approvalAmount <= 0 ||
+                      isSubmitting ||
+                      (Boolean(selectedApp.assessmentStatus) && selectedApp.assessmentStatus !== 'completed')
+                    }
                     onClick={() => setConfirmAction('approve')}
+                    title={
+                      selectedApp.assessmentStatus && selectedApp.assessmentStatus !== 'completed'
+                        ? 'คำร้องนี้ต้องผ่านการประเมินสิทธิ์ให้เสร็จสิ้นก่อนจึงจะสามารถพิจารณาอนุมัติได้'
+                        : undefined
+                    }
                     className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold text-white shadow-xs transition-all ${
-                      resolvedData?.isAllSufficient && approvalAmount > 0 && !isSubmitting
+                      resolvedData?.isAllSufficient &&
+                      approvalAmount > 0 &&
+                      !isSubmitting &&
+                      (!selectedApp.assessmentStatus || selectedApp.assessmentStatus === 'completed')
                         ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer shadow-sm hover:shadow'
                         : 'bg-slate-300 cursor-not-allowed opacity-60'
                     }`}

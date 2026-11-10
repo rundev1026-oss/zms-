@@ -1957,7 +1957,24 @@ export class BeneficiaryService {
     }
 
     // Strict Workflow Check (Phase 7): Must be assessed before approval!
-    const asmStatus = String(app.assessment_status || '');
+    let asmStatus = String(app.assessment_status || '');
+    if (asmStatus !== 'completed') {
+      // Auto-sync if assessment was completed in PostgreSQL / NestJS
+      try {
+        const { syncAssessmentFromNest } = await import('@/lib/syncAssistanceRequest');
+        const synced = await syncAssessmentFromNest(applicationId);
+        if (synced) {
+          const recheck = await db.execute({
+            sql: 'SELECT assessment_status FROM assistance_applications WHERE id = ?',
+            args: [applicationId],
+          });
+          if (recheck.rows.length > 0) {
+            asmStatus = String(recheck.rows[0].assessment_status || '');
+          }
+        }
+      } catch {}
+    }
+
     if (asmStatus !== 'completed') {
       throw new Error(
         `CANNOT_APPROVE_UNASSESSED: คำร้องนี้ยังไม่ผ่านการประเมินสิทธิ์ (Assessment Status ต้องเป็น completed เท่านั้น ปัจจุบัน: "${asmStatus || 'pending'}")`

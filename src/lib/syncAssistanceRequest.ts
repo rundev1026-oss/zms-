@@ -11,12 +11,18 @@ export async function ensureApplicationInSqlite(applicationId: string): Promise<
     await initDb();
     const db = getDb();
 
-    // Check if it already exists in SQLite
+    // Check if it already exists in SQLite and has completed assessment
     const existing = await db.execute({
-      sql: 'SELECT id, application_no FROM assistance_applications WHERE id = ?',
+      sql: 'SELECT id, application_no, assessment_status FROM assistance_applications WHERE id = ?',
       args: [applicationId],
     });
+    if (existing.rows.length > 0 && existing.rows[0].assessment_status === 'completed') {
+      return true;
+    }
+
+    // Try syncing assessment from NestJS if not completed
     if (existing.rows.length > 0) {
+      await syncAssessmentFromNest(applicationId).catch(() => null);
       return true;
     }
 
@@ -184,6 +190,67 @@ export async function upsertApplicationIntoSqlite(app: any): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('upsertApplicationIntoSqlite error:', err);
+    return false;
+  }
+}
+
+/**
+ * Syncs assessment details from PostgreSQL (NestJS) into SQLite beneficiary_assessments
+ */
+export async function syncAssessmentFromNest(applicationId: string): Promise<boolean> {
+  if (!applicationId) return false;
+  try {
+    const API_BASE = process.env.API_BASE_URL || 'http://localhost:4000/api/v1';
+    const token = createServiceToken();
+    const res = await fetch(`${API_BASE}/assessments/${applicationId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return false;
+    const asm = await res.json();
+    if (!asm || !asm.id) return false;
+
+    await initDb();
+    const db = getDb();
+
+    await db.execute({
+      sql: `INSERT OR REPLACE INTO beneficiary_assessments (
+        id, application_id, assessed_by_id, assessed_by_name, assessed_date,
+        living_score, housing_condition, housing_notes, debt_burden_summary,
+        primary_hardship, officer_recommendation, recommended_amount, recommended_fund_id, recommended_specific_fund_id, general_notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        asm.id,
+        applicationId,
+        asm.assessedById || 'u-1',
+        asm.assessedByName || 'เจ้าหน้าที่ผู้ประเมิน',
+        asm.assessedDate || new Date().toLocaleString('th-TH', { hour12: false }),
+        asm.livingScore || 0,
+        asm.housingCondition || 'moderate',
+        asm.housingNotes || '',
+        asm.debtBurdenSummary || '',
+        asm.primaryHardship || '',
+        asm.officerRecommendation || 'recommend_full',
+        asm.recommendedAmount || 0,
+        asm.recommendedFundId || 'faqir_miskin',
+        asm.recommendedSpecificFundId || null,
+        asm.generalNotes || '',
+      ],
+    });
+
+    await db.execute({
+      sql: `UPDATE assistance_applications 
+            SET status = CASE WHEN status = 'submitted' THEN 'pending_approval' ELSE status END,
+                assessment_status = 'completed',
+                assessment_id = ?,
+                assessment_date = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [asm.id, asm.assessedDate || new Date().toLocaleString('th-TH', { hour12: false }), applicationId],
+    });
+
+    return true;
+  } catch (err) {
+    console.error('syncAssessmentFromNest error:', err);
     return false;
   }
 }

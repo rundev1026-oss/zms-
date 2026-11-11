@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Plus,
@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Layers,
   ChevronRight,
+  ChevronDown,
   Send,
   Save,
   Search,
@@ -119,6 +120,9 @@ export function FinanceBatchDisbursementModal({
   // New item draft form
   const [selectedAppId, setSelectedAppId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [aidDisbAmount, setAidDisbAmount] = useState('');
   const [aidNotes, setAidNotes] = useState('');
 
@@ -142,10 +146,23 @@ export function FinanceBatchDisbursementModal({
       setItems([]);
       setSelectedAppId('');
       setSearchQuery('');
+      setIsDropdownOpen(false);
       setSelectedCatId('');
       loadMasterData();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const loadMasterData = async () => {
     try {
@@ -591,124 +608,188 @@ export function FinanceBatchDisbursementModal({
                     </span>
                   </div>
 
-                  {/* Search box for applications */}
-                  <div className="relative">
-                    <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="ค้นหาด้วยเลขที่คำร้อง (APP-...), ชื่อผู้ขอรับความช่วยเหลือ, เลขบัตรประชาชน, เลขทะเบียน, หรืออัสนัฟ..."
-                      className="w-full rounded-xl border border-teal-200 bg-white pl-9 pr-20 py-2 text-xs text-slate-800 outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600 shadow-xs"
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-2 text-xs text-slate-400 hover:text-slate-600 bg-slate-100 px-2 py-0.5 rounded"
-                      >
-                        ล้างการค้นหา
-                      </button>
+                  {/* Phase 4: Dropdown / Combobox Selector for Applications */}
+                  <div className="relative" ref={dropdownRef}>
+                    <label className="text-xs font-bold text-slate-700 flex items-center justify-between mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 text-teal-700" />
+                        เลือกคำร้องเพื่อเบิกจ่าย <span className="text-rose-500">*</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        (ค้นหาด้วยเลขที่คำร้อง, ชื่อผู้รับ, หรือเลขทะเบียน)
+                      </span>
+                    </label>
+
+                    {/* Dropdown Trigger Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDropdownOpen((prev) => !prev);
+                        setTimeout(() => searchInputRef.current?.focus(), 60);
+                      }}
+                      className={`w-full rounded-2xl border px-3.5 py-2.5 text-left text-xs transition flex items-center justify-between shadow-2xs ${
+                        isDropdownOpen
+                          ? 'border-teal-600 bg-teal-50/20 ring-2 ring-teal-600/20'
+                          : selectedApp
+                          ? 'border-teal-500 bg-teal-50/40 text-slate-900 font-semibold'
+                          : 'border-slate-300 bg-white text-slate-500 hover:border-teal-400'
+                      }`}
+                    >
+                      {selectedApp ? (
+                        <div className="flex items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap">
+                          <span className="font-mono font-bold text-teal-900 bg-teal-100 px-2 py-0.5 rounded text-[11px] shrink-0">
+                            {selectedApp.applicationNo}
+                          </span>
+                          <span className="font-bold text-slate-900 shrink-0">{selectedApp.beneficiaryName}</span>
+                          <span className="text-slate-300">·</span>
+                          <span className="text-emerald-800 text-[11px] truncate">
+                            {selectedApp.asnafCategory} | {selectedApp.assistanceType || 'ปัจจัยยังชีพ'}
+                          </span>
+                          <span className="text-slate-300">·</span>
+                          <span className="font-black text-teal-800 shrink-0">
+                            คงเหลือเบิกได้ ฿{selectedApp.remainingAmount.toLocaleString('th-TH')}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 flex items-center gap-2">
+                          <Search className="h-3.5 w-3.5 text-slate-400" />
+                          คลิกเพื่อเลือกคำร้องขอรับความช่วยเหลือที่ผ่านการอนุมัติ...
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={`h-4 w-4 text-slate-400 transition-transform shrink-0 ml-2 ${
+                          isDropdownOpen ? 'rotate-180 text-teal-600' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {/* Dropdown Menu Popover */}
+                    {isDropdownOpen && (
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-30 rounded-2xl border border-teal-200 bg-white shadow-2xl p-2.5 space-y-2 animate-fadeIn">
+                        {/* Search Input inside Dropdown */}
+                        <div className="relative">
+                          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                          <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="ค้นหาด้วยเลขที่คำร้อง (APP-...), ชื่อผู้รับ, เลขประจำตัว, ทะเบียน, หรืออัสนัฟ..."
+                            className="w-full rounded-xl border border-teal-200 bg-slate-50/80 pl-8.5 pr-16 py-2 text-xs text-slate-800 outline-none focus:border-teal-600 focus:bg-white"
+                          />
+                          {searchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="absolute right-2.5 top-2 text-[10px] text-slate-500 hover:text-slate-700 bg-slate-200 px-1.5 py-0.5 rounded"
+                            >
+                              ล้าง
+                            </button>
+                          )}
+                        </div>
+
+                        {/* List of Applications */}
+                        {loadingData ? (
+                          <div className="py-6 text-center text-xs text-slate-400">
+                            กำลังโหลดคำร้องที่พร้อมเบิกจ่าย...
+                          </div>
+                        ) : filteredApps.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-slate-500">
+                            {searchQuery ? `ไม่พบคำร้องที่ตรงกับ "${searchQuery}"` : 'ไม่มีรายการคำร้องที่พร้อมเบิกจ่ายในขณะนี้'}
+                          </div>
+                        ) : (
+                          <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 pr-1">
+                            {filteredApps.map((app) => {
+                              const isAlreadyAdded = items.some((it) => it.applicationId === app.id);
+                              const isSelected = selectedAppId === app.id;
+
+                              return (
+                                <div
+                                  key={app.id}
+                                  onClick={() => {
+                                    if (isAlreadyAdded) return;
+                                    setSelectedAppId(app.id);
+                                    setAidDisbAmount(String(app.remainingAmount));
+                                    setIsDropdownOpen(false);
+                                  }}
+                                  className={`p-2.5 transition text-xs rounded-xl ${
+                                    isAlreadyAdded
+                                      ? 'bg-slate-100/70 text-slate-400 opacity-60 cursor-not-allowed'
+                                      : isSelected
+                                      ? 'bg-teal-50 text-teal-950 font-medium cursor-pointer ring-1 ring-teal-400'
+                                      : 'hover:bg-teal-50/50 cursor-pointer text-slate-700'
+                                  }`}
+                                >
+                                  {/* Line 1: Application No + Status */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-mono font-bold text-teal-900 bg-teal-100/80 px-2 py-0.5 rounded text-[11px]">
+                                      เลขที่คำร้อง {app.applicationNo}
+                                    </span>
+                                    {isAlreadyAdded ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                                        <Check className="h-3 w-3" /> เพิ่มในรอบนี้แล้ว
+                                      </span>
+                                    ) : isSelected ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full">
+                                        <Check className="h-3 w-3" /> เลือกอยู่
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+                                        พร้อมเบิกจ่าย
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Line 2: Beneficiary Name */}
+                                  <div className="mt-1 font-bold text-slate-900 text-xs">
+                                    {app.beneficiaryName}
+                                  </div>
+
+                                  {/* Line 3: Asnaf | Assistance Type */}
+                                  <div className="mt-0.5 text-[11px] font-semibold text-emerald-800 flex items-center gap-1.5 flex-wrap">
+                                    <span>{app.asnafCategory}</span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="text-sky-800">{app.assistanceType || 'ปัจจัยยังชีพ'}</span>
+                                    {app.registrationNo && (
+                                      <>
+                                        <span className="text-slate-300">·</span>
+                                        <span className="text-slate-500 font-mono text-[10px]">
+                                          ทะเบียน: {app.registrationNo}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {/* Line 4: Financial Summary */}
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
+                                    <span>
+                                      วงเงินอนุมัติ <strong className="text-slate-900">฿{app.approvedAmount.toLocaleString('th-TH')}</strong>
+                                    </span>
+                                    <span className="text-slate-300">·</span>
+                                    <span>
+                                      เบิกจ่ายแล้ว <strong className="text-slate-700">฿{app.disbursedAmount.toLocaleString('th-TH')}</strong>
+                                    </span>
+                                    <span className="text-slate-300">·</span>
+                                    <span>
+                                      คงเหลือเบิกได้ <strong className="text-teal-800 font-black">฿{app.remainingAmount.toLocaleString('th-TH')}</strong>
+                                    </span>
+                                  </div>
+
+                                  {/* Line 5: Purpose / Notes */}
+                                  {app.notes && (
+                                    <div className="mt-1 text-[10px] text-slate-500 italic flex items-center gap-1">
+                                      <span className="font-semibold text-slate-400 not-italic">หมายเหตุ:</span>
+                                      <span className="line-clamp-1">{app.notes}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
-
-                  {/* Scrollable Application Selection List */}
-                  {loadingData ? (
-                    <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-400">
-                      กำลังโหลดข้อมูลคำร้องที่พร้อมเบิกจ่าย...
-                    </div>
-                  ) : filteredApps.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-teal-200 bg-white/80 p-6 text-center text-xs text-slate-500">
-                      {searchQuery ? (
-                        <>ไม่พบคำร้องที่ตรงกับคำค้นหา "{searchQuery}"</>
-                      ) : (
-                        <>ไม่มีรายการคำร้องที่ผ่านการอนุมัติและรอเบิกจ่ายในขณะนี้</>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-                      {filteredApps.map((app) => {
-                        const isAlreadyAdded = items.some((it) => it.applicationId === app.id);
-                        const isSelected = selectedAppId === app.id;
-
-                        return (
-                          <div
-                            key={app.id}
-                            onClick={() => {
-                              if (isAlreadyAdded) return;
-                              setSelectedAppId(app.id);
-                              setAidDisbAmount(String(app.remainingAmount));
-                            }}
-                            className={`group relative rounded-xl border p-3 transition text-xs ${
-                              isAlreadyAdded
-                                ? 'border-slate-200 bg-slate-100/70 opacity-60 cursor-not-allowed'
-                                : isSelected
-                                ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-600/30 shadow-xs cursor-pointer'
-                                : 'border-teal-100 bg-white hover:border-teal-400 hover:bg-teal-50/30 cursor-pointer shadow-xs'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded text-[11px]">
-                                  {app.applicationNo}
-                                </span>
-                                <span className="font-bold text-slate-900 text-xs">{app.beneficiaryName}</span>
-                                <span className="rounded bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium">
-                                  {app.asnafCategory}
-                                </span>
-                                {app.assistanceType && (
-                                  <span className="rounded bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 text-[10px] font-medium">
-                                    {app.assistanceType}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="shrink-0 text-right">
-                                {isAlreadyAdded ? (
-                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
-                                    <Check className="h-3 w-3" /> เพิ่มในรอบนี้แล้ว
-                                  </span>
-                                ) : isSelected ? (
-                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full">
-                                    <Check className="h-3 w-3" /> เลือกอยู่
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] text-teal-600 group-hover:underline font-semibold">
-                                    คลิกเพื่อเลือก
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600 border-t border-slate-100 pt-2">
-                              <div>
-                                <span className="text-slate-400">เลขบัตร / ทะเบียน: </span>
-                                <span className="font-mono text-slate-700">{app.nationalId || app.registrationNo || '-'}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400">วงเงินอนุมัติ: </span>
-                                <span className="font-bold text-slate-800">฿{app.approvedAmount.toLocaleString('th-TH')}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400">เบิกแล้ว: </span>
-                                <span className="font-semibold text-slate-700">฿{app.disbursedAmount.toLocaleString('th-TH')}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400">คงเหลือเบิกได้: </span>
-                                <span className="font-black text-teal-800">฿{app.remainingAmount.toLocaleString('th-TH')}</span>
-                              </div>
-                            </div>
-
-                            {app.notes && (
-                              <div className="mt-1.5 text-[10px] text-slate-500 line-clamp-1 italic">
-                                หมายเหตุ: {app.notes}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
 
                   {/* SELECTED APPLICATION DETAIL & DISBURSEMENT AMOUNT INPUT */}
                   {selectedApp && (
@@ -717,7 +798,7 @@ export function FinanceBatchDisbursementModal({
                         <div className="flex items-center gap-2">
                           <CheckCircle2 className="h-4 w-4 text-teal-600" />
                           <span className="text-xs font-bold text-teal-900">
-                            ข้อมูลคำร้องที่เลือก (ข้อมูลระบบเดิม ล็อกอัตโนมัติ)
+                            ข้อมูลคำร้องที่เลือก (ระบบดึงอัตโนมัติจากฐานข้อมูลเดิม — ล็อกห้ามแก้ไข)
                           </span>
                         </div>
                         <button
@@ -727,38 +808,69 @@ export function FinanceBatchDisbursementModal({
                             setAidDisbAmount('');
                             setAidNotes('');
                           }}
-                          className="text-[11px] text-slate-400 hover:text-rose-600"
+                          className="text-[11px] text-slate-400 hover:text-rose-600 font-medium"
                         >
                           ยกเลิกการเลือก
                         </button>
                       </div>
 
-                      {/* Locked Derived Master Fields */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-teal-50/40 p-3 rounded-xl border border-teal-100 text-xs">
+                      {/* Locked Derived Master Fields (Phase 5: 7 Derived Fields) */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-teal-50/40 p-3 rounded-xl border border-teal-100 text-xs">
                         <div>
-                          <div className="text-[10px] text-slate-400 font-medium">รหัสคำร้อง</div>
-                          <div className="font-bold font-mono text-teal-900">{selectedApp.applicationNo}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-slate-400 font-medium">ผู้ขอรับความช่วยเหลือ</div>
+                          <div className="text-[10px] text-slate-400 font-medium">1. ผู้ขอรับความช่วยเหลือ</div>
                           <div className="font-bold text-slate-900">{selectedApp.beneficiaryName}</div>
+                          <div className="text-[10px] font-mono text-slate-500">
+                            {selectedApp.nationalId} {selectedApp.registrationNo ? `(${selectedApp.registrationNo})` : ''}
+                          </div>
                         </div>
+
                         <div>
-                          <div className="text-[10px] text-slate-400 font-medium">เลขประจำตัวประชาชน / ทะเบียน</div>
-                          <div className="font-mono text-slate-700">{selectedApp.nationalId} {selectedApp.registrationNo ? `(${selectedApp.registrationNo})` : ''}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">2. รหัสคำร้อง & สถานะ</div>
+                          <div className="font-bold font-mono text-teal-900">{selectedApp.applicationNo}</div>
+                          <div className="text-[10px] text-emerald-700 font-semibold">{selectedApp.status}</div>
                         </div>
+
                         <div>
-                          <div className="text-[10px] text-slate-400 font-medium">หมวดอัสนัฟ</div>
+                          <div className="text-[10px] text-slate-400 font-medium">3. หมวดหมู่อัสนัฟ</div>
                           <div className="font-semibold text-emerald-800">{selectedApp.asnafCategory}</div>
+                          <div className="text-[10px] text-slate-500">{selectedApp.assistanceType || 'ปัจจัยยังชีพ'}</div>
                         </div>
+
                         <div>
-                          <div className="text-[10px] text-slate-400 font-medium">ประเภทความช่วยเหลือ / กองทุน</div>
-                          <div className="font-semibold text-slate-800">{selectedApp.assistanceType || 'ปัจจัยยังชีพ'} {selectedApp.specificFundName ? `· ${selectedApp.specificFundName}` : ''}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">4. กองทุนที่เชื่อมโยง</div>
+                          <div className="font-semibold text-slate-800 text-[11px] truncate">
+                            {selectedApp.specificFundName || selectedApp.fundAccountName || 'กองทุนซะกาต'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono truncate">
+                            {selectedApp.fundAccountName}
+                          </div>
                         </div>
+
                         <div>
-                          <div className="text-[10px] text-slate-400 font-medium">วงเงินอนุมัติ / เบิกแล้ว</div>
-                          <div className="text-slate-800">
-                            อนุมัติ ฿{selectedApp.approvedAmount.toLocaleString('th-TH')} · เบิกแล้ว ฿{selectedApp.disbursedAmount.toLocaleString('th-TH')}
+                          <div className="text-[10px] text-slate-400 font-medium">5. วงเงินอนุมัติ</div>
+                          <div className="font-bold text-slate-900 tabular-nums">
+                            ฿{selectedApp.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">6. วงเงินเบิกจ่ายแล้วสะสม</div>
+                          <div className="font-semibold text-slate-700 tabular-nums">
+                            ฿{selectedApp.disbursedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">7. วงเงินคงเหลือที่เบิกได้</div>
+                          <div className="font-black text-teal-800 tabular-nums text-sm">
+                            ฿{selectedApp.remainingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">กันไว้ในรอบอื่น (ถ้ามี)</div>
+                          <div className="font-medium text-amber-700 tabular-nums">
+                            {selectedApp.pendingBatchAmount ? `฿${selectedApp.pendingBatchAmount.toLocaleString('th-TH')}` : '฿0.00'}
                           </div>
                         </div>
                       </div>

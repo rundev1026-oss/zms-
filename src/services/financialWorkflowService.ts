@@ -1304,7 +1304,8 @@ export class FinancialWorkflowService {
   static async checkApplicationDisbursementEligibility(
     applicationId: string,
     requestedAmount?: number,
-    excludeWorkflowId?: string
+    excludeWorkflowId?: string,
+    client?: any
   ): Promise<{
     eligible: boolean;
     applicationId: string;
@@ -1328,7 +1329,7 @@ export class FinancialWorkflowService {
     conflictingBatches: string[];
   }> {
     await initDb();
-    const db = getDb();
+    const db = client || getDb();
 
     const appRes = await db.execute({
       sql: `
@@ -1749,258 +1750,266 @@ export class FinancialWorkflowService {
     const aidItems = input.items.filter((it) => it.type === 'aid');
     const adminItems = input.items.filter((it) => it.type === 'admin');
 
-    // PHASE 3 & 7: Intra-batch duplicate prevention & Backend atomic eligibility verification
-    const verifiedAidDetails: Array<{
-      item: (typeof aidItems)[0];
-      eligibility: Awaited<ReturnType<typeof FinancialWorkflowService.checkApplicationDisbursementEligibility>>;
-    }> = [];
+    // PHASE 3 & 7: Atomic write transaction for concurrency lock & duplicate prevention
+    const tx = await db.transaction('write');
+    try {
+      const verifiedAidDetails: Array<{
+        item: (typeof aidItems)[0];
+        eligibility: Awaited<ReturnType<typeof FinancialWorkflowService.checkApplicationDisbursementEligibility>>;
+      }> = [];
 
-    const aidAppIdSet = new Set<string>();
-    for (const it of aidItems) {
-      if (!it.applicationId) {
-        throw new Error('รายการช่วยเหลือต้องระบุรหัสคำร้อง (applicationId)');
+      const aidAppIdSet = new Set<string>();
+      for (const it of aidItems) {
+        if (!it.applicationId) {
+          throw new Error('รายการช่วยเหลือต้องระบุรหัสคำร้อง (applicationId)');
+        }
+        if (aidAppIdSet.has(it.applicationId)) {
+          throw new Error(`คำร้องเลขที่ ${it.applicationNo || it.applicationId} ถูกระบุซ้ำในรอบการเบิกเดียวกัน`);
+        }
+        aidAppIdSet.add(it.applicationId);
+
+        const disbAmt = round2(Number(it.thisDisbursementAmount) || 0);
+        const eligibility = await this.checkApplicationDisbursementEligibility(it.applicationId, disbAmt, undefined, tx);
+        verifiedAidDetails.push({ item: it, eligibility });
       }
-      if (aidAppIdSet.has(it.applicationId)) {
-        throw new Error(`คำร้องเลขที่ ${it.applicationNo || it.applicationId} ถูกระบุซ้ำในรอบการเบิกเดียวกัน`);
-      }
-      aidAppIdSet.add(it.applicationId);
 
-      const disbAmt = round2(Number(it.thisDisbursementAmount) || 0);
-      const eligibility = await this.checkApplicationDisbursementEligibility(it.applicationId, disbAmt);
-      verifiedAidDetails.push({ item: it, eligibility });
-    }
-
-    const totalAidAmount = round2(
-      verifiedAidDetails.reduce((sum, vd) => sum + (Number(vd.item.thisDisbursementAmount) || 0), 0)
-    );
-    const totalAdminAmount = round2(
-      adminItems.reduce((sum, it) => sum + (Number(it.amount) || 0), 0)
-    );
-    const totalBatchAmount = round2(totalAidAmount + totalAdminAmount);
-
-    if (totalBatchAmount <= 0) {
-      throw new Error('ยอดรวมของรอบการเบิกต้องมากกว่า 0 บาท');
-    }
-
-    // STRICT CHECK 4: Check Treasurer Cash Balance
-    if (totalBatchAmount > matchedTreasurer.currentBalance) {
-      throw new Error(
-        `ยอดเงินคงเหลือในบัญชีเหรัญญิกไม่เพียงพอ (คงเหลือ ฿${matchedTreasurer.currentBalance.toLocaleString('th-TH', { minimumFractionDigits: 2 })}, แต่ยอดขอเบิกรอบนี้ ฿${totalBatchAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) กรุณาปรับลดจำนวนเงิน หรือรอเหรัญญิกเบิกเงินสดจากธนาคารเข้าคลังก่อน`
+      const totalAidAmount = round2(
+        verifiedAidDetails.reduce((sum, vd) => sum + (Number(vd.item.thisDisbursementAmount) || 0), 0)
       );
-    }
+      const totalAdminAmount = round2(
+        adminItems.reduce((sum, it) => sum + (Number(it.amount) || 0), 0)
+      );
+      const totalBatchAmount = round2(totalAidAmount + totalAdminAmount);
 
-    // STRICT CHECK 5: Validate Fund Type
-    const fundType = input.fundType || 'zakat';
-    if (!['zakat', 'sadaqah', 'operational'].includes(fundType)) {
-      throw new Error(`ประเภทกองทุน "${fundType}" ไม่ถูกต้อง`);
-    }
+      if (totalBatchAmount <= 0) {
+        throw new Error('ยอดรวมของรอบการเบิกต้องมากกว่า 0 บาท');
+      }
 
-    const thaiYear = new Date().getFullYear() + 543;
-    const batchNo = `WD-${thaiYear}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const workflowId = `wf-${Date.now()}-${randomUUID().slice(0, 6)}`;
-    const dateNow = new Date().toISOString().slice(0, 10);
-    const initialStatus = input.submitImmediately ? 'pending_approval' : 'draft';
+      // STRICT CHECK 4: Check Treasurer Cash Balance
+      if (totalBatchAmount > matchedTreasurer.currentBalance) {
+        throw new Error(
+          `ยอดเงินคงเหลือในบัญชีเหรัญญิกไม่เพียงพอ (คงเหลือ ฿${matchedTreasurer.currentBalance.toLocaleString('th-TH', { minimumFractionDigits: 2 })}, แต่ยอดขอเบิกรอบนี้ ฿${totalBatchAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) กรุณาปรับลดจำนวนเงิน หรือรอเหรัญญิกเบิกเงินสดจากธนาคารเข้าคลังก่อน`
+        );
+      }
 
-    // 1. Insert cash_flow_workflows (The Batch Header)
-    await db.execute({
-      sql: `
-        INSERT INTO cash_flow_workflows (
-          id, workflow_no, title,
-          step1_bank_account_id, step1_withdraw_amount, step1_date,
-          step1_operator_id, step1_operator_name, step1_status,
-          step1_fund_type, step1_notes,
-          step2_treasurer_id, step2_treasurer_name, step2_status,
-          overall_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-      `,
-      args: [
-        workflowId,
-        batchNo,
-        input.title.trim(),
-        matchedTreasurer.id,
-        totalBatchAmount,
-        dateNow,
-        actor.id,
-        actor.name,
-        initialStatus,
-        fundType,
-        input.notes || null,
-        matchedTreasurer.custodianId,
-        matchedTreasurer.custodianName,
-        initialStatus,
-      ],
-    });
+      // STRICT CHECK 5: Validate Fund Type
+      const fundType = input.fundType || 'zakat';
+      if (!['zakat', 'sadaqah', 'operational'].includes(fundType)) {
+        throw new Error(`ประเภทกองทุน "${fundType}" ไม่ถูกต้อง`);
+      }
 
-    // 2. Insert Aid Voucher & Disbursement Line Items
-    if (verifiedAidDetails.length > 0) {
-      const aidVoucherId = `cw-aid-${Date.now()}-${randomUUID().slice(0, 4)}`;
-      const aidVoucherNo = `${batchNo}-AID`;
+      const thaiYear = new Date().getFullYear() + 543;
+      const batchNo = `WD-${thaiYear}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const workflowId = `wf-${Date.now()}-${randomUUID().slice(0, 6)}`;
+      const dateNow = new Date().toISOString().slice(0, 10);
+      const initialStatus = input.submitImmediately ? 'pending_approval' : 'draft';
 
-      await db.execute({
+      // 1. Insert cash_flow_workflows (The Batch Header)
+      await tx.execute({
         sql: `
-          INSERT INTO cash_flow_withdrawals (
-            id, workflow_id, withdrawal_no, voucher_type,
-            amount, requested_amount, approved_amount,
-            withdrawal_datetime, withdrawer_id, withdrawer_name,
-            target_asnaf, purpose, status, handover_status, clearance_status
-          ) VALUES (?, ?, ?, 'aid_disbursement', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'not_required')
+          INSERT INTO cash_flow_workflows (
+            id, workflow_no, title,
+            step1_bank_account_id, step1_withdraw_amount, step1_date,
+            step1_operator_id, step1_operator_name, step1_status,
+            step1_fund_type, step1_notes,
+            step2_treasurer_id, step2_treasurer_name, step2_status,
+            overall_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
         `,
         args: [
-          aidVoucherId,
           workflowId,
-          aidVoucherNo,
-          totalAidAmount,
-          totalAidAmount,
-          totalAidAmount,
+          batchNo,
+          input.title.trim(),
+          matchedTreasurer.id,
+          totalBatchAmount,
           dateNow,
           actor.id,
           actor.name,
-          verifiedAidDetails[0].eligibility.asnafCategory || 'ผู้มีสิทธิ์รับซะกาต',
-          input.title,
+          initialStatus,
+          fundType,
+          input.notes || null,
+          matchedTreasurer.custodianId,
+          matchedTreasurer.custodianName,
           initialStatus,
         ],
       });
 
-      for (let i = 0; i < verifiedAidDetails.length; i++) {
-        const { item, eligibility } = verifiedAidDetails[i];
-        const lineId = `di-${Date.now()}-${i + 1}-${randomUUID().slice(0, 4)}`;
-        const disbAmt = round2(Number(item.thisDisbursementAmount) || 0);
-        const appAmt = eligibility.approvedAmount;
-        const remainingAfter = Math.max(0, eligibility.remainingAmount - disbAmt);
+      // 2. Insert Aid Voucher & Disbursement Line Items
+      if (verifiedAidDetails.length > 0) {
+        const aidVoucherId = `cw-aid-${Date.now()}-${randomUUID().slice(0, 4)}`;
+        const aidVoucherNo = `${batchNo}-AID`;
 
-        await db.execute({
+        await tx.execute({
           sql: `
-            INSERT INTO cash_flow_disbursement_items (
-              id, withdrawal_id, workflow_id,
-              application_id, beneficiary_id, beneficiary_name, national_id,
-              asnaf_category, assistance_type,
-              approved_amount, disbursed_amount_before, this_disbursement_amount, remaining_balance,
-              notes, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO cash_flow_withdrawals (
+              id, workflow_id, withdrawal_no, voucher_type,
+              amount, requested_amount, approved_amount,
+              withdrawal_datetime, withdrawer_id, withdrawer_name,
+              target_asnaf, purpose, status, handover_status, clearance_status
+            ) VALUES (?, ?, ?, 'aid_disbursement', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'not_required')
           `,
           args: [
-            lineId,
             aidVoucherId,
             workflowId,
-            eligibility.applicationId,
-            eligibility.beneficiaryId,
-            eligibility.beneficiaryName,
-            eligibility.nationalId,
-            eligibility.asnafCategory,
-            eligibility.assistanceType,
-            appAmt,
-            eligibility.disbursedAmount,
-            disbAmt,
-            remainingAfter,
-            item.notes || null,
-            initialStatus === 'pending_approval' ? 'pending' : 'draft',
+            aidVoucherNo,
+            totalAidAmount,
+            totalAidAmount,
+            totalAidAmount,
+            dateNow,
+            actor.id,
+            actor.name,
+            verifiedAidDetails[0].eligibility.asnafCategory || 'ผู้มีสิทธิ์รับซะกาต',
+            input.title,
+            initialStatus,
           ],
         });
+
+        for (let i = 0; i < verifiedAidDetails.length; i++) {
+          const { item, eligibility } = verifiedAidDetails[i];
+          const lineId = `di-${Date.now()}-${i + 1}-${randomUUID().slice(0, 4)}`;
+          const disbAmt = round2(Number(item.thisDisbursementAmount) || 0);
+          const appAmt = eligibility.approvedAmount;
+          const remainingAfter = Math.max(0, eligibility.remainingAmount - disbAmt);
+
+          await tx.execute({
+            sql: `
+              INSERT INTO cash_flow_disbursement_items (
+                id, withdrawal_id, workflow_id,
+                application_id, beneficiary_id, beneficiary_name, national_id,
+                asnaf_category, assistance_type,
+                approved_amount, disbursed_amount_before, this_disbursement_amount, remaining_balance,
+                notes, status
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              lineId,
+              aidVoucherId,
+              workflowId,
+              eligibility.applicationId,
+              eligibility.beneficiaryId,
+              eligibility.beneficiaryName,
+              eligibility.nationalId,
+              eligibility.asnafCategory,
+              eligibility.assistanceType,
+              appAmt,
+              eligibility.disbursedAmount,
+              disbAmt,
+              remainingAfter,
+              item.notes || null,
+              initialStatus === 'pending_approval' ? 'pending' : 'draft',
+            ],
+          });
+        }
       }
-    }
 
-    // 3. Insert Admin Voucher & Clearance Line Items
-    if (adminItems.length > 0) {
-      const adminVoucherId = `cw-adm-${Date.now()}-${randomUUID().slice(0, 4)}`;
-      const adminVoucherNo = `${batchNo}-ADM`;
+      // 3. Insert Admin Voucher & Clearance Line Items
+      if (adminItems.length > 0) {
+        const adminVoucherId = `cw-adm-${Date.now()}-${randomUUID().slice(0, 4)}`;
+        const adminVoucherNo = `${batchNo}-ADM`;
 
-      await db.execute({
-        sql: `
-          INSERT INTO cash_flow_withdrawals (
-            id, workflow_id, withdrawal_no, voucher_type,
-            amount, requested_amount, approved_amount,
-            withdrawal_datetime, withdrawer_id, withdrawer_name,
-            target_asnaf, purpose, status, handover_status, clearance_status
-          ) VALUES (?, ?, ?, 'office_expense', ?, ?, ?, ?, ?, ?, 'ค่าบริหาร', ?, ?, 'pending', 'pending_clearance')
-        `,
-        args: [
-          adminVoucherId,
-          workflowId,
-          adminVoucherNo,
-          totalAdminAmount,
-          totalAdminAmount,
-          totalAdminAmount,
-          dateNow,
-          actor.id,
-          actor.name,
-          input.title,
-          initialStatus,
-        ],
-      });
-
-      for (let i = 0; i < adminItems.length; i++) {
-        const item = adminItems[i];
-        const lineId = `cli-${Date.now()}-${i + 1}-${randomUUID().slice(0, 4)}`;
-        const lineAmt = round2(Number(item.amount) || 0);
-
-        await db.execute({
+        await tx.execute({
           sql: `
-            INSERT INTO cash_flow_clearance_items (
-              id, withdrawal_id, workflow_id,
-              expense_date, description, amount,
-              category_code, category_name, notes, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO cash_flow_withdrawals (
+              id, workflow_id, withdrawal_no, voucher_type,
+              amount, requested_amount, approved_amount,
+              withdrawal_datetime, withdrawer_id, withdrawer_name,
+              target_asnaf, purpose, status, handover_status, clearance_status
+            ) VALUES (?, ?, ?, 'office_expense', ?, ?, ?, ?, ?, ?, 'ค่าบริหาร', ?, ?, 'pending', 'pending_clearance')
           `,
           args: [
-            lineId,
             adminVoucherId,
             workflowId,
+            adminVoucherNo,
+            totalAdminAmount,
+            totalAdminAmount,
+            totalAdminAmount,
             dateNow,
-            item.description || item.categoryName || 'ค่าใช้จ่ายบริหารสำนักงาน',
-            lineAmt,
-            item.categoryId || 'OFFICE_EXPENSE',
-            item.categoryName || 'ค่าใช้จ่ายบริหาร',
-            item.notes || null,
-            initialStatus === 'pending_approval' ? 'pending' : 'draft',
+            actor.id,
+            actor.name,
+            input.title,
+            initialStatus,
+          ],
+        });
+
+        for (let i = 0; i < adminItems.length; i++) {
+          const item = adminItems[i];
+          const lineId = `cli-${Date.now()}-${i + 1}-${randomUUID().slice(0, 4)}`;
+          const lineAmt = round2(Number(item.amount) || 0);
+
+          await tx.execute({
+            sql: `
+              INSERT INTO cash_flow_clearance_items (
+                id, withdrawal_id, workflow_id,
+                expense_date, description, amount,
+                category_code, category_name, notes, status
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              lineId,
+              adminVoucherId,
+              workflowId,
+              dateNow,
+              item.description || item.categoryName || 'ค่าใช้จ่ายบริหารสำนักงาน',
+              lineAmt,
+              item.categoryId || 'OFFICE_EXPENSE',
+              item.categoryName || 'ค่าใช้จ่ายบริหาร',
+              item.notes || null,
+              initialStatus === 'pending_approval' ? 'pending' : 'draft',
+            ],
+          });
+        }
+      }
+
+      // 4. Log Audit Event & Approval Event if submitted
+      if (input.submitImmediately) {
+        await tx.execute({
+          sql: `
+            INSERT INTO finance_approval_events (
+              id, document_type, document_id, action, from_status, to_status,
+              actor_id, actor_name, actor_role, note
+            ) VALUES (?, 'payment_voucher', ?, 'SUBMIT', 'draft', 'pending_approval', ?, ?, ?, ?)
+          `,
+          args: [
+            `fae-${Date.now()}`,
+            workflowId,
+            actor.id,
+            actor.name,
+            actor.role,
+            `เจ้าหน้าที่จัดทำคำขอเบิกเงินเป็นรอบและยื่นเสนอขออนุมัติ ยอดรวม ฿${totalBatchAmount.toLocaleString('th-TH')}`,
           ],
         });
       }
-    }
 
-    // 4. Log Audit Event & Approval Event if submitted
-    if (input.submitImmediately) {
-      await db.execute({
+      await tx.execute({
         sql: `
-          INSERT INTO finance_approval_events (
-            id, document_type, document_id, action, from_status, to_status,
-            actor_id, actor_name, actor_role, note
-          ) VALUES (?, 'payment_voucher', ?, 'SUBMIT', 'draft', 'pending_approval', ?, ?, ?, ?)
+          INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
+          VALUES (?, ?, ?, ?, ?, 'CREATE_BATCH_DISBURSEMENT', 'cash_flow_workflow', ?, ?)
         `,
         args: [
-          `fae-${Date.now()}`,
-          workflowId,
+          `log-${Date.now()}`,
+          new Date().toISOString(),
           actor.id,
           actor.name,
           actor.role,
-          `เจ้าหน้าที่จัดทำคำขอเบิกเงินเป็นรอบและยื่นเสนอขออนุมัติ ยอดรวม ฿${totalBatchAmount.toLocaleString('th-TH')}`,
+          workflowId,
+          `สร้างรอบเบิก ${batchNo} จำนวน ${input.items.length} รายการ ยอดรวม ฿${totalBatchAmount.toLocaleString('th-TH')} สถานะ ${initialStatus}`,
         ],
       });
-    }
 
-    await db.execute({
-      sql: `
-        INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)
-        VALUES (?, ?, ?, ?, ?, 'CREATE_BATCH_DISBURSEMENT', 'cash_flow_workflow', ?, ?)
-      `,
-      args: [
-        `log-${Date.now()}`,
-        new Date().toISOString(),
-        actor.id,
-        actor.name,
-        actor.role,
+      await tx.commit();
+
+      return {
+        success: true,
         workflowId,
-        `สร้างรอบเบิก ${batchNo} จำนวน ${input.items.length} รายการ ยอดรวม ฿${totalBatchAmount.toLocaleString('th-TH')} สถานะ ${initialStatus}`,
-      ],
-    });
-
-    return {
-      success: true,
-      workflowId,
-      batchNo,
-      totalAmount: totalBatchAmount,
-      itemCount: input.items.length,
-      status: initialStatus,
-    };
+        batchNo,
+        totalAmount: totalBatchAmount,
+        itemCount: input.items.length,
+        status: initialStatus,
+      };
+    } catch (txErr) {
+      await tx.rollback();
+      throw txErr;
+    }
   }
 
   /**

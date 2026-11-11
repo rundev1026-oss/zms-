@@ -393,9 +393,47 @@ async function runTestSuite() {
       assert(auditRes.rows.length > 0, `Audit log entry verified in database for multi-item batch: "${auditRes.rows[0]?.description}"`);
     }
 
+    // TEST 11: Concurrency Protection — Two simultaneous requests claiming the same application
+    console.log('\n[SCENARIO 11] Testing concurrency protection with simultaneous requests...');
+    const TEST_APP_CONC = `app-test-conc-${TEST_RUN}`;
+    const APP_NO_CONC = `APP-TEST-CONC-${TEST_RUN}`;
+    await client.execute({
+      sql: `INSERT INTO assistance_applications (${baseFields})
+            VALUES (?, ?, ?, 'ยากจน/ขัดสน', 'ปัจจัยยังชีพ',
+                    5000, 5000, 0, 'wait_disbursement',
+                    'u-1', 'ผู้ดูแลระบบ', ?,
+                    'approved', 'completed', 'approved', 'wait_disbursement',
+                    'pending', 'pending', 'active',
+                    'br-hq', 'สำนักงานใหญ่')`,
+      args: [TEST_APP_CONC, APP_NO_CONC, TEST_BEN_ID, today],
+    });
+
+    const [concRes1, concRes2] = await Promise.all([
+      postAction('create_batch', {
+        title: 'รอบเบิกพร้อมกัน รายการที่ 1',
+        fundType: 'zakat',
+        sourceAccountId: activeTreasurer.id,
+        items: [{ type: 'aid', applicationId: TEST_APP_CONC, applicationNo: APP_NO_CONC, thisDisbursementAmount: 5000 }],
+      }),
+      postAction('create_batch', {
+        title: 'รอบเบิกพร้อมกัน รายการที่ 2',
+        fundType: 'zakat',
+        sourceAccountId: activeTreasurer.id,
+        items: [{ type: 'aid', applicationId: TEST_APP_CONC, applicationNo: APP_NO_CONC, thisDisbursementAmount: 5000 }],
+      }),
+    ]);
+
+    const concSuccesses = [concRes1, concRes2].filter((r) => r.ok && r.data.success);
+    const concFailures = [concRes1, concRes2].filter((r) => !r.ok || !r.data.success);
+
+    assert(concSuccesses.length === 1, `Exactly 1 concurrent request succeeded (success count: ${concSuccesses.length})`);
+    assert(concFailures.length === 1, `The conflicting concurrent request was rejected: "${concFailures[0]?.data?.error}"`);
+
+    const concBatchId = concSuccesses[0]?.data?.data?.workflowId;
+
     // Clean up test batches & applications
     console.log('\n[TEARDOWN] Cleaning up test records...');
-    const deleteIds = [batch1Id, batch2Id, multiBatchId].filter(Boolean);
+    const deleteIds = [batch1Id, batch2Id, multiBatchId, concBatchId].filter(Boolean);
     if (deleteIds.length > 0) {
       const placeholders = deleteIds.map(() => '?').join(',');
       await client.execute({ sql: `DELETE FROM cash_flow_disbursement_items WHERE workflow_id IN (${placeholders})`, args: deleteIds });
@@ -403,7 +441,7 @@ async function runTestSuite() {
       await client.execute({ sql: `DELETE FROM cash_flow_withdrawals WHERE workflow_id IN (${placeholders})`, args: deleteIds });
       await client.execute({ sql: `DELETE FROM cash_flow_workflows WHERE id IN (${placeholders})`, args: deleteIds });
     }
-    const testAppIds = [TEST_APP_APPROVED, TEST_APP_PENDING, TEST_APP_REJECTED, TEST_APP_DISBURSED, TEST_APP_PARTIAL];
+    const testAppIds = [TEST_APP_APPROVED, TEST_APP_PENDING, TEST_APP_REJECTED, TEST_APP_DISBURSED, TEST_APP_PARTIAL, TEST_APP_CONC];
     const appPlaceholders = testAppIds.map(() => '?').join(',');
     await client.execute({ sql: `DELETE FROM assistance_applications WHERE id IN (${appPlaceholders})`, args: testAppIds });
     console.log('[TEARDOWN] Cleaned up test records.');

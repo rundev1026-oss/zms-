@@ -1249,7 +1249,7 @@ export class RegistryService {
       if (!isOwner) {
         throw new Error('ท่านไม่มีสิทธิ์แก้ไขข้อมูลทะเบียนของบุคคลอื่น (อนุญาตเฉพาะเจ้าของทะเบียนตามนโยบายมูลนิธิ)');
       }
-    } else if (!['officer', 'super_admin', 'approver', 'executive'].includes(actor.role)) {
+    } else if (!['officer', 'super_admin', 'approver', 'executive', 'admin'].includes(actor.role)) {
       throw new Error(`บทบาท ${actor.role} ไม่มีสิทธิ์ในการแก้ไขข้อมูลทะเบียนผู้มีสิทธิ์รับซะกาต`);
     }
 

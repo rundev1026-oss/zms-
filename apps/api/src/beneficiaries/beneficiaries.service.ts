@@ -632,13 +632,9 @@ export class BeneficiariesService {
       );
     }
     const materialFields = new Set([
-      'address',
-      'province',
-      'district',
-      'subdistrict',
-      'community',
       'housingType',
       'housingCondition',
+      'landTitleType',
       'monthlyIncome',
       'monthlyExpense',
       'debtAmount',
@@ -653,6 +649,8 @@ export class BeneficiariesService {
       'hardshipReasons',
       'asnafCategory',
       'nationalId',
+      'occupation',
+      'workStatus',
       'householdMembers',
       'householdMemberNames',
       'incomeBreakdown',
@@ -667,7 +665,7 @@ export class BeneficiariesService {
         change.field.startsWith('householdMember'),
     );
     const sendBack = revisionRequiresReview(existing.status as RegistryStatusCode) && material;
-    if (sendBack && (input.reason ?? '').trim().length < 5) {
+    if (material && (input.reason ?? '').trim().length < 5) {
       throw new AppException(
         HttpStatus.BAD_REQUEST,
         'REASON_REQUIRED',

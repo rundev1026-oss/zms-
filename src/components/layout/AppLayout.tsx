@@ -34,6 +34,7 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
     if (clean.startsWith('donation') || clean.startsWith('payment')) return 'payment';
     if (clean.startsWith('audit')) return 'audit-logs';
     if (clean.startsWith('setting')) return 'settings';
+    if (clean.startsWith('notification')) return 'notifications';
     return clean;
   };
 

@@ -289,6 +289,7 @@ export function BeneficiaryRegistryView({
     reviewed: boolean;
     syncedForm?: any;
   }>(null);
+  const [reasonError, setReasonError] = useState<string | null>(null);
   const editBaseline = useRef<any>(null);
 
   const isAnyModalActive = Boolean(
@@ -597,6 +598,7 @@ export function BeneficiaryRegistryView({
     else if (normalizedSec === 'limitations') setActivePersonalSubSection('limitations');
     else setActivePersonalSubSection('info');
     setEditForm(initialForm);
+    setReasonError(null);
   };
 
   // Direct save of location & coordinates from Section 2
@@ -632,7 +634,19 @@ export function BeneficiaryRegistryView({
   // Cancel edit
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setReasonError(null);
+    editBaseline.current = null;
   };
+
+  // Real-time diff detection for dirty state & material changes
+  const currentChanges = useMemo(() => {
+    if (!isEditing || !editBaseline.current) return [];
+    return diffRegistryFields(editBaseline.current, editForm);
+  }, [isEditing, editForm]);
+
+  const hasMaterialChanges = useMemo(() => {
+    return currentChanges.some((c) => c.material);
+  }, [currentChanges]);
 
   // Helper functions for household members editing
   const handleAddMember = () => {
@@ -768,16 +782,29 @@ export function BeneficiaryRegistryView({
     }
     const reviewed = registryNeedsReReview(selectedRegistry.registrationStatus);
     const material = changes.some((change) => change.material);
-    if (reviewed && material && String(editForm.editNotes || '').trim().length < 5) {
+    const trimmedNotes = String(editForm.editNotes || '').trim();
+    if (material && trimmedNotes.length < 5) {
+      setReasonError('การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร');
       showToast('การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร', 'error');
+      const el = document.getElementById('edit-reason-input');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.focus();
+      }
       return;
     }
+    setReasonError(null);
     setSavePreview({ changes, material, reviewed, syncedForm });
   };
 
   const handleConfirmSave = async () => {
     if (!selectedRegistry || !savePreview) return;
     const formToSave = savePreview.syncedForm || editForm;
+    const notesToSave = String(formToSave.editNotes || '').trim();
+    if (savePreview.material && notesToSave.length < 5) {
+      showToast('การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร', 'error');
+      return;
+    }
     const cleanId = String(formToSave.nationalId || '').replace(/[^0-9]/g, '');
     setIsSaving(true);
     try {
@@ -797,11 +824,12 @@ export function BeneficiaryRegistryView({
         })),
       };
 
-      const ok = await updateBeneficiaryRegistry(selectedRegistry.id, payload, formToSave.editNotes);
+      const ok = await updateBeneficiaryRegistry(selectedRegistry.id, payload, notesToSave);
       if (ok) {
         await loadRegistryDetail(selectedRegistry.id);
         setIsEditing(false);
         setSavePreview(null);
+        setReasonError(null);
         editBaseline.current = null;
       } else {
         setSavePreview(null);
@@ -1886,19 +1914,70 @@ export function BeneficiaryRegistryView({
                 </>
               ) : (
                 <>
-                  <div className="flex-1 min-w-[200px] space-y-1">
-                    {registryNeedsReReview(selectedRegistry.registrationStatus) && (
-                      <p className="text-[11px] text-amber-800 font-semibold">
+                  <div className="flex-1 min-w-[280px] space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      {hasMaterialChanges ? (
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-900 bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-200">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>ข้อมูลที่แก้ไขมีผลต่อคุณสมบัติ กรุณาระบุเหตุผล (อย่างน้อย 5 ตัวอักษร)*</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-medium">
+                          <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>เหตุผล / บันทึกการแก้ไข (ไม่บังคับ — ข้อมูลทั่วไปบันทึกได้ทันที)</span>
+                        </div>
+                      )}
+                      {hasMaterialChanges && (
+                        <div className="text-[11px] font-semibold shrink-0">
+                          {String(editForm.editNotes || '').trim().length < 5 ? (
+                            <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                              {String(editForm.editNotes || '').trim().length}/5 ตัวอักษร
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              {String(editForm.editNotes || '').trim().length}/5 ตัวอักษร (ผ่านเกณฑ์)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        id="edit-reason-input"
+                        type="text"
+                        value={editForm.editNotes || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditForm({ ...editForm, editNotes: val });
+                          if (reasonError && (val.trim().length >= 5 || !hasMaterialChanges)) {
+                            setReasonError(null);
+                          }
+                        }}
+                        placeholder={
+                          hasMaterialChanges
+                            ? "กรุณาระบุเหตุผลการแก้ไข (เช่น: ปรับปรุงรายได้ครัวเรือนให้เป็นปัจจุบันตามที่ลงพื้นที่จริง)..."
+                            : "ระบุเหตุผล/หมายเหตุการแก้ไขข้อมูลสมาชิก (ไม่บังคับ)..."
+                        }
+                        className={`w-full p-2.5 bg-white border rounded-xl text-xs placeholder:text-slate-400 focus:outline-none transition-all ${
+                          reasonError || (hasMaterialChanges && String(editForm.editNotes || '').trim().length > 0 && String(editForm.editNotes || '').trim().length < 5)
+                            ? 'border-rose-400 ring-2 ring-rose-200/50 bg-rose-50/20 text-rose-950'
+                            : hasMaterialChanges && String(editForm.editNotes || '').trim().length >= 5
+                              ? 'border-emerald-400 ring-2 ring-emerald-200/50'
+                              : 'border-slate-300 focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+                        }`}
+                      />
+                    </div>
+                    {reasonError && (
+                      <p className="text-[11px] text-rose-600 font-semibold flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>{reasonError}</span>
+                      </p>
+                    )}
+                    {registryNeedsReReview(selectedRegistry.registrationStatus) && !reasonError && (
+                      <p className="text-[10.5px] text-slate-500">
                         การแก้ไขข้อมูลปัจจุบันของสมาชิกจะไม่กระทบ Snapshot ของประวัติการประเมินสิทธิ์ย้อนหลัง
                       </p>
                     )}
-                    <input
-                      type="text"
-                      value={editForm.editNotes || ''}
-                      onChange={(e) => setEditForm({ ...editForm, editNotes: e.target.value })}
-                      placeholder="ระบุเหตุผล/หมายเหตุการแก้ไขข้อมูลสมาชิก (เช่น: อัปเดตรายได้ปัจจุบัน, ปรับปรุงที่อยู่ใหม่)..."
-                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs placeholder:text-slate-400"
-                    />
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -2059,41 +2138,143 @@ export function BeneficiaryRegistryView({
 
       {savePreview && (
         <ModalPortal>
-          <div className="fixed inset-0 z-[1200] flex items-center justify-center p-3 bg-slate-950/60">
-            <div role="dialog" aria-modal="true" className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden">
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
+            <div role="dialog" aria-modal="true" className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
               <div className="p-4 bg-[#0b2545] text-white">
-                <h3 className="font-bold">ยืนยันการบันทึกการแก้ไข</h3>
-                <p className="text-xs text-slate-200 mt-1">ตรวจรายการที่เปลี่ยนก่อนบันทึกลงฐานข้อมูล</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-base">ยืนยันการบันทึกการแก้ไข</h3>
+                    <p className="text-xs text-slate-200 mt-0.5">ตรวจรายการที่เปลี่ยนก่อนบันทึกลงฐานข้อมูล</p>
+                  </div>
+                  <span className={`text-[11px] px-2.5 py-1 rounded-full font-semibold ${
+                    savePreview.material 
+                      ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30' 
+                      : 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'
+                  }`}>
+                    {savePreview.material ? 'มีข้อมูลกระทบคุณสมบัติ' : 'ข้อมูลทั่วไป'}
+                  </span>
+                </div>
               </div>
-              <div className="p-4 overflow-y-auto text-xs space-y-2">
+
+              <div className="p-4 overflow-y-auto text-xs space-y-3 flex-1">
                 {savePreview.reviewed && savePreview.material && (
-                  <p className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
-                    ข้อมูลนี้มีผลต่อคุณสมบัติ หลังบันทึกทะเบียนจะอยู่ในสถานะรอตรวจสอบใหม่ ประวัติการช่วยเหลือและการเงินเดิมจะไม่ถูกแก้ไข
-                  </p>
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-relaxed">
+                      ข้อมูลนี้มีผลต่อคุณสมบัติ หลังบันทึกทะเบียนจะอยู่ในสถานะรอตรวจสอบใหม่ ทั้งนี้ประวัติการช่วยเหลือและการเงินเดิมจะไม่ถูกแก้ไข
+                    </p>
+                  </div>
                 )}
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-slate-500">
-                      <th className="text-left py-1">รายการ</th>
-                      <th className="text-left py-1">ค่าเดิม</th>
-                      <th className="text-left py-1">ค่าใหม่</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {savePreview.changes.map((change, idx) => (
-                      <tr key={`${change.field}-${idx}`} className="border-t border-slate-100">
-                        <td className="py-1.5 pr-2 font-semibold">{change.fieldLabel}</td>
-                        <td className="py-1.5 pr-2 text-rose-800">{change.oldValue || 'ไม่มีข้อมูล'}</td>
-                        <td className="py-1.5 text-emerald-800 font-semibold">{change.newValue || 'ไม่มีข้อมูล'}</td>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr className="text-slate-600 font-semibold">
+                        <th className="text-left py-2 px-3">รายการ</th>
+                        <th className="text-left py-2 px-3">ประเภท</th>
+                        <th className="text-left py-2 px-3">ค่าเดิม</th>
+                        <th className="text-left py-2 px-3">ค่าใหม่</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {savePreview.changes.map((change, idx) => (
+                        <tr key={`${change.field}-${idx}`} className="hover:bg-slate-50/50">
+                          <td className="py-2 px-3 font-semibold text-slate-800">{change.fieldLabel}</td>
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            {change.material ? (
+                              <span className="text-[10px] bg-amber-100 text-amber-800 font-medium px-1.5 py-0.5 rounded">กลุ่ม B (คุณสมบัติ)</span>
+                            ) : (
+                              <span className="text-[10px] bg-slate-100 text-slate-600 font-medium px-1.5 py-0.5 rounded">กลุ่ม A (ทั่วไป)</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-rose-700 max-w-[120px] truncate" title={change.oldValue}>
+                            {change.oldValue || 'ไม่มีข้อมูล'}
+                          </td>
+                          <td className="py-2 px-3 text-emerald-700 font-semibold max-w-[120px] truncate" title={change.newValue}>
+                            {change.newValue || 'ไม่มีข้อมูล'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Inline Reason Editor in Preview Modal */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                      <span>เหตุผลการแก้ไขข้อมูล</span>
+                      {savePreview.material && <span className="text-rose-600">*</span>}
+                    </label>
+                    <span className={`text-[11px] ${
+                      savePreview.material && (savePreview.syncedForm?.editNotes || '').trim().length < 5
+                        ? 'text-rose-600 font-bold'
+                        : 'text-slate-500'
+                    }`}>
+                      {savePreview.material
+                        ? `${(savePreview.syncedForm?.editNotes || '').trim().length}/5 ตัวอักษร`
+                        : `${(savePreview.syncedForm?.editNotes || '').trim().length} ตัวอักษร (ไม่บังคับ)`}
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={savePreview.syncedForm?.editNotes || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSavePreview({
+                        ...savePreview,
+                        syncedForm: { ...(savePreview.syncedForm || {}), editNotes: val },
+                      });
+                      setEditForm((prev: any) => ({ ...prev, editNotes: val }));
+                      if (reasonError && (val.trim().length >= 5 || !savePreview.material)) {
+                        setReasonError(null);
+                      }
+                    }}
+                    placeholder={
+                      savePreview.material
+                        ? "ระบุเหตุผลในการแก้ไขข้อมูล เช่น ปรับปรุงรายได้ครัวเรือนให้เป็นปัจจุบันตามการลงพื้นที่สำรวจจริง (อย่างน้อย 5 ตัวอักษร)..."
+                        : "ระบุเหตุผลหรือบันทึกช่วยจำ (ไม่บังคับ)..."
+                    }
+                    className={`w-full p-2 bg-white border rounded-xl text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-all ${
+                      savePreview.material && (savePreview.syncedForm?.editNotes || '').trim().length < 5
+                        ? 'border-rose-300 focus:ring-rose-300 bg-rose-50/20'
+                        : 'border-slate-300 focus:ring-emerald-500'
+                    }`}
+                  />
+                  {savePreview.material && (savePreview.syncedForm?.editNotes || '').trim().length < 5 && (
+                    <p className="text-[11px] text-rose-600 font-medium">
+                      การแก้ไขข้อมูลที่มีผลต่อคุณสมบัติต้องระบุเหตุผลอย่างน้อย 5 ตัวอักษร (เหลืออีก {5 - (savePreview.syncedForm?.editNotes || '').trim().length} ตัวอักษร)
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="p-3 border-t border-slate-200 flex justify-end gap-2">
-                <button type="button" onClick={() => setSavePreview(null)} disabled={isSaving} className="px-3 py-2 border border-slate-300 rounded-xl">ยกเลิก</button>
-                <button type="button" onClick={handleConfirmSave} disabled={isSaving} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl disabled:opacity-50">
-                  {isSaving ? 'กำลังบันทึก...' : 'ยืนยันบันทึก'}
+
+              <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setSavePreview(null)}
+                  disabled={isSaving}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl font-medium transition-colors"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSave}
+                  disabled={isSaving || (savePreview.material && (savePreview.syncedForm?.editNotes || '').trim().length < 5)}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-1.5 transition-colors shadow-xs"
+                >
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>ยืนยันบันทึก</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

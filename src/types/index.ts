@@ -1699,10 +1699,56 @@ export interface AuditLogItem {
   ipAddress: string;
 }
 
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
+
 export interface Toast {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: ToastType;
   message: string;
+  title?: string;
+  duration?: number;
+}
+
+export type NotificationType = 'success' | 'error' | 'warning' | 'info';
+
+export type NotificationModule = 
+  | 'beneficiary'
+  | 'request'
+  | 'assessment'
+  | 'approval'
+  | 'disbursement'
+  | 'followup'
+  | 'finance'
+  | 'system';
+
+export interface SystemNotification {
+  id: string;
+  recipientUserId?: string | null;
+  recipientRole?: string | null;
+  type: NotificationType;
+  title: string;
+  message: string;
+  module: NotificationModule;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  actionUrl?: string | null;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+  expiresAt?: string | null;
+}
+
+export interface CreateNotificationInput {
+  recipientUserId?: string | null;
+  recipientRole?: string | null;
+  type: NotificationType;
+  title: string;
+  message: string;
+  module: NotificationModule;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  actionUrl?: string | null;
+  expiresAt?: string | null;
 }
 
 // ข้อมูลขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต (Zakat Beneficiary Registry)

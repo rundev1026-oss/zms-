@@ -15,9 +15,13 @@ import {
   RegistrationStatus,
   DashboardSeparatedStats,
   Toast,
+  ToastType,
+  SystemNotification,
+  CreateNotificationInput,
   RegistryEditHistoryItem,
   FollowUpSummaryStats,
 } from '@/types';
+import { GlobalToastContainer } from '@/components/common/GlobalToastContainer';
 import { 
   MOCK_USERS, 
   MOCK_FUNDS, 
@@ -74,8 +78,15 @@ interface AppContextType {
   followUpBadgeCount: number;
   refreshFollowUpData: () => Promise<void>;
   refreshData: () => Promise<void>;
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  showToast: (message: string, type?: ToastType, duration?: number) => void;
   removeToast: (id: string) => void;
+  // การแจ้งเตือนระบบ (Global Notifications)
+  notifications: SystemNotification[];
+  unreadNotificationsCount: number;
+  refreshNotifications: () => Promise<void>;
+  markNotificationAsRead: (id: string) => Promise<boolean>;
+  markAllNotificationsAsRead: () => Promise<boolean>;
+  createNotification: (input: CreateNotificationInput) => Promise<SystemNotification | null>;
   // ทะเบียนผู้มีสิทธิ์รับซะกาต
   registerBeneficiaryProfile: (profileData: any) => Promise<string | null>;
   updateBeneficiaryRegistry: (beneficiaryId: string, profileData: any, editNotes?: string) => Promise<boolean>;
@@ -184,18 +195,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [followUpStats, setFollowUpStats] = useState<FollowUpSummaryStats | null>(null);
   const [followUpBadgeCount, setFollowUpBadgeCount] = useState<number>(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
+  const showToast = useCallback((message: string, type: ToastType = 'success', duration?: number) => {
     const id = createToastId();
-    setToasts((prev) => [...prev, { id, type, message }]);
+    // Newest toast on top (stack descending)
+    setToasts((prev) => [{ id, type, message, duration }, ...prev.slice(0, 5)]);
+    const autoDismissTime = duration ?? (type === 'error' ? 12000 : type === 'warning' ? 6000 : type === 'info' ? 5000 : 4000);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
+    }, autoDismissTime);
   }, []);
 
   // Check existing session from cookie or localStorage
@@ -289,6 +304,90 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     return headers;
   }, [authToken, currentUser]);
+
+  // Global Notification Operations
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const res = await fetch('/api/notifications?limit=30', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setNotifications(json.data);
+          setUnreadNotificationsCount(json.unreadCount ?? 0);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to refresh notifications:', err);
+    }
+  }, [getAuthHeaders]);
+
+  const markNotificationAsRead = useCallback(async (id: string): Promise<boolean> => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true, readAt: new Date().toISOString() } : n))
+    );
+    setUnreadNotificationsCount((prev) => Math.max(0, prev - 1));
+
+    try {
+      const res = await fetch(`/api/notifications/${id}/read`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }, [getAuthHeaders]);
+
+  const markAllNotificationsAsRead = useCallback(async (): Promise<boolean> => {
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, isRead: true, readAt: new Date().toISOString() }))
+    );
+    setUnreadNotificationsCount(0);
+
+    try {
+      const res = await fetch('/api/notifications/read-all', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }, [getAuthHeaders]);
+
+  const createNotification = useCallback(async (input: CreateNotificationInput): Promise<SystemNotification | null> => {
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(input),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          await refreshNotifications();
+          return json.data;
+        }
+      }
+      return null;
+    } catch (e) {
+      console.warn('Failed to create notification:', e);
+      return null;
+    }
+  }, [getAuthHeaders, refreshNotifications]);
+
+  // Periodic Notification Polling (every 30 seconds)
+  useEffect(() => {
+    refreshNotifications();
+    const interval = setInterval(refreshNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [refreshNotifications]);
 
   // Fetch real data from database via APIs
   const refreshData = useCallback(async () => {
@@ -405,6 +504,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setFollowUpBadgeCount(fupJson.stats.navbarBadgeCount || 0);
         }
       }
+
+      // 6. Global Notifications & Unread Badge Count
+      await refreshNotifications();
     } catch (err) {
       console.error('Failed to fetch from real database:', err);
     } finally {
@@ -509,6 +611,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       showToast(`ลงทะเบียนคำร้องเข้าสู่ฐานข้อมูลสำเร็จ: ${json.data.applicationNo}`, 'success');
+      await createNotification({
+        type: 'success',
+        module: 'beneficiary',
+        title: 'ขึ้นทะเบียนคำร้องขอความช่วยเหลือสำเร็จ',
+        message: `ลงทะเบียนคำร้อง ${json.data.applicationNo} สำหรับ ${appData.fullName || appData.firstName || 'ผู้ขอรับความช่วยเหลือ'} เรียบร้อยแล้ว`,
+        referenceType: 'application',
+        referenceId: json.data.applicationNo,
+        actionUrl: '/assistance-requests',
+        recipientRole: 'officer',
+      });
       await refreshData();
       return json.data.applicationId;
     } catch (err: any) {
@@ -608,6 +720,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       showToast('บันทึกผลการประเมินลงฐานข้อมูลและส่งต่อคณะกรรมการอนุมัติเรียบร้อย', 'success');
+      await createNotification({
+        type: 'info',
+        module: 'approval',
+        title: 'มีคำร้องใหม่รอการพิจารณาอนุมัติ',
+        message: `คำร้องรหัส ${appId} ผ่านการประเมินสิทธิ์แล้ว รอการพิจารณาอนุมัติจากคณะกรรมการ`,
+        referenceType: 'application',
+        referenceId: appId,
+        actionUrl: '/approvals',
+        recipientRole: 'approver',
+      });
       await refreshData();
       return true;
     } catch (err: any) {
@@ -671,6 +793,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
 
       showToast(`อนุมัติคำร้องสำเร็จ วงเงิน ฿${approvedAmount.toLocaleString()} บาท (กันยอดผูกพัน)`, 'success');
+      await createNotification({
+        type: 'success',
+        module: 'disbursement',
+        title: 'คำร้องผ่านการอนุมัติ รอเบิกจ่ายเงิน',
+        message: `คำร้องรหัส ${appId} ผ่านการพิจารณาอนุมัติวงเงิน ฿${approvedAmount.toLocaleString()} บาท พร้อมส่งต่อฝ่ายการเงินเพื่อเบิกจ่าย`,
+        referenceType: 'application',
+        referenceId: appId,
+        actionUrl: '/assistance',
+        recipientRole: 'finance',
+      });
       await refreshData();
       return true;
     } catch (err: any) {
@@ -720,6 +852,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
 
       showToast('บันทึกการไม่อนุมัติคำร้องเข้าสู่ฐานข้อมูลเรียบร้อย', 'info');
+      await createNotification({
+        type: 'error',
+        module: 'approval',
+        title: 'คำร้องไม่ผ่านการอนุมัติ',
+        message: `คำร้องรหัส ${appId} ได้รับมติไม่อนุมัติ: ${notes || '-'}`,
+        referenceType: 'application',
+        referenceId: appId,
+        actionUrl: '/assistance-requests',
+        recipientRole: 'officer',
+      });
       await refreshData();
       return true;
     } catch (err: any) {
@@ -780,6 +922,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
 
       showToast('ส่งกลับคำร้องเพื่อขอข้อมูลเพิ่มเติมเรียบร้อยแล้ว', 'info');
+      await createNotification({
+        type: 'warning',
+        module: 'approval',
+        title: 'คำร้องถูกส่งกลับเพื่อแก้ไขข้อมูล',
+        message: `คำร้องรหัส ${appId} ถูกส่งกลับ: ${notes || 'ขอข้อมูลเพิ่มเติม'}`,
+        referenceType: 'application',
+        referenceId: appId,
+        actionUrl: '/assistance-requests',
+        recipientRole: 'officer',
+      });
       await refreshData();
       return true;
     } catch (err: any) {
@@ -850,6 +1002,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       showToast(`ฝ่ายการเงินโอนเงินสำเร็จ ฿${amount.toLocaleString()} บาท บันทึก Transaction เรียบร้อย`, 'success');
+      await createNotification({
+        type: 'success',
+        module: 'disbursement',
+        title: 'ดำเนินการเบิกจ่ายเงินช่วยเหลือสำเร็จ',
+        message: `เบิกจ่ายเงินช่วยเหลือคำร้อง ${appId} จำนวน ฿${amount.toLocaleString()} บาท เรียบร้อยแล้ว (เลขอ้างอิง: ${paymentRef || '-'})`,
+        referenceType: 'application',
+        referenceId: appId,
+        actionUrl: '/assistance',
+        recipientRole: 'finance',
+      });
       await refreshData();
       return true;
     } catch (err: any) {
@@ -1140,6 +1302,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       showToast(json.message || 'บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว', 'success');
+      await createNotification({
+        type: 'success',
+        module: 'beneficiary',
+        title: 'แก้ไขข้อมูลทะเบียนผู้มีสิทธิ์สำเร็จ',
+        message: `ปรับปรุงข้อมูลทะเบียนผู้มีสิทธิ์รหัส ${beneficiaryId} เรียบร้อยแล้ว`,
+        referenceType: 'beneficiary',
+        referenceId: beneficiaryId,
+        actionUrl: '/beneficiaries',
+        recipientRole: 'officer',
+      });
       await refreshData();
       return true;
     } catch (err: any) {
@@ -1308,6 +1480,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       showToast(`ยื่นคำร้องขอความช่วยเหลือสำเร็จ: เลขคำร้อง ${json.data.applicationNo}`, 'success');
+      await createNotification({
+        type: 'success',
+        module: 'request',
+        title: 'ยื่นคำร้องขอความช่วยเหลือสำเร็จ',
+        message: `ยื่นคำร้องเลขที่ ${json.data.applicationNo} วงเงินที่ขอ ฿${Number(json.data.requestedAmount || 0).toLocaleString()} บาท เรียบร้อยแล้ว`,
+        referenceType: 'application',
+        referenceId: json.data.applicationNo,
+        actionUrl: '/assistance-requests',
+        recipientRole: 'officer',
+      });
+      await createNotification({
+        type: 'info',
+        module: 'assessment',
+        title: 'มีคำร้องใหม่รอตรวจสอบและลงพื้นที่',
+        message: `คำร้องเลขที่ ${json.data.applicationNo} รอเจ้าหน้าที่ตรวจสอบเอกสารและประเมินสิทธิ์`,
+        referenceType: 'application',
+        referenceId: json.data.applicationNo,
+        actionUrl: '/assessment',
+        recipientRole: 'officer',
+      });
       await refreshData();
       return {
         applicationId: json.data.applicationId || json.data.id,
@@ -1351,6 +1543,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         refreshData,
         showToast,
         removeToast,
+        notifications,
+        unreadNotificationsCount,
+        refreshNotifications,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        createNotification,
         registerBeneficiaryProfile,
         updateBeneficiaryRegistry,
         getRegistryEditHistory,
@@ -1375,34 +1573,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     >
       {children}
 
-      {/* Global Toast Notification Container */}
-      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-md pointer-events-none">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 border text-sm font-medium transition-all duration-300 transform translate-y-0 ${
-              toast.type === 'success'
-                ? 'bg-emerald-900/95 text-emerald-100 border-emerald-500/50 backdrop-blur-md'
-                : toast.type === 'error'
-                ? 'bg-rose-900/95 text-rose-100 border-rose-500/50 backdrop-blur-md'
-                : 'bg-slate-900/95 text-slate-100 border-slate-700/50 backdrop-blur-md'
-            }`}
-          >
-            <span className="text-lg">
-              {toast.type === 'success' ? '✓' : toast.type === 'error' ? '✕' : 'ℹ'}
-            </span>
-            <div className="flex-1">{toast.message}</div>
-            <button
-              type="button"
-              onClick={() => removeToast(toast.id)}
-              className="text-xs opacity-60 hover:opacity-100 transition-opacity p-1 ml-1 rounded hover:bg-white/10"
-              aria-label="ปิดการแจ้งเตือน"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
+      {/* Global Toast Notification Layer (Fixed Top-Right) */}
+      <GlobalToastContainer />
     </AppContext.Provider>
   );
 }

@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ClipboardCheck
 } from 'lucide-react';
+import { NotificationCenterPopover } from '@/components/common/NotificationCenterPopover';
 
 interface NavbarProps {
   currentView: string;
@@ -171,6 +172,9 @@ export function Navbar({
 
         {/* Right: Notifications, User Info & Logout */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Global Notification Center */}
+          <NotificationCenterPopover onNavigate={onNavigate} />
+
           {/* Pending Approvals alert badge */}
           {pendingApprovalsCount > 0 && (
             <button

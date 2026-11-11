@@ -3884,6 +3884,40 @@ export async function initDb(): Promise<void> {
     if (!aaCols.includes('assessment_id')) {
       try { await db.execute(`ALTER TABLE assistance_applications ADD COLUMN assessment_id TEXT;`); } catch {}
     }
+
+    // 3. Global Notification System Schema
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS system_notifications (
+        id TEXT PRIMARY KEY,
+        recipient_user_id TEXT,
+        recipient_role TEXT,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        module TEXT NOT NULL,
+        reference_type TEXT,
+        reference_id TEXT,
+        action_url TEXT,
+        is_read INTEGER DEFAULT 0,
+        read_at TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT
+      );
+    `);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_sys_notif_user ON system_notifications (recipient_user_id, is_read);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_sys_notif_role ON system_notifications (recipient_role);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_sys_notif_created ON system_notifications (created_at DESC);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_sys_notif_module ON system_notifications (module);`);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS notification_user_reads (
+        notification_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        read_at TEXT NOT NULL,
+        PRIMARY KEY (notification_id, user_id)
+      );
+    `);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_notif_reads_user ON notification_user_reads (user_id);`);
   } catch (err) {
     console.error('Phase 10 financial schema initialization warning:', err);
   }

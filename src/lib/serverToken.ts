@@ -1,13 +1,13 @@
 import crypto from 'crypto';
 
-const DEFAULT_JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me';
-const SYSTEM_ADMIN_ID = 'dffb49d1-7cf3-4593-bb58-a82b25f5bff4';
+const DEFAULT_JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me-zms-enterprise-2026';
+const SYSTEM_ADMIN_ID = 'c98cc949-2771-44fe-9be9-6f415fc5ed74';
 
 /**
  * Resolves a Bearer token from the incoming Request.
  * 1. Checks Authorization header ('Bearer <token>')
  * 2. Checks 'zms_session', 'zms_auth_token', or 'zms_access_token' cookie
- * 3. If none found, gracefully mints a valid system fallback token for development/fallback mode
+ * 3. If none found or not a valid JWT, gracefully mints a valid system fallback token for development/fallback mode
  */
 export function resolveServerToken(req: Request): string {
   // 1. Authorization header
@@ -15,19 +15,23 @@ export function resolveServerToken(req: Request): string {
   if (authHeader.startsWith('Bearer ')) {
     const raw = authHeader.replace('Bearer ', '').trim();
     if (raw && raw !== 'null' && raw !== 'undefined' && raw !== 'cookie-session') {
-      return raw;
+      if (raw.split('.').length === 3) {
+        return raw;
+      }
     }
   }
 
   // 2. Cookie header
   const cookieHeader = req.headers.get('cookie') || '';
-  const sessionMatch = cookieHeader.match(/zms_session=([^;]+)/) ||
+  const sessionMatch = cookieHeader.match(/zms_access_token=([^;]+)/) ||
                        cookieHeader.match(/zms_auth_token=([^;]+)/) ||
-                       cookieHeader.match(/zms_access_token=([^;]+)/);
+                       cookieHeader.match(/zms_session=([^;]+)/);
   if (sessionMatch) {
     const raw = decodeURIComponent(sessionMatch[1]).trim();
     if (raw && raw !== 'null' && raw !== 'undefined' && raw !== 'cookie-session') {
-      return raw;
+      if (raw.split('.').length === 3) {
+        return raw;
+      }
     }
   }
 

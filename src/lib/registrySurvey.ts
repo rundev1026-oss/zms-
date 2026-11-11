@@ -568,18 +568,19 @@ export function diffRegistryFields(
     { field: 'age', label: 'อายุ (ปี)', type: 'number', material: false, altKeys: ['ageYears'] },
     { field: 'phone', label: 'เบอร์โทรศัพท์', type: 'phone', material: false },
     { field: 'email', label: 'อีเมล', type: 'string', material: false },
-    { field: 'occupation', label: 'อาชีพ', type: 'string', material: false },
+    { field: 'occupation', label: 'อาชีพ', type: 'string', material: true },
+    { field: 'workStatus', label: 'สถานะการทำงาน', type: 'string', material: true },
     { field: 'maritalStatus', label: 'สถานภาพสมรส', type: 'string', material: false, map: MARITAL_STATUS_DIFF_LABELS },
     { field: 'asnafCategory', label: 'หมวดหมู่อัสนาฟ', type: 'string', material: true, map: ASNAF_DIFF_LABELS },
     { field: 'branchId', label: 'รหัสสาขา', type: 'string', material: false },
     { field: 'branchName', label: 'ชื่อสาขา', type: 'string', material: false },
 
     // Section 2: Residence & Location
-    { field: 'address', label: 'ที่อยู่', type: 'string', material: true },
-    { field: 'community', label: 'ชุมชน/หมู่บ้าน', type: 'string', material: true },
-    { field: 'subdistrict', label: 'ตำบล/แขวง', type: 'string', material: true },
-    { field: 'district', label: 'อำเภอ/เขต', type: 'string', material: true },
-    { field: 'province', label: 'จังหวัด', type: 'string', material: true },
+    { field: 'address', label: 'ที่อยู่', type: 'string', material: false },
+    { field: 'community', label: 'ชุมชน/หมู่บ้าน', type: 'string', material: false },
+    { field: 'subdistrict', label: 'ตำบล/แขวง', type: 'string', material: false },
+    { field: 'district', label: 'อำเภอ/เขต', type: 'string', material: false },
+    { field: 'province', label: 'จังหวัด', type: 'string', material: false },
     { field: 'postcode', label: 'รหัสไปรษณีย์', type: 'string', material: false, altKeys: ['postalCode'] },
     { field: 'latitude', label: 'ละติจูด', type: 'number', material: false },
     { field: 'longitude', label: 'ลองจิจูด', type: 'number', material: false },
@@ -609,8 +610,8 @@ export function diffRegistryFields(
     { field: 'illnessNotes', label: 'การเจ็บป่วย', type: 'string', material: true },
     { field: 'livingLimitations', label: 'ข้อจำกัดในการดำรงชีวิต', type: 'string', material: true },
     { field: 'familySituationSummary', label: 'สรุปสภาพปัญหาครอบครัว', type: 'string', material: false },
-    { field: 'urgentNeeds', label: 'ความต้องการเร่งด่วน', type: 'string', material: false },
-    { field: 'dependentBurdens', label: 'ภาระผู้พึ่งพิง', type: 'string', material: false },
+    { field: 'urgentNeeds', label: 'ความต้องการเร่งด่วน', type: 'string', material: true },
+    { field: 'dependentBurdens', label: 'ภาระผู้พึ่งพิง', type: 'string', material: true },
   ];
 
   for (const cfg of scalarConfigs) {

@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:4000/api/v1';
-const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me';
-const SYSTEM_ADMIN_ID = process.env.SYSTEM_ADMIN_ID || 'dffb49d1-7cf3-4593-bb58-a82b25f5bff4';
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me-zms-enterprise-2026';
+const SYSTEM_ADMIN_ID = process.env.SYSTEM_ADMIN_ID || 'c98cc949-2771-44fe-9be9-6f415fc5ed74';
 
 export function createServiceToken(userId = SYSTEM_ADMIN_ID): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');

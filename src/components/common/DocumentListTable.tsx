@@ -72,7 +72,10 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
 
   const authHeaders = (): Record<string, string> => {
     const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    if (token && token !== 'cookie-session' && token !== 'null' && token !== 'undefined') {
+      return { Authorization: `Bearer ${token}` };
+    }
+    return {};
   };
 
   const isPrivateDocument = (doc: BeneficiaryDocument) => Boolean(doc.fileUrl?.startsWith('/api/documents/'));
@@ -138,17 +141,9 @@ export const DocumentListTable: React.FC<DocumentListTableProps> = ({
   const handleDownloadFile = async (doc: BeneficiaryDocument) => {
     try {
       setDownloadingId(doc.id);
-      const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
-      const params = new URLSearchParams();
-      params.set('action', 'download');
-      if (token) params.set('token', token);
-      if (currentUser?.id) params.set('actorId', currentUser.id);
-      if (currentUser?.role) params.set('actorRole', currentUser.role);
-      if (currentUser?.name) params.set('actorName', currentUser.name);
-
       const downloadUrl = isPrivateDocument(doc)
         ? `/api/documents/${doc.id}/content`
-        : `/api/storage/file/${doc.id}?${params.toString()}`;
+        : `/api/storage/file/${doc.id}?action=download`;
       const res = await fetch(downloadUrl, {
         headers: authHeaders(),
         credentials: 'include',

@@ -15,6 +15,10 @@ import {
   ChevronRight,
   Send,
   Save,
+  Search,
+  Check,
+  ShieldCheck,
+  Info,
 } from 'lucide-react';
 import type { BankAccount } from '@/types';
 
@@ -24,11 +28,20 @@ interface EligibleApp {
   beneficiaryId: string;
   beneficiaryName: string;
   nationalId: string;
+  registrationNo?: string;
   asnafCategory: string;
+  assistanceType?: string;
+  specificFundId?: string;
+  specificFundName?: string;
+  fundAccountId?: string;
+  fundAccountName?: string;
   approvedAmount: number;
   disbursedAmount: number;
+  pendingBatchAmount?: number;
   remainingAmount: number;
+  activeBatchNumbers?: string;
   status: string;
+  notes?: string;
 }
 
 interface AdminCat {
@@ -105,6 +118,7 @@ export function FinanceBatchDisbursementModal({
 
   // New item draft form
   const [selectedAppId, setSelectedAppId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [aidDisbAmount, setAidDisbAmount] = useState('');
   const [aidNotes, setAidNotes] = useState('');
 
@@ -127,6 +141,7 @@ export function FinanceBatchDisbursementModal({
       setNotes('');
       setItems([]);
       setSelectedAppId('');
+      setSearchQuery('');
       setSelectedCatId('');
       loadMasterData();
     }
@@ -167,7 +182,19 @@ export function FinanceBatchDisbursementModal({
     }
   };
 
-  if (!isOpen) return null;
+  const cleanSearch = searchQuery.toLowerCase().trim();
+  const filteredApps = !cleanSearch
+    ? eligibleApps
+    : eligibleApps.filter((app) => {
+        return (
+          app.applicationNo.toLowerCase().includes(cleanSearch) ||
+          app.beneficiaryName.toLowerCase().includes(cleanSearch) ||
+          (app.nationalId && app.nationalId.toLowerCase().includes(cleanSearch)) ||
+          (app.registrationNo && app.registrationNo.toLowerCase().includes(cleanSearch)) ||
+          (app.asnafCategory && app.asnafCategory.toLowerCase().includes(cleanSearch)) ||
+          (app.assistanceType && app.assistanceType.toLowerCase().includes(cleanSearch))
+        );
+      });
 
   const totalAidAmount = items
     .filter((it) => it.type === 'aid')
@@ -182,21 +209,29 @@ export function FinanceBatchDisbursementModal({
   const selectedTreasurer = treasurerAccounts.find((t) => t.id === sourceAccountId) || treasurerAccounts[0] || null;
   const isBalanceInsufficient = selectedTreasurer ? totalBatchAmount > selectedTreasurer.currentBalance : false;
 
+  const selectedApp = eligibleApps.find((a) => a.id === selectedAppId) || null;
+
   const handleAddAidItem = () => {
     setError('');
-    const app = eligibleApps.find((a) => a.id === selectedAppId);
+    const app = selectedApp;
     if (!app) {
-      setError('กรุณาเลือกผู้ขอรับความช่วยเหลือที่ผ่านการอนุมัติ');
+      setError('กรุณาเลือกคำร้องขอรับความช่วยเหลือที่ผ่านการอนุมัติ');
       return;
     }
     const amt = parseFloat(aidDisbAmount);
-    if (!amt || amt <= 0) {
-      setError('กรุณาระบุจำนวนเงินที่ต้องการขอเบิกจ่ายรอบนี้');
+    if (!amt || isNaN(amt) || amt <= 0) {
+      setError('กรุณาระบุจำนวนเงินที่ต้องการขอเบิกจ่ายรอบนี้ (มากกว่า 0 บาท)');
+      return;
+    }
+    if (amt > app.remainingAmount) {
+      setError(
+        `ยอดเงินที่ขอเบิก (฿${amt.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) เกินกว่าวงเงินคงเหลือที่สามารถขอเบิกได้ (คงเหลือ ฿${app.remainingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}) สำหรับคำร้อง ${app.applicationNo}`
+      );
       return;
     }
     // Prevent duplicate application in same batch
     if (items.some((it) => it.applicationId === app.id)) {
-      setError(`คำร้อง ${app.applicationNo} ถูกเพิ่มในรอบเบิกนี้แล้ว`);
+      setError(`คำร้องเลขที่ ${app.applicationNo} (${app.beneficiaryName}) ถูกเพิ่มในรอบการเบิกนี้แล้ว ไม่สามารถเพิ่มซ้ำได้`);
       return;
     }
 
@@ -210,10 +245,10 @@ export function FinanceBatchDisbursementModal({
         beneficiaryName: app.beneficiaryName,
         nationalId: app.nationalId,
         asnafCategory: app.asnafCategory,
-        assistanceType: 'เงินสงเคราะห์เพื่อการยังชีพ',
+        assistanceType: app.assistanceType || 'ปัจจัยยังชีพ',
         approvedAmount: app.approvedAmount,
         thisDisbursementAmount: amt,
-        notes: aidNotes,
+        notes: aidNotes.trim() || undefined,
       },
     ]);
 
@@ -316,6 +351,8 @@ export function FinanceBatchDisbursementModal({
       setBusy(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 sm:p-4 backdrop-blur-xs animate-fadeIn">
@@ -538,68 +575,266 @@ export function FinanceBatchDisbursementModal({
 
               {/* FORM: AID ITEM */}
               {itemType === 'aid' && (
-                <div className="rounded-2xl border border-teal-200 bg-teal-50/40 p-4 space-y-3">
-                  <div className="text-xs font-bold text-teal-900 flex items-center justify-between">
-                    <span>เลือกคำร้องขอรับความช่วยเหลือที่ผ่านการอนุมัติแล้ว</span>
-                    <span className="text-[11px] text-teal-700 font-normal">
-                      (ดึงข้อมูลอัสนัฟและวงเงินอนุมัติอัตโนมัติ)
+                <div className="rounded-2xl border border-teal-200 bg-teal-50/40 p-4 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                    <div>
+                      <div className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                        <ShieldCheck className="h-4 w-4 text-teal-700" />
+                        <span>เลือกคำร้องขอรับความช่วยเหลือที่ผ่านการอนุมัติ (Approved & Ready for Disbursement)</span>
+                      </div>
+                      <p className="text-[11px] text-teal-700 mt-0.5">
+                        ระบบคัดกรองเฉพาะคำร้องที่อนุมัติแล้ว มีวงเงินคงเหลือ และไม่อยู่ในรอบเบิกอื่นที่ยังไม่ปิด
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-teal-800 bg-teal-100/80 px-2.5 py-0.5 rounded-full self-start sm:self-auto">
+                      พร้อมเบิกจ่าย: {eligibleApps.length} รายการ
                     </span>
                   </div>
 
-                  <select
-                    value={selectedAppId}
-                    onChange={(e) => {
-                      setSelectedAppId(e.target.value);
-                      const app = eligibleApps.find((a) => a.id === e.target.value);
-                      if (app) {
-                        setAidDisbAmount(String(app.remainingAmount || app.approvedAmount));
-                      }
-                    }}
-                    className="w-full rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none"
-                  >
-                    <option value="">-- เลือกคำร้องผู้ขอรับความช่วยเหลือ --</option>
-                    {eligibleApps.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.applicationNo} — {a.beneficiaryName} ({a.asnafCategory}) · วงเงิน ฿
-                        {a.approvedAmount.toLocaleString('th-TH')} · คงเหลือเบิกได้ ฿
-                        {a.remainingAmount.toLocaleString('th-TH')}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-600">
-                        ยอดเงินที่ขอเบิกจ่ายรอบนี้ (บาท) <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={aidDisbAmount}
-                        onChange={(e) => setAidDisbAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-600">หมายเหตุรายการย่อย</label>
-                      <input
-                        type="text"
-                        value={aidNotes}
-                        onChange={(e) => setAidNotes(e.target.value)}
-                        placeholder="เช่น มอบเงินสดเยียวยาฉุกเฉินงวดที่ 1"
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none"
-                      />
-                    </div>
+                  {/* Search box for applications */}
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="ค้นหาด้วยเลขที่คำร้อง (APP-...), ชื่อผู้ขอรับความช่วยเหลือ, เลขบัตรประชาชน, เลขทะเบียน, หรืออัสนัฟ..."
+                      className="w-full rounded-xl border border-teal-200 bg-white pl-9 pr-20 py-2 text-xs text-slate-800 outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600 shadow-xs"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-3 top-2 text-xs text-slate-400 hover:text-slate-600 bg-slate-100 px-2 py-0.5 rounded"
+                      >
+                        ล้างการค้นหา
+                      </button>
+                    )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleAddAidItem}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-teal-800"
-                  >
-                    <Plus className="h-4 w-4" /> เพิ่มรายการช่วยเหลือนี้เข้าสู่รอบเบิก
-                  </button>
+                  {/* Scrollable Application Selection List */}
+                  {loadingData ? (
+                    <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-400">
+                      กำลังโหลดข้อมูลคำร้องที่พร้อมเบิกจ่าย...
+                    </div>
+                  ) : filteredApps.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-teal-200 bg-white/80 p-6 text-center text-xs text-slate-500">
+                      {searchQuery ? (
+                        <>ไม่พบคำร้องที่ตรงกับคำค้นหา "{searchQuery}"</>
+                      ) : (
+                        <>ไม่มีรายการคำร้องที่ผ่านการอนุมัติและรอเบิกจ่ายในขณะนี้</>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                      {filteredApps.map((app) => {
+                        const isAlreadyAdded = items.some((it) => it.applicationId === app.id);
+                        const isSelected = selectedAppId === app.id;
+
+                        return (
+                          <div
+                            key={app.id}
+                            onClick={() => {
+                              if (isAlreadyAdded) return;
+                              setSelectedAppId(app.id);
+                              setAidDisbAmount(String(app.remainingAmount));
+                            }}
+                            className={`group relative rounded-xl border p-3 transition text-xs ${
+                              isAlreadyAdded
+                                ? 'border-slate-200 bg-slate-100/70 opacity-60 cursor-not-allowed'
+                                : isSelected
+                                ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-600/30 shadow-xs cursor-pointer'
+                                : 'border-teal-100 bg-white hover:border-teal-400 hover:bg-teal-50/30 cursor-pointer shadow-xs'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded text-[11px]">
+                                  {app.applicationNo}
+                                </span>
+                                <span className="font-bold text-slate-900 text-xs">{app.beneficiaryName}</span>
+                                <span className="rounded bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium">
+                                  {app.asnafCategory}
+                                </span>
+                                {app.assistanceType && (
+                                  <span className="rounded bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 text-[10px] font-medium">
+                                    {app.assistanceType}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="shrink-0 text-right">
+                                {isAlreadyAdded ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                                    <Check className="h-3 w-3" /> เพิ่มในรอบนี้แล้ว
+                                  </span>
+                                ) : isSelected ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full">
+                                    <Check className="h-3 w-3" /> เลือกอยู่
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-teal-600 group-hover:underline font-semibold">
+                                    คลิกเพื่อเลือก
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600 border-t border-slate-100 pt-2">
+                              <div>
+                                <span className="text-slate-400">เลขบัตร / ทะเบียน: </span>
+                                <span className="font-mono text-slate-700">{app.nationalId || app.registrationNo || '-'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400">วงเงินอนุมัติ: </span>
+                                <span className="font-bold text-slate-800">฿{app.approvedAmount.toLocaleString('th-TH')}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400">เบิกแล้ว: </span>
+                                <span className="font-semibold text-slate-700">฿{app.disbursedAmount.toLocaleString('th-TH')}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400">คงเหลือเบิกได้: </span>
+                                <span className="font-black text-teal-800">฿{app.remainingAmount.toLocaleString('th-TH')}</span>
+                              </div>
+                            </div>
+
+                            {app.notes && (
+                              <div className="mt-1.5 text-[10px] text-slate-500 line-clamp-1 italic">
+                                หมายเหตุ: {app.notes}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* SELECTED APPLICATION DETAIL & DISBURSEMENT AMOUNT INPUT */}
+                  {selectedApp && (
+                    <div className="rounded-xl border border-teal-300 bg-white p-4 shadow-xs space-y-3.5 animate-fadeIn">
+                      <div className="flex items-center justify-between border-b border-teal-100 pb-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-teal-600" />
+                          <span className="text-xs font-bold text-teal-900">
+                            ข้อมูลคำร้องที่เลือก (ข้อมูลระบบเดิม ล็อกอัตโนมัติ)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAppId('');
+                            setAidDisbAmount('');
+                            setAidNotes('');
+                          }}
+                          className="text-[11px] text-slate-400 hover:text-rose-600"
+                        >
+                          ยกเลิกการเลือก
+                        </button>
+                      </div>
+
+                      {/* Locked Derived Master Fields */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-teal-50/40 p-3 rounded-xl border border-teal-100 text-xs">
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">รหัสคำร้อง</div>
+                          <div className="font-bold font-mono text-teal-900">{selectedApp.applicationNo}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">ผู้ขอรับความช่วยเหลือ</div>
+                          <div className="font-bold text-slate-900">{selectedApp.beneficiaryName}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">เลขประจำตัวประชาชน / ทะเบียน</div>
+                          <div className="font-mono text-slate-700">{selectedApp.nationalId} {selectedApp.registrationNo ? `(${selectedApp.registrationNo})` : ''}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">หมวดอัสนัฟ</div>
+                          <div className="font-semibold text-emerald-800">{selectedApp.asnafCategory}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">ประเภทความช่วยเหลือ / กองทุน</div>
+                          <div className="font-semibold text-slate-800">{selectedApp.assistanceType || 'ปัจจัยยังชีพ'} {selectedApp.specificFundName ? `· ${selectedApp.specificFundName}` : ''}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-medium">วงเงินอนุมัติ / เบิกแล้ว</div>
+                          <div className="text-slate-800">
+                            อนุมัติ ฿{selectedApp.approvedAmount.toLocaleString('th-TH')} · เบิกแล้ว ฿{selectedApp.disbursedAmount.toLocaleString('th-TH')}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Disbursement Input & Validation */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-700">
+                              ยอดเงินที่ขอเบิกจ่ายรอบนี้ (บาท) <span className="text-rose-500">*</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setAidDisbAmount(String(selectedApp.remainingAmount))}
+                              className="text-[10px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md transition"
+                            >
+                              เบิกเต็มจำนวน: ฿{selectedApp.remainingAmount.toLocaleString('th-TH')}
+                            </button>
+                          </div>
+                          <div className="mt-1 relative">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="1"
+                              max={selectedApp.remainingAmount}
+                              value={aidDisbAmount}
+                              onChange={(e) => setAidDisbAmount(e.target.value)}
+                              placeholder="0.00"
+                              className={`w-full rounded-xl border px-3 py-2 text-xs font-bold outline-none tabular-nums ${
+                                parseFloat(aidDisbAmount) > selectedApp.remainingAmount || parseFloat(aidDisbAmount) <= 0
+                                  ? 'border-rose-400 bg-rose-50/40 text-rose-800 focus:border-rose-600'
+                                  : 'border-teal-300 bg-white text-slate-900 focus:border-teal-600'
+                              }`}
+                            />
+                          </div>
+                          {parseFloat(aidDisbAmount) > selectedApp.remainingAmount ? (
+                            <div className="mt-1 text-[10px] text-rose-600 font-semibold flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3 shrink-0" />
+                              ยอดเบิกเกินวงเงินคงเหลือที่ขอเบิกได้ (คงเหลือ ฿{selectedApp.remainingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })})
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-[10px] text-teal-700">
+                              * วงเงินคงเหลือที่สามารถขอเบิกได้: ฿{selectedApp.remainingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700">หมายเหตุรายการย่อย</label>
+                          <input
+                            type="text"
+                            value={aidNotes}
+                            onChange={(e) => setAidNotes(e.target.value)}
+                            placeholder="เช่น เบิกเงินสดเพื่อมอบแก่ผู้รับความช่วยเหลือ งวดที่ 1"
+                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-teal-600"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={handleAddAidItem}
+                          disabled={
+                            !aidDisbAmount ||
+                            parseFloat(aidDisbAmount) <= 0 ||
+                            parseFloat(aidDisbAmount) > selectedApp.remainingAmount ||
+                            items.some((it) => it.applicationId === selectedApp.id)
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="h-4 w-4" /> เพิ่มรายการช่วยเหลือนี้เข้าสู่รอบเบิก
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

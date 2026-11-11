@@ -51,6 +51,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: items });
     }
 
+    if (view === 'bank_accounts') {
+      await initDb();
+      const db = getDb();
+      const res = await db.execute(`
+        SELECT id, account_name, bank_name, account_number, branch_name, current_balance, is_default, status
+        FROM bank_accounts
+        WHERE status = 'active'
+        ORDER BY is_default DESC, account_name ASC
+      `);
+      return NextResponse.json({ success: true, data: res.rows });
+    }
+
     if (view === 'eligible_applications') {
       const search = searchParams.get('search') || '';
       const items = await FinancialWorkflowService.getEligibleAssistanceApplications(search);
@@ -60,7 +72,9 @@ export async function GET(req: NextRequest) {
     if (view === 'batch_list') {
       const tab = searchParams.get('tab') || 'all';
       const search = searchParams.get('search') || '';
-      const result = await FinancialWorkflowService.getBatchDisbursementList({ tab, search });
+      const dateFrom = searchParams.get('dateFrom') || undefined;
+      const dateTo = searchParams.get('dateTo') || undefined;
+      const result = await FinancialWorkflowService.getBatchDisbursementList({ tab, search, dateFrom, dateTo });
       return NextResponse.json({ success: true, data: result });
     }
 
@@ -156,6 +170,37 @@ export async function POST(req: NextRequest) {
 
     if (action === 'close_round') {
       const result = await FinancialWorkflowService.closeBatchRound(input.workflowId, input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    // =========================================================================
+    // TREASURER CASH WITHDRAWAL & TRANSFER EVIDENCE (TREASURER -> STAFF CASH FLOAT)
+    // =========================================================================
+    if (action === 'record_treasurer_transfer') {
+      const result = await FinancialWorkflowService.recordTreasurerTransferAndHandover(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 201 });
+    }
+
+    if (action === 'confirm_transfer_receipt') {
+      const result = await FinancialWorkflowService.staffConfirmTransferReceipt(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    // =========================================================================
+    // TREASURER TRANSFER EVIDENCE ACTIONS
+    // =========================================================================
+    if (action === 'attach_transfer_evidence') {
+      const result = await FinancialWorkflowService.attachTransferEvidence(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 201 });
+    }
+
+    if (action === 'verify_transfer_evidence') {
+      const result = await FinancialWorkflowService.verifyTransferEvidence(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'delete_transfer_evidence') {
+      const result = await FinancialWorkflowService.deleteTransferEvidence(input.evidenceId, actor);
       return NextResponse.json({ success: true, data: result }, { status: 200 });
     }
 

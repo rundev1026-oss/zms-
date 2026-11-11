@@ -389,8 +389,16 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
     setDownloadingId(doc.id);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null;
-      const downloadEndpoint = `/api/storage/file/${doc.id}?download=true${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-      const res = await fetch(downloadEndpoint);
+      const isRealJwt = token && token !== 'cookie-session' && token !== 'null' && token !== 'undefined';
+      const downloadEndpoint = `/api/storage/file/${doc.id}?download=true`;
+      const headers: Record<string, string> = {};
+      if (isRealJwt) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(downloadEndpoint, {
+        headers,
+        credentials: 'include',
+      });
       if (!res.ok) {
         if (doc.fileUrl) {
           window.open(doc.fileUrl, '_blank');

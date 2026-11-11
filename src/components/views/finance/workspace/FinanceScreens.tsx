@@ -14,6 +14,7 @@ import { FinanceThreeWayReconciliation, type ReconciliationData } from './Financ
 import { FinanceModalCashAidDisburse } from './FinanceModalCashAidDisburse';
 import { FinanceModalCashAdminExpense } from './FinanceModalCashAdminExpense';
 import { FinanceTreasurerInbox } from './FinanceTreasurerInbox';
+import { TreasurerApprovalWorkbench } from './TreasurerApprovalWorkbench';
 import { FinanceBatchDisbursementModal } from './FinanceBatchDisbursementModal';
 import { FinanceStaffBatchSettlementModal } from './FinanceStaffBatchSettlementModal';
 
@@ -701,10 +702,9 @@ export function MovementScreen({
       {/* VIEW CONTENT                                       */}
       {/* ================================================== */}
       {activeView === 'treasurer_inbox' && (
-        <FinanceTreasurerInbox
+        <TreasurerApprovalWorkbench
           actor={actor}
           onRefreshParent={refreshAll}
-          onOpenCreateBatch={() => setIsBatchCreateOpen(true)}
         />
       )}
 

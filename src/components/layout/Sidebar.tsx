@@ -56,6 +56,29 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
   const pendingApprovals = applications.filter((a) => a.status === 'pending_approval').length;
   const pendingDisbursements = applications.filter((a) => a.status === 'wait_disbursement').length;
   const pendingDocReviews = applications.filter((a) => a.status === 'doc_review').length;
+  const [pendingTreasurerApprovals, setPendingTreasurerApprovals] = useState<number>(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTreasurerPending = async () => {
+      try {
+        const res = await fetch('/api/finance/workflow-actions?view=batch_list&tab=pending_approval');
+        const json = await res.json();
+        if (isMounted && json.success && json.data) {
+          const count = json.data.badgeCounts?.pending_approval ?? json.data.counts?.pending_approval ?? json.data.items?.length ?? 0;
+          setPendingTreasurerApprovals(count);
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    };
+    fetchTreasurerPending();
+    const interval = setInterval(fetchTreasurerPending, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const adminViewsList = [
     'admin-center',
@@ -153,6 +176,14 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
       label: 'การเงินและบัญชี',
       icon: Landmark,
       allowedRoles: ['super_admin', 'executive', 'finance', 'officer'],
+    },
+    {
+      id: 'treasurer-workbench',
+      label: 'อนุมัติรอบเบิก (เหรัญญิก)',
+      icon: ShieldCheck,
+      badge: pendingTreasurerApprovals > 0 ? pendingTreasurerApprovals.toString() : undefined,
+      badgeColor: 'bg-amber-100 text-amber-800',
+      allowedRoles: ['super_admin', 'executive', 'finance'],
     },
     {
       id: 'officer-reports',

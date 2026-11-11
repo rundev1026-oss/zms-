@@ -74,23 +74,41 @@ async function runTwoRoleWorkflowTest() {
   assert(!treasurerAccounts.some((t) => t.accountCode === '1030-01' || t.id.startsWith('staff-')), 'Step 0.3: Verified NO staff cash accounts in treasurer accounts');
   const primaryTreasurer = treasurerAccounts[0];
 
-  const sampleApp1 = eligibleApps[0] || {
-    id: 'app-demo-1',
-    applicationNo: 'APP-2569-DEMO1',
-    beneficiaryId: 'ben-demo-1',
+  // Ensure fresh dedicated test applications with full remaining balances
+  const dbClient = createClient({ url: 'file:data/zms.db' });
+  const benRes = await dbClient.execute('SELECT id FROM beneficiaries LIMIT 1');
+  const realBenId = String(benRes.rows[0]?.id || 'b-1');
+
+  const app1Id = `app-two-role-${Date.now()}-1`;
+  const app2Id = `app-two-role-${Date.now()}-2`;
+  await dbClient.execute({
+    sql: `INSERT INTO assistance_applications (id, application_no, beneficiary_id, asnaf_category, assistance_type, requested_amount, approved_amount, disbursed_amount, status, approval_status, payment_status, assigned_officer_id, assigned_officer_name, applied_date, approved_date)
+    VALUES (?, ?, ?, 'ฟะกีร (ผู้ยากไร้)', 'เงินสงเคราะห์เพื่อการยังชีพ', 10000, 10000, 0, 'wait_disbursement', 'approved', 'wait_disbursement', '60b59b70-637f-4460-969b-6ba7e1c23d96', 'เจ้าหน้าที่สำนักงาน (Officer)', '2026-11-11', '2026-11-11')`,
+    args: [app1Id, `APP-TR1-${Date.now().toString().slice(-4)}`, realBenId],
+  });
+  await dbClient.execute({
+    sql: `INSERT INTO assistance_applications (id, application_no, beneficiary_id, asnaf_category, assistance_type, requested_amount, approved_amount, disbursed_amount, status, approval_status, payment_status, assigned_officer_id, assigned_officer_name, applied_date, approved_date)
+    VALUES (?, ?, ?, 'ฟะกีร (ผู้ยากไร้)', 'เงินสงเคราะห์เพื่อการยังชีพ', 8000, 8000, 0, 'wait_disbursement', 'approved', 'wait_disbursement', '60b59b70-637f-4460-969b-6ba7e1c23d96', 'เจ้าหน้าที่สำนักงาน (Officer)', '2026-11-11', '2026-11-11')`,
+    args: [app2Id, `APP-TR2-${Date.now().toString().slice(-4)}`, realBenId],
+  });
+
+  const sampleApp1 = {
+    id: app1Id,
+    applicationNo: `APP-TR1-${Date.now().toString().slice(-4)}`,
+    beneficiaryId: realBenId,
     beneficiaryName: 'นางคอดีเยาะห์ ดาโอ๊ะ',
     nationalId: '1940100888991',
     asnafCategory: 'faqir_miskin',
-    approvedAmount: 20000,
+    approvedAmount: 10000,
   };
-  const sampleApp2 = eligibleApps[1] || {
-    id: 'app-demo-2',
-    applicationNo: 'APP-2569-DEMO2',
-    beneficiaryId: 'ben-demo-2',
+  const sampleApp2 = {
+    id: app2Id,
+    applicationNo: `APP-TR2-${Date.now().toString().slice(-4)}`,
+    beneficiaryId: realBenId,
     beneficiaryName: 'นายมะหะมะ สะมะแอ',
     nationalId: '1940100888992',
     asnafCategory: 'faqir_miskin',
-    approvedAmount: 15000,
+    approvedAmount: 8000,
   };
   const sampleCat = adminCategories[0] || {
     id: 'OFFICE_SUPPLIES',
@@ -200,6 +218,7 @@ async function runTwoRoleWorkflowTest() {
     staffActor
   );
 
+  if (!createRes.ok) console.error('createRes error:', createRes.json);
   assert(createRes.ok, `Step 1: Batch created successfully (${createRes.json?.data?.batchNo})`);
   const workflowId = createRes.json.data.workflowId;
   const batchNo = createRes.json.data.batchNo;
@@ -247,8 +266,36 @@ async function runTwoRoleWorkflowTest() {
   const resubmitRes = await postAction('submit_batch', { workflowId }, staffActor);
   assert(resubmitRes.ok && resubmitRes.json.data.status === 'pending_approval', 'Step 7: Batch re-submitted to pending_approval');
 
-  // STEP 8: Treasurer Approves Batch
-  console.log('\n--- Step 8: Treasurer Approves Batch ---');
+  // STEP 8: Treasurer Attaches Evidence, Verifies, and Approves Batch
+  console.log('\n--- Step 8: Treasurer Attaches Evidence, Verifies, and Approves Batch ---');
+  // Attach transfer slip into Treasurer Account
+  const attachEvRes = await postAction(
+    'attach_transfer_evidence',
+    {
+      workflowId,
+      sourceBankAccountId: 'bank-1',
+      destinationAccountId: '1020-01',
+      destinationAccountName: 'บัญชีเงินสดเหรัญญิก (Treasurer Cash Float)',
+      amount: 20500,
+      transferDatetime: '2026-11-11T10:00:00',
+      fileUrl: '/api/storage/file/dummy-slip-two-role.jpg',
+      fileName: 'dummy-slip-two-role.jpg',
+      fileSize: 1024,
+      mimeType: 'image/jpeg',
+    },
+    treasurerActor
+  );
+  if (attachEvRes.json?.data?.evidenceId) {
+    await postAction(
+      'verify_transfer_evidence',
+      {
+        evidenceId: attachEvRes.json.data.evidenceId,
+        decision: 'verify',
+      },
+      treasurerActor
+    );
+  }
+
   const approveRes = await postAction(
     'treasurer_review',
     {

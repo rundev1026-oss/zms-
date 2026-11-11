@@ -33,6 +33,7 @@ import { BranchesAndDepartmentsView, AdminSettingsView } from '@/components/view
 import { SystemAdminCenterView } from '@/components/views/admin/SystemAdminCenterView';
 import { FollowUpMonitoringView } from '@/components/views/follow-up/FollowUpMonitoringView';
 import { FinanceView } from '@/components/views/FinanceView';
+import { TreasurerApprovalWorkbench } from '@/components/views/finance/workspace/TreasurerApprovalWorkbench';
 import { useApp } from '@/context/AppContext';
 
 export default function Home() {
@@ -65,6 +66,9 @@ export default function Home() {
       } else if (hash === 'disbursements') {
         setPortalMode('admin');
         setCurrentView('disbursements');
+      } else if (hash === 'treasurer-workbench') {
+        setPortalMode('admin');
+        setCurrentView('treasurer-workbench');
       } else if (hash === 'about') {
         setPortalMode('public');
         setCurrentView('public-about');
@@ -95,6 +99,7 @@ export default function Home() {
       case 'assistance-requests': return 'ยื่นคำร้องขอความช่วยเหลือ (Assistance Requests)';
       case 'new-assistance-request': return 'ยื่นคำร้องขอความช่วยเหลือ (Assistance Request Form)';
       case 'disbursements': return 'บันทึกการช่วยเหลือ (Disbursements & Aid Records)';
+      case 'treasurer-workbench': return 'อนุมัติรอบเบิกโดยเหรัญญิก (Treasurer Approval Workbench)';
       case 'follow-up': return 'ตรวจสอบและติดตามผล (Follow-up & Monitoring)';
       case 'finance': return 'การเงินและบัญชี (Financial & Accounting Module)';
       case 'officer-reports':
@@ -407,6 +412,15 @@ export default function Home() {
 
           {currentView === 'finance' && (
             <FinanceView onNavigate={setCurrentView} />
+          )}
+
+          {currentView === 'treasurer-workbench' && (
+            <div className="max-w-7xl mx-auto">
+              <TreasurerApprovalWorkbench
+                actor={{ id: currentUser.id, name: currentUser.name, role: currentUser.role }}
+                onNavigate={setCurrentView}
+              />
+            </div>
           )}
 
           {currentView === 'calculator' && (

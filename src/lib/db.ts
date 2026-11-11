@@ -1042,6 +1042,23 @@ export async function initDb(): Promise<void> {
         ('u-7', 'areefin.unreg@email.com', 'อารีฟีน ไร้ทะเบียน', 'อารีฟีน', 'ไร้ทะเบียน', 'member', 'สมาชิกทั่วไป (Member)', '082-111-2233', 'สำนักงานใหญ่ กรุงเทพฯ', 'br-hq', 'dept-public', 'active', 'completed', '${defaultHash}', '${salt}', '1100200000007', '17 ต.ค. 2569 10:00');`);
     }
 
+    // Sync enterprise NestJS users into SQLite users table for seamless foreign key integrity
+    const enterpriseSeedUsers = [
+      { id: 'dffb49d1-7cf3-4593-bb58-a82b25f5bff4', email: 'admin@zms.local', name: 'ผู้ดูแลระบบสูงสุด (Super Admin)', role: 'super_admin', roleTitleTh: 'ผู้ดูแลระบบสูงสุด' },
+      { id: '60b59b70-637f-4460-969b-6ba7e1c23d96', email: 'officer@zms.local', name: 'เจ้าหน้าที่ฝ่ายสงเคราะห์ (Officer)', role: 'officer', roleTitleTh: 'เจ้าหน้าที่ฝ่ายสงเคราะห์' },
+      { id: '39fa9c98-0c26-46c2-bf87-9d7e17efe142', email: 'finance@zms.local', name: 'เจ้าหน้าที่ฝ่ายการเงิน (Finance)', role: 'finance', roleTitleTh: 'เจ้าหน้าที่ฝ่ายการเงิน' },
+      { id: 'ca4832f7-d789-4e48-b36f-320ecb99a8b2', email: 'treasurer@zms.local', name: 'เหรัญญิกมูลนิธิ (Treasurer)', role: 'finance', roleTitleTh: 'เหรัญญิกมูลนิธิ' },
+      { id: '545dd5b6-f944-41d8-8626-a4f505729213', email: 'approver@zms.local', name: 'ผู้มีอำนาจอนุมัติ (Approver)', role: 'approver', roleTitleTh: 'ผู้มีอำนาจอนุมัติ' },
+    ];
+    for (const eu of enterpriseSeedUsers) {
+      await db.execute({
+        sql: `INSERT INTO users (id, email, name, role, role_title_th, phone, branch, branch_id, department_id, status, password_setup_status)
+              VALUES (?, ?, ?, ?, ?, '', 'สำนักงานใหญ่ กรุงเทพฯ', 'br-hq', 'dept-it', 'active', 'completed')
+              ON CONFLICT(id) DO UPDATE SET name = excluded.name, role = excluded.role, role_title_th = excluded.role_title_th`,
+        args: [eu.id, eu.email, eu.name, eu.role, eu.roleTitleTh],
+      });
+    }
+
   }
 
 
@@ -1717,9 +1734,82 @@ export async function initDb(): Promise<void> {
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_fhr_withdrawal_id ON finance_handover_records(withdrawal_id);
   `);
+
+  // 3.1 Treasurer Transfer Evidence Table (Before batch approval)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS treasurer_transfer_evidence (
+      id TEXT PRIMARY KEY,
+      workflow_id TEXT NOT NULL,
+      source_bank_account_id TEXT NOT NULL,
+      source_bank_name TEXT NOT NULL,
+      source_account_name TEXT NOT NULL,
+      source_account_number TEXT NOT NULL,
+      destination_account_id TEXT NOT NULL,
+      destination_account_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      transfer_datetime TEXT NOT NULL,
+      reference_no TEXT,
+      issuing_bank TEXT,
+      file_url TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      file_size INTEGER DEFAULT 0,
+      mime_type TEXT DEFAULT 'application/pdf',
+      notes TEXT,
+      status TEXT DEFAULT 'pending_verification' CHECK (status IN ('not_attached', 'attached', 'pending_verification', 'verified', 'invalid', 'need_more_info')),
+      verified_by_id TEXT,
+      verified_by_name TEXT,
+      verified_at TEXT,
+      rejection_reason TEXT,
+      created_by_id TEXT NOT NULL,
+      created_by_name TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workflow_id) REFERENCES cash_flow_workflows(id) ON DELETE CASCADE,
+      FOREIGN KEY (source_bank_account_id) REFERENCES bank_accounts(id)
+    );
+  `);
+
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS idx_tte_workflow_id ON treasurer_transfer_evidence(workflow_id);
+  `);
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_fhr_workflow_id ON finance_handover_records(workflow_id);
   `);
+
+  // Ensure migration columns for treasurer_transfer_evidence
+  try {
+    const tteCols = await db.execute(`PRAGMA table_info(treasurer_transfer_evidence)`);
+    const tteColNames = tteCols.rows.map((c) => String(c.name));
+    const tteNewCols: [string, string][] = [
+      ['document_type', "TEXT DEFAULT 'transfer_slip'"],
+      ['source_account_id', "TEXT DEFAULT '1020-01'"],
+      ['recipient_user_id', 'TEXT'],
+      ['recipient_user_name', 'TEXT'],
+      ['handover_id', 'TEXT'],
+    ];
+    for (const [col, colType] of tteNewCols) {
+      if (!tteColNames.includes(col)) {
+        try { await db.execute(`ALTER TABLE treasurer_transfer_evidence ADD COLUMN ${col} ${colType};`); } catch {}
+      }
+    }
+  } catch {}
+
+  // Ensure migration columns for finance_handover_records
+  try {
+    const fhrCols = await db.execute(`PRAGMA table_info(finance_handover_records)`);
+    const fhrColNames = fhrCols.rows.map((c) => String(c.name));
+    const fhrNewCols: [string, string][] = [
+      ['source_account_id', "TEXT DEFAULT '1020-01'"],
+      ['destination_account_id', "TEXT DEFAULT '1030-01'"],
+      ['actual_received_amount', 'REAL'],
+      ['discrepancy_reason', 'TEXT'],
+    ];
+    for (const [col, colType] of fhrNewCols) {
+      if (!fhrColNames.includes(col)) {
+        try { await db.execute(`ALTER TABLE finance_handover_records ADD COLUMN ${col} ${colType};`); } catch {}
+      }
+    }
+  } catch {}
 
   // Workflow Attachments across all 5 steps
   await db.execute(`

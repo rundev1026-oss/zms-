@@ -16,6 +16,7 @@ import {
   FileQuestion,
   ExternalLink,
   ShieldCheck,
+  ShieldAlert,
   CheckCircle2,
   RefreshCw,
   Loader2,
@@ -42,9 +43,11 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState<number>(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,32 +55,59 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       setRotation(0);
       setIsLoading(true);
       setHasError(false);
+      setErrorStatus(null);
       setErrorMessage('');
     }
-  }, [isOpen, doc]);
+  }, [isOpen, doc, retryCount]);
 
   useEffect(() => {
     if (!isOpen || !doc || doc.fileExists === false) return;
     let active = true;
     let created = '';
+
     const load = async () => {
       const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+      const isRealJwt = token && token !== 'cookie-session' && token !== 'null' && token !== 'undefined';
+      
+      // Clean endpoint without token in query string (PDPA & security compliance)
       const endpoint = doc.fileUrl?.startsWith('/api/documents/')
         ? `/api/documents/${doc.id}/content?inline=1`
-        : `/api/storage/file/${doc.id}?action=preview${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+        : `/api/storage/file/${doc.id}?action=preview`;
+
+      const headers: Record<string, string> = {};
+      if (isRealJwt) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(endpoint, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers,
         credentials: 'include',
       });
+
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         if (active) {
           setHasError(true);
-          setErrorMessage(body.error || 'เปิดเอกสารไม่สำเร็จ');
+          setErrorStatus(response.status);
+          
+          if (body.error) {
+            setErrorMessage(body.error);
+          } else if (response.status === 401) {
+            setErrorMessage('Session การใช้งานหมดอายุหรือไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่');
+          } else if (response.status === 403) {
+            setErrorMessage('ท่านไม่มีสิทธิ์ในการเข้าถึงหรือเปิดดูตัวอย่างเอกสารนี้');
+          } else if (response.status === 404) {
+            setErrorMessage('ไม่พบไฟล์เอกสารบนเซิร์ฟเวอร์ ไฟล์อาจถูกลบหรือยังไม่ได้อัปโหลด');
+          } else if (response.status === 415) {
+            setErrorMessage('ไม่รองรับประเภทไฟล์นี้สำหรับการเปิดดูตัวอย่าง กรุณาดาวน์โหลดแทน');
+          } else {
+            setErrorMessage('ระบบไม่สามารถเปิดเอกสารได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
+          }
           setIsLoading(false);
         }
         return;
       }
+
       const blob = await response.blob();
       created = URL.createObjectURL(blob);
       if (active) {
@@ -85,19 +115,22 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         setIsLoading(false);
       }
     };
+
     load().catch(() => {
       if (active) {
         setHasError(true);
-        setErrorMessage('เปิดเอกสารไม่สำเร็จ');
+        setErrorStatus(500);
+        setErrorMessage('เกิดข้อผิดพลาดในการโหลดไฟล์ กรุณาลองใหม่อีกครั้ง');
         setIsLoading(false);
       }
     });
+
     return () => {
       active = false;
       if (created) URL.revokeObjectURL(created);
       setObjectUrl(null);
     };
-  }, [isOpen, doc, authToken]);
+  }, [isOpen, doc, authToken, retryCount]);
 
   // Handle keyboard escape
   useEffect(() => {
@@ -128,19 +161,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  // Secure URL generator
+  // Secure URL generator without token in query string
   const getFileEndpoint = (action: 'preview' | 'download'): string => {
-    const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
-    const params = new URLSearchParams();
-    params.set('action', action);
-    if (token) params.set('token', token);
-    if (currentUser?.id) params.set('actorId', currentUser.id);
-    if (currentUser?.role) params.set('actorRole', currentUser.role);
-    if (currentUser?.name) params.set('actorName', currentUser.name);
     if (doc.fileUrl?.startsWith('/api/documents/')) {
       return `/api/documents/${doc.id}/content${action === 'preview' ? '?inline=1' : ''}`;
     }
-    return `/api/storage/file/${doc.id}?${params.toString()}`;
+    return `/api/storage/file/${doc.id}?action=${action}`;
   };
 
   const downloadUrl = getFileEndpoint('download');
@@ -152,13 +178,26 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     setRotation(0);
   };
   const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
+  const handleRetry = () => {
+    setIsLoading(true);
+    setHasError(false);
+    setErrorStatus(null);
+    setErrorMessage('');
+    setRetryCount((prev) => prev + 1);
+  };
 
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
       const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
+      const isRealJwt = token && token !== 'cookie-session' && token !== 'null' && token !== 'undefined';
+      const headers: Record<string, string> = {};
+      if (isRealJwt) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(downloadUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers,
         credentials: 'include',
       });
       if (!res.ok) {
@@ -355,32 +394,89 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               </button>
             </div>
           ) : hasError ? (
-            /* Case 2: Error Loading File */
-            <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-rose-200 shadow-md text-center space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-700 mx-auto flex items-center justify-center">
-                <AlertCircle className="w-7 h-7" />
+            /* Case 2: Error Loading File (Differentiated HTTP Status UI) */
+            <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-4">
+              <div
+                className={`w-16 h-16 rounded-2xl mx-auto flex items-center justify-center ${
+                  errorStatus === 401
+                    ? 'bg-rose-100 text-rose-600'
+                    : errorStatus === 403
+                    ? 'bg-amber-100 text-amber-600'
+                    : errorStatus === 404
+                    ? 'bg-slate-100 text-slate-600'
+                    : errorStatus === 415
+                    ? 'bg-blue-100 text-blue-600'
+                    : 'bg-rose-100 text-rose-600'
+                }`}
+              >
+                {errorStatus === 401 ? (
+                  <AlertCircle className="w-8 h-8" />
+                ) : errorStatus === 403 ? (
+                  <ShieldAlert className="w-8 h-8" />
+                ) : errorStatus === 404 ? (
+                  <FileQuestion className="w-8 h-8" />
+                ) : errorStatus === 415 ? (
+                  <FileText className="w-8 h-8" />
+                ) : (
+                  <AlertTriangle className="w-8 h-8" />
+                )}
               </div>
+
               <div>
-                <h4 className="font-bold text-slate-900 text-base">
-                  ไม่สามารถเปิดดูเอกสารได้
-                </h4>
-                <p className="text-xs text-rose-600 mt-2">
-                  {errorMessage || 'เกิดข้อผิดพลาดในการโหลดไฟล์ หรือท่านไม่มีสิทธิ์ในการเข้าถึงเอกสารนี้'}
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  {errorStatus && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
+                      HTTP {errorStatus}
+                    </span>
+                  )}
+                  <h4 className="font-bold text-slate-900 text-base">
+                    {errorStatus === 401
+                      ? 'เซสชันการใช้งานหมดอายุ'
+                      : errorStatus === 403
+                      ? 'ไม่มีสิทธิ์เข้าถึงเอกสารนี้'
+                      : errorStatus === 404
+                      ? 'ไม่พบไฟล์เอกสารบนเซิร์ฟเวอร์'
+                      : errorStatus === 415
+                      ? 'ไม่รองรับการแสดงตัวอย่างไฟล์นี้'
+                      : 'ไม่สามารถเปิดดูเอกสารได้'}
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                  {errorMessage || 'เกิดข้อผิดพลาดในการโหลดไฟล์ กรุณาลองใหม่อีกครั้ง'}
                 </p>
+                {errorStatus === 401 && (
+                  <p className="text-[11px] text-rose-600 mt-2 font-medium">
+                    กรุณาเข้าสู่ระบบใหม่ผ่านเมนูผู้ใช้งานเพื่อต่ออายุการเข้าใช้งาน
+                  </p>
+                )}
+                {errorStatus === 403 && (
+                  <p className="text-[11px] text-amber-700 mt-2 font-medium">
+                    เอกสารนี้ถูกจำกัดสิทธิ์เฉพาะเจ้าหน้าที่ที่เกี่ยวข้อง หรือเจ้าของคำร้องเท่านั้นตามนโยบาย PDPA
+                  </p>
+                )}
               </div>
-              <div className="flex items-center justify-center gap-3">
+
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>ลองใหม่อีกครั้ง</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleDownload}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-3.5 h-3.5" />
                   <span>ลองดาวน์โหลดแทน</span>
                 </button>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-semibold transition-colors"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
                 >
                   ปิด
                 </button>

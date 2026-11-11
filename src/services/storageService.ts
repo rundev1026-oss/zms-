@@ -472,13 +472,13 @@ export class StorageService {
     storageProvider?: string;
   }): { exists: boolean; fullPath?: string; fileSize?: number } {
     const provider = doc.storage_provider || doc.storageProvider || 'local';
-    if (provider !== 'local') {
-      return { exists: true }; // Remote storage (S3 / Cloudinary)
+    const fileUrl = doc.file_url || doc.fileUrl;
+    if (provider !== 'local' || fileUrl?.startsWith('/api/documents/')) {
+      return { exists: true }; // Remote storage (S3 / Cloudinary) or NestJS document
     }
 
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'documents');
     const storagePath = doc.storage_path || doc.storagePath;
-    const fileUrl = doc.file_url || doc.fileUrl;
 
     if (storagePath) {
       const candidate = path.join(uploadDir, path.basename(storagePath));
@@ -559,11 +559,57 @@ export class StorageService {
       args: [docId],
     });
 
-    if (res.rows.length === 0) {
-      throw new Error('ไม่พบเอกสารที่ระบุในระบบ');
+    let doc: any = res.rows[0];
+
+    if (!doc) {
+      // Check treasurer_transfer_evidence
+      const tteRes = await db.execute({
+        sql: `SELECT id, file_name as name, file_url, file_size, mime_type, created_by_id as uploaded_by_id, created_by_name as uploaded_by_name
+              FROM treasurer_transfer_evidence
+              WHERE id = ? OR file_url LIKE ? OR file_name = ?`,
+        args: [docId, `%${docId}%`, docId],
+      });
+      if (tteRes.rows.length > 0) {
+        doc = tteRes.rows[0];
+      }
     }
 
-    const doc = res.rows[0];
+    if (!doc) {
+      // Check workflow_attachments
+      const waRes = await db.execute({
+        sql: `SELECT id, file_name as name, file_url, file_size, mime_type, uploaded_by_id, uploaded_by_name
+              FROM workflow_attachments
+              WHERE id = ? OR file_url LIKE ? OR file_name = ?`,
+        args: [docId, `%${docId}%`, docId],
+      });
+      if (waRes.rows.length > 0) {
+        doc = waRes.rows[0];
+      }
+    }
+
+    if (!doc) {
+      // Check physical file directly in public/uploads/documents
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'documents');
+      const candidate = path.join(uploadDir, path.basename(docId));
+      if (fs.existsSync(candidate)) {
+        try {
+          const stat = fs.statSync(candidate);
+          doc = {
+            id: docId,
+            name: path.basename(docId),
+            file_url: `/api/storage/file/${path.basename(docId)}`,
+            storage_path: path.basename(docId),
+            storage_provider: 'local',
+            file_size: stat.size,
+            mime_type: this.getMimeType(docId),
+          };
+        } catch {}
+      }
+    }
+
+    if (!doc) {
+      throw new Error('ไม่พบเอกสารที่ระบุในระบบ');
+    }
 
     // Privacy Guard: Member can only view/download their own documents
     if (actor.role === 'member') {
@@ -713,11 +759,57 @@ export class StorageService {
       args: [docId],
     });
 
-    if (res.rows.length === 0) {
-      throw new Error('ไม่พบเอกสารที่ระบุในระบบ');
+    let doc: any = res.rows[0];
+
+    if (!doc) {
+      // Check treasurer_transfer_evidence
+      const tteRes = await db.execute({
+        sql: `SELECT id, file_name as name, file_url, file_size, mime_type, created_by_id as uploaded_by_id, created_by_name as uploaded_by_name
+              FROM treasurer_transfer_evidence
+              WHERE id = ? OR file_url LIKE ? OR file_name = ?`,
+        args: [docId, `%${docId}%`, docId],
+      });
+      if (tteRes.rows.length > 0) {
+        doc = tteRes.rows[0];
+      }
     }
 
-    const doc = res.rows[0];
+    if (!doc) {
+      // Check workflow_attachments
+      const waRes = await db.execute({
+        sql: `SELECT id, file_name as name, file_url, file_size, mime_type, uploaded_by_id, uploaded_by_name
+              FROM workflow_attachments
+              WHERE id = ? OR file_url LIKE ? OR file_name = ?`,
+        args: [docId, `%${docId}%`, docId],
+      });
+      if (waRes.rows.length > 0) {
+        doc = waRes.rows[0];
+      }
+    }
+
+    if (!doc) {
+      // Check physical file directly in public/uploads/documents
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'documents');
+      const candidate = path.join(uploadDir, path.basename(docId));
+      if (fs.existsSync(candidate)) {
+        try {
+          const stat = fs.statSync(candidate);
+          doc = {
+            id: docId,
+            name: path.basename(docId),
+            file_url: `/api/storage/file/${path.basename(docId)}`,
+            storage_path: path.basename(docId),
+            storage_provider: 'local',
+            file_size: stat.size,
+            mime_type: this.getMimeType(docId),
+          };
+        } catch {}
+      }
+    }
+
+    if (!doc) {
+      throw new Error('ไม่พบเอกสารที่ระบุในระบบ');
+    }
 
     // Privacy Guard: Member can only view their own documents
     if (actor.role === 'member') {

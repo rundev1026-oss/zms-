@@ -22,6 +22,32 @@ import {
   Info,
 } from 'lucide-react';
 import type { BankAccount } from '@/types';
+import { LEVEL_1_ASNAFS } from '@/lib/constants/asnafRelationshipCatalog';
+import { isPlaceholderPersonName } from '@/lib/personName';
+
+function asnafLabel(value?: string) {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  const found = LEVEL_1_ASNAFS.find((item) => item.code === raw || item.nameTh === raw || item.id === raw);
+  return found?.nameTh || raw;
+}
+
+function displayBeneficiaryName(value?: string) {
+  return isPlaceholderPersonName(value) ? 'ไม่พบชื่อในทะเบียน' : String(value || '').trim();
+}
+
+function displayNationalId(value?: string) {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '-' || /^0+$/.test(raw)) return '';
+  return raw;
+}
+
+function money(value?: number) {
+  return Number(value || 0).toLocaleString('th-TH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 interface EligibleApp {
   id: string;
@@ -32,6 +58,9 @@ interface EligibleApp {
   registrationNo?: string;
   asnafCategory: string;
   assistanceType?: string;
+  assistanceTypeId?: string;
+  assistanceFormatName?: string;
+  assistanceFormName?: string;
   specificFundId?: string;
   specificFundName?: string;
   fundAccountId?: string;
@@ -77,6 +106,9 @@ interface LineItem {
   nationalId?: string;
   asnafCategory?: string;
   assistanceType?: string;
+  assistanceTypeId?: string;
+  assistanceFormatName?: string;
+  assistanceFormName?: string;
   approvedAmount?: number;
   thisDisbursementAmount?: number;
   categoryId?: string;
@@ -134,6 +166,7 @@ export function FinanceBatchDisbursementModal({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [removeIndex, setRemoveIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -144,6 +177,7 @@ export function FinanceBatchDisbursementModal({
       setFundType('zakat');
       setNotes('');
       setItems([]);
+      setRemoveIndex(null);
       setSelectedAppId('');
       setSearchQuery('');
       setIsDropdownOpen(false);
@@ -209,7 +243,10 @@ export function FinanceBatchDisbursementModal({
           (app.nationalId && app.nationalId.toLowerCase().includes(cleanSearch)) ||
           (app.registrationNo && app.registrationNo.toLowerCase().includes(cleanSearch)) ||
           (app.asnafCategory && app.asnafCategory.toLowerCase().includes(cleanSearch)) ||
-          (app.assistanceType && app.assistanceType.toLowerCase().includes(cleanSearch))
+          asnafLabel(app.asnafCategory).toLowerCase().includes(cleanSearch) ||
+          (app.assistanceType && app.assistanceType.toLowerCase().includes(cleanSearch)) ||
+          (app.assistanceFormName && app.assistanceFormName.toLowerCase().includes(cleanSearch)) ||
+          (app.assistanceFormatName && app.assistanceFormatName.toLowerCase().includes(cleanSearch))
         );
       });
 
@@ -262,7 +299,10 @@ export function FinanceBatchDisbursementModal({
         beneficiaryName: app.beneficiaryName,
         nationalId: app.nationalId,
         asnafCategory: app.asnafCategory,
-        assistanceType: app.assistanceType || 'ปัจจัยยังชีพ',
+        assistanceType: app.assistanceFormName || app.assistanceType || '',
+        assistanceTypeId: app.assistanceTypeId,
+        assistanceFormatName: app.assistanceFormatName,
+        assistanceFormName: app.assistanceFormName || app.assistanceType || '',
         approvedAmount: app.approvedAmount,
         thisDisbursementAmount: amt,
         notes: aidNotes.trim() || undefined,
@@ -310,8 +350,11 @@ export function FinanceBatchDisbursementModal({
     setAdminNotes('');
   };
 
-  const handleRemoveItem = (index: number) => {
-    setItems((prev) => prev.filter((_, idx) => idx !== index));
+  const confirmRemoveItem = () => {
+    if (removeIndex === null) return;
+    setItems((prev) => prev.filter((_, idx) => idx !== removeIndex));
+    setRemoveIndex(null);
+    setError('');
   };
 
   const handleSave = async (submitImmediately: boolean) => {
@@ -373,7 +416,7 @@ export function FinanceBatchDisbursementModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 sm:p-4 backdrop-blur-xs animate-fadeIn">
-      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl">
+      <div className="relative flex max-h-[92vh] w-full max-w-6xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-teal-700 via-teal-800 to-slate-900 px-6 py-4.5 text-white rounded-t-3xl">
           <div className="flex items-center gap-3">
@@ -640,10 +683,10 @@ export function FinanceBatchDisbursementModal({
                           <span className="font-mono font-bold text-teal-900 bg-teal-100 px-2 py-0.5 rounded text-[11px] shrink-0">
                             {selectedApp.applicationNo}
                           </span>
-                          <span className="font-bold text-slate-900 shrink-0">{selectedApp.beneficiaryName}</span>
+                          <span className="font-bold text-slate-900 shrink-0">{displayBeneficiaryName(selectedApp.beneficiaryName)}</span>
                           <span className="text-slate-300">·</span>
                           <span className="text-emerald-800 text-[11px] truncate">
-                            {selectedApp.asnafCategory} | {selectedApp.assistanceType || 'ปัจจัยยังชีพ'}
+                            {asnafLabel(selectedApp.asnafCategory)} | {selectedApp.assistanceFormName || selectedApp.assistanceType || '—'}
                           </span>
                           <span className="text-slate-300">·</span>
                           <span className="font-black text-teal-800 shrink-0">
@@ -742,14 +785,14 @@ export function FinanceBatchDisbursementModal({
 
                                   {/* Line 2: Beneficiary Name */}
                                   <div className="mt-1 font-bold text-slate-900 text-xs">
-                                    {app.beneficiaryName}
+                                    {displayBeneficiaryName(app.beneficiaryName)}
                                   </div>
 
-                                  {/* Line 3: Asnaf | Assistance Type */}
+                                  {/* Line 3: Asnaf | Assistance form from the request */}
                                   <div className="mt-0.5 text-[11px] font-semibold text-emerald-800 flex items-center gap-1.5 flex-wrap">
-                                    <span>{app.asnafCategory}</span>
+                                    <span>{asnafLabel(app.asnafCategory)}</span>
                                     <span className="text-slate-300">|</span>
-                                    <span className="text-sky-800">{app.assistanceType || 'ปัจจัยยังชีพ'}</span>
+                                    <span className="text-sky-800">{app.assistanceFormName || app.assistanceType || '—'}</span>
                                     {app.registrationNo && (
                                       <>
                                         <span className="text-slate-300">·</span>
@@ -818,9 +861,11 @@ export function FinanceBatchDisbursementModal({
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-teal-50/40 p-3 rounded-xl border border-teal-100 text-xs">
                         <div>
                           <div className="text-[10px] text-slate-400 font-medium">1. ผู้ขอรับความช่วยเหลือ</div>
-                          <div className="font-bold text-slate-900">{selectedApp.beneficiaryName}</div>
+                          <div className="font-bold text-slate-900">{displayBeneficiaryName(selectedApp.beneficiaryName)}</div>
                           <div className="text-[10px] font-mono text-slate-500">
-                            {selectedApp.nationalId} {selectedApp.registrationNo ? `(${selectedApp.registrationNo})` : ''}
+                            {[displayNationalId(selectedApp.nationalId), selectedApp.registrationNo && selectedApp.registrationNo !== '-' ? selectedApp.registrationNo : '']
+                              .filter(Boolean)
+                              .join(' · ') || '—'}
                           </div>
                         </div>
 
@@ -832,8 +877,10 @@ export function FinanceBatchDisbursementModal({
 
                         <div>
                           <div className="text-[10px] text-slate-400 font-medium">3. หมวดหมู่อัสนัฟ</div>
-                          <div className="font-semibold text-emerald-800">{selectedApp.asnafCategory}</div>
-                          <div className="text-[10px] text-slate-500">{selectedApp.assistanceType || 'ปัจจัยยังชีพ'}</div>
+                          <div className="font-semibold text-emerald-800">{asnafLabel(selectedApp.asnafCategory)}</div>
+                          <div className="text-[10px] text-sky-800 font-semibold">
+                            {selectedApp.assistanceFormName || selectedApp.assistanceType || '—'}
+                          </div>
                         </div>
 
                         <div>
@@ -1027,10 +1074,10 @@ export function FinanceBatchDisbursementModal({
 
               {/* TABLE OF ADDED ITEMS */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
                   <span>รายการย่อยที่เพิ่มแล้วในรอบนี้ ({items.length} รายการ)</span>
-                  <span className="text-emerald-700 font-extrabold text-sm">
-                    รวมทั้งรอบ: ฿{totalBatchAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                  <span className="text-emerald-700 font-extrabold text-sm tabular-nums">
+                    รวมทั้งรอบ: ฿{money(totalBatchAmount)}
                   </span>
                 </div>
 
@@ -1039,70 +1086,117 @@ export function FinanceBatchDisbursementModal({
                     ยังไม่มีรายการย่อยในรอบเบิกนี้ กรุณาเลือกรายการด้านบนและกดเพิ่มรายการ
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs">
-                    <table className="w-full text-left text-xs">
-                      <thead className="border-b border-slate-100 bg-slate-50 font-bold text-slate-600">
-                        <tr>
-                          <th className="py-2.5 pl-3 pr-2">#</th>
-                          <th className="px-2 py-2.5">ประเภท</th>
-                          <th className="px-2 py-2.5">รายละเอียด / ผู้รับ</th>
-                          <th className="px-2 py-2.5 text-right">จำนวนเงิน (บาท)</th>
-                          <th className="py-2.5 pl-2 pr-3 text-center">จัดการ</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {items.map((it, idx) => (
-                          <tr key={`item-${idx}`} className="hover:bg-slate-50/60">
-                            <td className="py-2.5 pl-3 pr-2 font-medium text-slate-400">{idx + 1}</td>
-                            <td className="px-2 py-2.5">
-                              <span
-                                className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                                  it.type === 'aid'
-                                    ? 'bg-teal-100 text-teal-800'
-                                    : 'bg-blue-100 text-blue-800'
-                                }`}
-                              >
+                  <>
+                    <div className="space-y-2 md:hidden">
+                      {items.map((it, idx) => (
+                        <article key={`item-card-${idx}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-bold text-slate-400">ลำดับ {idx + 1}</div>
+                              <div className="mt-0.5 text-sm font-bold text-slate-900">
+                                {it.type === 'aid' ? displayBeneficiaryName(it.beneficiaryName) : it.description}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-500">
+                                {it.type === 'aid'
+                                  ? `คำร้อง ${it.applicationNo} · ${asnafLabel(it.asnafCategory)}`
+                                  : `หมวด: ${it.categoryName || '—'}${it.payeeName ? ` · ผู้รับ: ${it.payeeName}` : ''}`}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setRemoveIndex(idx)}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              title="นำรายการออกจากรอบเบิก"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold ${it.type === 'aid' ? 'bg-teal-100 text-teal-800' : 'bg-blue-100 text-blue-800'}`}>
                                 {it.type === 'aid' ? 'ช่วยเหลือ' : 'ค่าบริหาร'}
                               </span>
-                            </td>
-                            <td className="px-2 py-2.5">
-                              {it.type === 'aid' ? (
-                                <div>
-                                  <div className="font-semibold text-slate-800">{it.beneficiaryName}</div>
-                                  <div className="text-[11px] text-slate-400">
-                                    {it.applicationNo} · อัสนัฟ {it.asnafCategory}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div>
-                                  <div className="font-semibold text-slate-800">{it.description}</div>
-                                  <div className="text-[11px] text-slate-400">
-                                    หมวด: {it.categoryName} {it.payeeName ? `· ผู้รับ: ${it.payeeName}` : ''}
-                                  </div>
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-2 py-2.5 text-right font-bold text-slate-900 tabular-nums">
-                              ฿
-                              {Number(it.thisDisbursementAmount || it.amount || 0).toLocaleString('th-TH', {
-                                minimumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td className="py-2.5 pl-2 pr-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveItem(idx)}
-                                className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                                title="ลบรายการนี้"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
+                              <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-900 ring-1 ring-inset ring-sky-200">
+                                {it.type === 'aid' ? it.assistanceFormName || it.assistanceType || '—' : it.categoryName || '—'}
+                              </span>
+                            </div>
+                            <div className="text-sm font-bold tabular-nums text-slate-900">฿{money(it.thisDisbursementAmount || it.amount)}</div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+
+                    <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs md:block">
+                      <table className="w-full min-w-[760px] text-left text-xs">
+                        <thead className="border-b border-slate-100 bg-slate-50 font-bold text-slate-600">
+                          <tr>
+                            <th className="w-14 py-2.5 pl-3 pr-2">ลำดับ</th>
+                            <th className="w-24 px-2 py-2.5">ประเภท</th>
+                            <th className="min-w-[220px] px-2 py-2.5">ผู้ขอรับความช่วยเหลือ</th>
+                            <th className="min-w-[150px] px-2 py-2.5">รูปแบบการช่วยเหลือ</th>
+                            <th className="w-36 px-2 py-2.5 text-right">จำนวนเงิน (บาท)</th>
+                            <th className="w-16 py-2.5 pl-2 pr-3 text-center">จัดการ</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {items.map((it, idx) => (
+                            <tr key={`item-${idx}`} className="hover:bg-slate-50/60">
+                              <td className="py-2.5 pl-3 pr-2 font-medium text-slate-400">{idx + 1}</td>
+                              <td className="px-2 py-2.5">
+                                <span
+                                  className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                                    it.type === 'aid' ? 'bg-teal-100 text-teal-800' : 'bg-blue-100 text-blue-800'
+                                  }`}
+                                >
+                                  {it.type === 'aid' ? 'ช่วยเหลือ' : 'ค่าบริหาร'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2.5">
+                                {it.type === 'aid' ? (
+                                  <div>
+                                    <div className="text-sm font-bold text-slate-900">{displayBeneficiaryName(it.beneficiaryName)}</div>
+                                    <div className="text-[11px] text-slate-500">
+                                      คำร้อง {it.applicationNo} · {asnafLabel(it.asnafCategory)}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <div className="text-sm font-bold text-slate-900">{it.description}</div>
+                                    <div className="text-[11px] text-slate-500">
+                                      หมวด: {it.categoryName || '—'} {it.payeeName ? `· ผู้รับ: ${it.payeeName}` : ''}
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-2 py-2.5">
+                                <span className="inline-flex max-w-[16rem] rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-bold leading-snug text-sky-900 ring-1 ring-inset ring-sky-200">
+                                  {it.type === 'aid' ? it.assistanceFormName || it.assistanceType || '—' : it.categoryName || '—'}
+                                </span>
+                                {it.type === 'aid' &&
+                                  it.assistanceFormatName &&
+                                  it.assistanceFormatName !== (it.assistanceFormName || it.assistanceType) && (
+                                    <div className="mt-1 text-[10px] text-slate-500">{it.assistanceFormatName}</div>
+                                  )}
+                              </td>
+                              <td className="px-2 py-2.5 text-right font-bold tabular-nums text-slate-900 whitespace-nowrap">
+                                {money(it.thisDisbursementAmount || it.amount)}
+                              </td>
+                              <td className="py-2.5 pl-2 pr-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setRemoveIndex(idx)}
+                                  className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                  title="นำรายการออกจากรอบเบิก"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1254,6 +1348,36 @@ export function FinanceBatchDisbursementModal({
           </div>
         </div>
       </div>
+
+      {removeIndex !== null && items[removeIndex] && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl" role="dialog" aria-modal="true">
+            <div className="text-sm font-bold text-slate-900">นำรายการออกจากรอบเบิกเงิน</div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              {items[removeIndex].type === 'aid'
+                ? `${displayBeneficiaryName(items[removeIndex].beneficiaryName)} (${items[removeIndex].applicationNo})`
+                : items[removeIndex].description}{' '}
+              จะถูกนำออกจากรอบนี้เท่านั้น คำร้อง ข้อมูลผู้รับความช่วยเหลือ และประวัติการอนุมัติจะไม่ถูกลบ
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRemoveIndex(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveItem}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+              >
+                นำออกจากรอบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

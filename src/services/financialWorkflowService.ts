@@ -1,5 +1,83 @@
 import { getDb, initDb } from '@/lib/db';
+import { lookupRegistryPersonNames } from '@/lib/registryPersonLookup';
 import { randomUUID } from 'crypto';
+
+const ASSISTANCE_FORM_COLUMNS = `
+  a.assistance_type,
+  a.assistance_type_id,
+  a.assistance_format_id,
+  a.assistance_format_code,
+  a.assistance_format_name
+`;
+
+const GENERIC_ASSISTANCE_TOKENS = new Set(['', 'cash', 'in_kind', 'service', 'other', 'one_time']);
+
+type AssistanceMasterRow = { id: string; code: string; name: string };
+
+function matchMaster(
+  rows: AssistanceMasterRow[],
+  id: string,
+  codeOrName: string,
+): AssistanceMasterRow | undefined {
+  if (id) {
+    const byId = rows.find((row) => row.id === id);
+    if (byId) return byId;
+  }
+  const token = codeOrName.trim();
+  if (!token) return undefined;
+  return rows.find((row) => row.code === token || row.name === token);
+}
+
+function resolveAssistanceLabels(
+  row: {
+    assistance_type?: unknown;
+    assistance_type_id?: unknown;
+    assistance_format_name?: unknown;
+    assistance_format_code?: unknown;
+    assistance_format_id?: unknown;
+  },
+  types: AssistanceMasterRow[],
+  formats: AssistanceMasterRow[],
+) {
+  const storedType = String(row.assistance_type || '').trim();
+  const storedFormat = String(row.assistance_format_name || '').trim();
+  const typeRow = matchMaster(types, String(row.assistance_type_id || ''), storedType);
+  const formatRow = matchMaster(
+    formats,
+    String(row.assistance_format_id || ''),
+    String(row.assistance_format_code || '') || storedFormat,
+  );
+  const assistanceType = String(typeRow?.name || '').trim()
+    || (GENERIC_ASSISTANCE_TOKENS.has(storedType.toLowerCase()) ? '' : storedType);
+  const assistanceFormatName = String(formatRow?.name || '').trim() || storedFormat;
+  return {
+    assistanceTypeId: row.assistance_type_id ? String(row.assistance_type_id) : '',
+    assistanceType,
+    assistanceFormatId: row.assistance_format_id ? String(row.assistance_format_id) : '',
+    assistanceFormatCode: row.assistance_format_code ? String(row.assistance_format_code) : String(formatRow?.code || ''),
+    assistanceFormatName,
+    assistanceFormName: assistanceType || assistanceFormatName,
+  };
+}
+
+async function loadAssistanceMasters(db: { execute: (sql: string) => Promise<{ rows: any[] }> }) {
+  const [typesRes, formatsRes] = await Promise.all([
+    db.execute(`SELECT id, code, name FROM assistance_types`),
+    db.execute(`SELECT id, code, name FROM assistance_formats`),
+  ]);
+  const toRows = (rows: any[]): AssistanceMasterRow[] =>
+    rows.map((row) => ({
+      id: String(row.id || ''),
+      code: String(row.code || ''),
+      name: String(row.name || ''),
+    }));
+  return { types: toRows(typesRes.rows), formats: toRows(formatsRes.rows) };
+}
+
+async function resolveBeneficiaryName(beneficiaryId: string, sqliteName: string): Promise<string> {
+  const names = await lookupRegistryPersonNames([beneficiaryId]);
+  return names.get(beneficiaryId) || String(sqliteName || '').trim();
+}
 
 export interface ActorContext {
   id: string;
@@ -1316,6 +1394,10 @@ export class FinancialWorkflowService {
     registrationNo: string;
     asnafCategory: string;
     assistanceType: string;
+    assistanceTypeId: string;
+    assistanceFormatName: string;
+    assistanceFormatCode: string;
+    assistanceFormName: string;
     specificFundId: string;
     specificFundName: string;
     fundAccountId: string;
@@ -1341,8 +1423,7 @@ export class FinancialWorkflowService {
           COALESCE(b.national_id, '-') as national_id,
           COALESCE(b.registration_no, a.registration_no, '-') as registration_no,
           a.asnaf_category,
-          COALESCE(a.assistance_type, 'ปัจจัยยังชีพ') as assistance_type,
-          a.assistance_type_id,
+          ${ASSISTANCE_FORM_COLUMNS},
           COALESCE(a.approved_specific_fund_id, a.specific_fund_id, a.assistance_type_id) as specific_fund_id,
           COALESCE(sf.name, a.specific_fund_name, 'กองทุนเฉพาะเจาะจง') as specific_fund_name,
           COALESCE(a.approved_fund_id, sf.fund_account_id, 'fund-1') as fund_account_id,
@@ -1462,16 +1543,24 @@ export class FinancialWorkflowService {
       }
     }
 
+    const masters = await loadAssistanceMasters(db);
+    const labels = resolveAssistanceLabels(app, masters.types, masters.formats);
+    const beneficiaryName = await resolveBeneficiaryName(String(app.beneficiary_id), String(app.beneficiary_name || ''));
+
     return {
       eligible: true,
       applicationId: String(app.id),
       applicationNo: appNo,
       beneficiaryId: String(app.beneficiary_id),
-      beneficiaryName: String(app.beneficiary_name),
+      beneficiaryName,
       nationalId: String(app.national_id),
       registrationNo: String(app.registration_no),
       asnafCategory: String(app.asnaf_category || 'ผู้มีสิทธิ์รับซะกาต'),
-      assistanceType: String(app.assistance_type || 'ปัจจัยยังชีพ'),
+      assistanceType: labels.assistanceType,
+      assistanceTypeId: labels.assistanceTypeId,
+      assistanceFormatName: labels.assistanceFormatName,
+      assistanceFormatCode: labels.assistanceFormatCode,
+      assistanceFormName: labels.assistanceFormName,
       specificFundId: String(app.specific_fund_id || 'fund-1'),
       specificFundName: String(app.specific_fund_name || 'กองทุนเฉพาะเจาะจง'),
       fundAccountId: String(app.fund_account_id || 'fund-1'),
@@ -1505,8 +1594,7 @@ export class FinancialWorkflowService {
           COALESCE(b.national_id, '-') as national_id,
           COALESCE(b.registration_no, a.registration_no, '-') as registration_no,
           a.asnaf_category,
-          COALESCE(a.assistance_type, 'ปัจจัยยังชีพ') as assistance_type,
-          a.assistance_type_id,
+          ${ASSISTANCE_FORM_COLUMNS},
           COALESCE(a.approved_specific_fund_id, a.specific_fund_id, a.assistance_type_id) as specific_fund_id,
           COALESCE(sf.name, a.specific_fund_name, 'กองทุนเฉพาะเจาะจง') as specific_fund_name,
           COALESCE(a.approved_fund_id, sf.fund_account_id, 'fund-1') as fund_account_id,
@@ -1556,12 +1644,14 @@ export class FinancialWorkflowService {
       args: [q, q, q, q, q, q],
     });
 
-    return res.rows
+    const masters = await loadAssistanceMasters(db);
+    const mapped = res.rows
       .map((r: any) => {
         const approved = Number(r.approved_amount || 0);
         const disbursed = Number(r.disbursed_amount || 0);
         const pendingBatch = Number(r.pending_batch_amount || 0);
         const remaining = Math.max(0, approved - disbursed - pendingBatch);
+        const labels = resolveAssistanceLabels(r, masters.types, masters.formats);
 
         return {
           id: String(r.id),
@@ -1571,7 +1661,11 @@ export class FinancialWorkflowService {
           nationalId: String(r.national_id),
           registrationNo: String(r.registration_no),
           asnafCategory: String(r.asnaf_category || 'ผู้มีสิทธิ์รับซะกาต'),
-          assistanceType: String(r.assistance_type || 'ปัจจัยยังชีพ'),
+          assistanceType: labels.assistanceType,
+          assistanceTypeId: labels.assistanceTypeId,
+          assistanceFormatName: labels.assistanceFormatName,
+          assistanceFormatCode: labels.assistanceFormatCode,
+          assistanceFormName: labels.assistanceFormName,
           specificFundId: String(r.specific_fund_id || 'fund-1'),
           specificFundName: String(r.specific_fund_name || 'กองทุนเฉพาะเจาะจง'),
           fundAccountId: String(r.fund_account_id || 'fund-1'),
@@ -1586,6 +1680,13 @@ export class FinancialWorkflowService {
         };
       })
       .filter((item) => item.remainingAmount > 0);
+
+    const registryNames = await lookupRegistryPersonNames(mapped.map((item) => item.beneficiaryId));
+    return mapped.map((item) => {
+      const registryName = registryNames.get(item.beneficiaryId);
+      if (!registryName) return item;
+      return { ...item, beneficiaryName: registryName };
+    });
   }
 
   /**

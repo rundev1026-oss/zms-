@@ -9,12 +9,15 @@ import {
   QrValidationResult
 } from '@/lib/promptpayQr';
 
-import {
+import { 
   CENTRAL_ASNAF_GROUPS,
   normalizePrimaryGroupCode,
   getCentralAsnafByCode,
   calculatePennyAllocation as calcPennyExact,
 } from '@/lib/financeUtils';
+import { LEVEL_1_ASNAFS, resolveAsnafGroupCode } from '@/lib/constants/asnafRelationshipCatalog';
+import { isPlaceholderPersonName } from '@/lib/personName';
+import { lookupRegistryPeople } from '@/lib/registryPersonLookup';
 import { 
   FinancialTransaction, 
   FundAccount, 
@@ -11639,10 +11642,55 @@ export class FinancialService {
       proofName = 'หลักฐานการโอนสวัสดิการ.pdf';
     }
 
+    // Handover is recorded only from finance_handover_records. An approved amount is not cash received.
+    let handoverPipeline: NonNullable<AssistanceFinancialDetail['handoverPipeline']> = 'no_request';
+    let batchNo = '';
+    let sourceAccountLabel = '';
+    let handoverApproverName = '';
+    let batchApproved = false;
+    let batchPending = false;
+    try {
+      const flowRes = await db.execute({
+        sql: `SELECT w.withdrawal_no, w.status AS withdrawal_status,
+                     cw.workflow_no, cw.overall_status, cw.step1_status, cw.step2_treasurer_name,
+                     cw.step1_bank_account_id
+              FROM cash_flow_disbursement_items i
+              JOIN cash_flow_withdrawals w ON w.id = i.withdrawal_id
+              LEFT JOIN cash_flow_workflows cw ON cw.id = w.workflow_id
+              WHERE i.application_id = ? AND i.status != 'cancelled'`,
+        args: [applicationId],
+      });
+      const approvedStates = new Set(['approved', 'pending_handover', 'completed', 'handed_over']);
+      for (const row of flowRes.rows) {
+        if (!batchNo && row.workflow_no) batchNo = String(row.workflow_no);
+        if (!batchNo && row.withdrawal_no) batchNo = String(row.withdrawal_no);
+        if (!handoverApproverName && row.step2_treasurer_name) handoverApproverName = String(row.step2_treasurer_name);
+        if (!sourceAccountLabel && row.step1_bank_account_id) sourceAccountLabel = String(row.step1_bank_account_id);
+        const step = String(row.step1_status || '');
+        const overall = String(row.overall_status || '');
+        if (approvedStates.has(step) || approvedStates.has(overall)) batchApproved = true;
+        if (step === 'pending_approval' || overall === 'pending_approval' || step === 'draft') batchPending = true;
+      }
+      if (flowRes.rows.length === 0 && handedOverAmount <= 0) handoverPipeline = 'no_request';
+      else if (handedOverAmount > 0 && withdrawnAmount > 0 && handedOverAmount + 0.009 < withdrawnAmount) handoverPipeline = 'partial_handover';
+      else if (handedOverAmount > 0) handoverPipeline = 'handed_over';
+      else if (batchApproved) handoverPipeline = 'awaiting_handover';
+      else if (batchPending || flowRes.rows.length > 0) handoverPipeline = 'pending_approval';
+    } catch {
+      handoverPipeline = handedOverAmount > 0 ? 'handed_over' : 'no_request';
+    }
+
+    const handoverPipelineLabel =
+      handoverPipeline === 'handed_over' ? 'ส่งมอบเงินแล้ว' :
+      handoverPipeline === 'partial_handover' ? 'ส่งมอบเงินบางส่วน' :
+      handoverPipeline === 'awaiting_handover' ? 'รอส่งมอบเงิน' :
+      handoverPipeline === 'approved' ? 'อนุมัติแล้ว' :
+      handoverPipeline === 'pending_approval' ? 'รออนุมัติเบิก' : 'ยังไม่ส่งคำขอเบิก';
+
     // 8. Dual Independent Statuses Calculation (Real Data Driven)
-    // Finance Status (การเงิน)
+    // Finance Status (การเงิน) — handover completeness only. It is not the aid-payment stage.
     let financeStatus: FinanceHandoverStatusType = 'not_handed_over';
-    if (withdrawnAmount > 0 && handedOverAmount >= withdrawnAmount) {
+    if (withdrawnAmount > 0 && handedOverAmount >= withdrawnAmount && handedOverAmount > 0) {
       financeStatus = 'fully_handed_over';
     } else if (handedOverAmount > 0) {
       financeStatus = 'partially_handed_over';
@@ -11650,28 +11698,27 @@ export class FinancialService {
       financeStatus = 'not_handed_over';
     }
 
-    const financeStatusLabel = 
-      financeStatus === 'fully_handed_over' ? 'ส่งมอบครบแล้ว' :
-      financeStatus === 'partially_handed_over' ? 'ส่งมอบบางส่วน' : 'ยังไม่ส่งมอบ';
+    const financeStatusLabel = handoverPipelineLabel;
 
-    // Assistance Execution Status (การช่วยเหลือ)
+    // Assistance Execution Status tracks confirmed aid paid to the beneficiary.
+    // Receiving a handover does not move this status.
     let assistanceStatus: AssistanceExecutionStatusType = 'not_started';
     const appStatus = String(app.status || '');
 
-    if (disbursedAmount >= approvedAmount && approvedAmount > 0 || appStatus === 'disbursed' || appStatus === 'closed') {
+    if ((disbursedAmount >= approvedAmount && approvedAmount > 0) || appStatus === 'disbursed' || appStatus === 'closed') {
       assistanceStatus = 'completed';
     } else if (appStatus === 'wait_confirmation') {
       assistanceStatus = 'wait_confirmation';
-    } else if (disbursedAmount > 0 || (handedOverAmount > 0 && (appStatus === 'wait_disbursement' || appStatus === 'approved'))) {
+    } else if (disbursedAmount > 0) {
       assistanceStatus = 'in_progress';
     } else {
       assistanceStatus = 'not_started';
     }
 
     const assistanceStatusLabel =
-      assistanceStatus === 'completed' ? 'เสร็จสิ้น' :
+      assistanceStatus === 'completed' ? 'จ่ายครบแล้ว' :
       assistanceStatus === 'wait_confirmation' ? 'รอยืนยันผล' :
-      assistanceStatus === 'in_progress' ? 'กำลังดำเนินการ' : 'ยังไม่เริ่ม';
+      assistanceStatus === 'in_progress' ? 'จ่ายแล้วบางส่วน' : 'ยังไม่จ่ายให้ผู้รับ';
 
     // Outcome Status determination (Task 3)
     let outcomeStatus: AssistanceOutcomeStatus = (app.assistance_result_status as AssistanceOutcomeStatus) || 'not_started';
@@ -11712,7 +11759,106 @@ export class FinancialService {
 
     const latestExecution = executionRecords.length > 0 ? executionRecords[executionRecords.length - 1] : undefined;
     const actualAssistanceDate = latestExecution?.executionDate || (app.disbursement_date ? String(app.disbursement_date).slice(0, 10) : undefined);
-    const purpose = String(app.necessity_details || app.hardship_reasons || app.assistance_type_details || app.disbursement_notes || 'ช่วยเหลือบรรเทาความเดือดร้อนตามหลักเกณฑ์');
+    const purpose = String(app.necessity_details || app.hardship_reasons || app.assistance_type_details || app.disbursement_notes || '');
+
+    let returnedAmount = round2(Number(app.refunded_amount || 0));
+    try {
+      const refundRes = await db.execute({
+        sql: `SELECT COALESCE(SUM(refund_amount), 0) AS total
+              FROM assistance_refund_records
+              WHERE application_id = ? AND status != 'cancelled'`,
+        args: [applicationId],
+      });
+      const summed = round2(Number(refundRes.rows[0]?.total || 0));
+      if (summed > 0) returnedAmount = summed;
+    } catch { /* refund table is optional on older databases */ }
+
+    let caseTypeName = String(app.assistance_type || '').trim();
+    let formatName = String(app.assistance_format_name || '').trim();
+    const genericType = new Set(['', 'cash', 'in_kind', 'service', 'other', 'one_time', 'ผู้ขอรับความช่วยเหลือ', 'เงินสงเคราะห์เพื่อการยังชีพ']);
+    try {
+      const typeId = String(app.assistance_type_id || '');
+      if (typeId) {
+        const typeRow = await db.execute({ sql: 'SELECT name FROM assistance_types WHERE id = ?', args: [typeId] });
+        const name = String(typeRow.rows[0]?.name || '').trim();
+        if (name) caseTypeName = name;
+      }
+      const formatId = String(app.assistance_format_id || '');
+      if (formatId) {
+        const formatRow = await db.execute({ sql: 'SELECT name FROM assistance_formats WHERE id = ?', args: [formatId] });
+        const name = String(formatRow.rows[0]?.name || '').trim();
+        if (name) formatName = name;
+      }
+    } catch { /* master tables stay optional */ }
+    if (genericType.has(caseTypeName)) caseTypeName = '';
+    const caseTitle = caseTypeName ? `เคส${caseTypeName}` : 'เคสยังไม่ระบุประเภท';
+
+    const beneficiaryId = String(app.beneficiary_id || '');
+    let registryName = '';
+    let registryNumber = '';
+    let memberId = String(app.member_id || '').trim();
+    const registryPeople = await lookupRegistryPeople(beneficiaryId ? [beneficiaryId] : []);
+    const registryPerson = registryPeople.get(beneficiaryId);
+    if (registryPerson) {
+      registryName = registryPerson.name;
+      registryNumber = registryPerson.registryNumber;
+      if (registryPerson.memberId) memberId = registryPerson.memberId;
+    }
+    const sqliteName = String(app.beneficiary_name || '').trim();
+    const displayName = registryName || (isPlaceholderPersonName(sqliteName) ? 'ไม่พบชื่อในทะเบียน' : sqliteName || 'ไม่พบชื่อในทะเบียน');
+    const displayRegistration = registryNumber || String(app.registration_no || '').trim() || String(app.beneficiary_registration_no || '').trim() || '-';
+
+    const asnafCode = resolveAsnafGroupCode(asnafRaw);
+    const level1 = LEVEL_1_ASNAFS.find((item) => item.code === asnafCode);
+    const displayAsnafLabel = level1?.nameTh || asnafLabel;
+
+    const completion = String(app.completion_status || '');
+    let paymentStage: NonNullable<AssistanceFinancialDetail['paymentStage']> = 'awaiting_draw';
+    if (['closed', 'terminated'].includes(completion) || appStatus === 'closed') {
+      paymentStage = 'closed';
+    } else if (approvedAmount > 0 && disbursedAmount + 0.009 >= approvedAmount) {
+      paymentStage = 'fully_paid';
+    } else if (returnedAmount > 0 && disbursedAmount > 0) {
+      paymentStage = 'partial_refund';
+    } else if (disbursedAmount > 0) {
+      paymentStage = 'partially_paid';
+    } else if (handedOverAmount > 0) {
+      paymentStage = 'cash_received';
+    } else if (batchApproved && handedOverAmount <= 0) {
+      paymentStage = 'awaiting_receipt';
+    } else {
+      paymentStage = 'awaiting_draw';
+    }
+    const paymentStageLabel =
+      paymentStage === 'closed' ? 'ปิดรายการ' :
+      paymentStage === 'fully_paid' ? 'จ่ายครบแล้ว' :
+      paymentStage === 'partial_refund' ? 'คืนเงินบางส่วน' :
+      paymentStage === 'partially_paid' ? 'จ่ายแล้วบางส่วน' :
+      paymentStage === 'cash_received' ? 'ได้รับเงินแล้ว' :
+      paymentStage === 'awaiting_receipt' ? 'รอรับเงิน' : 'รอเบิกจ่าย';
+
+    const totalInstallments = Math.max(1, Number(app.installment_count || 1));
+    const installmentMode: 'single' | 'installment' = totalInstallments <= 1 ? 'single' : 'installment';
+    const confirmedExecutions = executionRecords.filter((record) => record.isConfirmed && record.status !== 'cancelled' && record.status !== 'draft');
+    const paidInstallmentCount = installmentMode === 'single'
+      ? (disbursedAmount > 0 ? 1 : 0)
+      : new Set(confirmedExecutions.map((record) => record.installmentNo)).size;
+    const installmentLines = installmentMode === 'single' ? [] : Array.from({ length: totalInstallments }, (_, index) => {
+      const installmentNo = index + 1;
+      const record = executionRecords.find((item) => item.installmentNo === installmentNo);
+      const confirmed = !!record && record.isConfirmed && record.status !== 'cancelled' && record.status !== 'draft';
+      return {
+        installmentNo,
+        amount: confirmed ? round2(Number(record?.actualDisbursedAmount || 0)) : null,
+        paidDate: confirmed ? (record?.executionDate || '') : '',
+        status: confirmed ? 'paid' as const : 'waiting' as const,
+        proofUrl: record?.proofUrl,
+        proofName: record?.proofName,
+        recordedBy: record?.executorName,
+        reviewedBy: record?.confirmedByName,
+      };
+    });
+    const committedAmount = linkedItems.length > 0 ? withdrawnAmount : 0;
     const appliedDate = String(app.applied_date || app.created_at || '').slice(0, 10);
     const approvedDate = app.approved_date ? String(app.approved_date).slice(0, 10) : undefined;
     const disbursementDate = app.disbursement_date ? String(app.disbursement_date).slice(0, 10) : undefined;
@@ -11722,11 +11868,28 @@ export class FinancialService {
     return {
       applicationId: String(app.id),
       applicationNo: String(app.application_no),
-      registrationNo: String(app.beneficiary_registration_no || app.registration_no || (app.national_id ? `REG-${app.national_id}` : '-')),
-      beneficiaryName: String(app.beneficiary_name || 'ไม่ระบุชื่อ'),
-      asnafCategory: asnafRaw,
-      asnafLabel,
-      assistanceType: String(app.assistance_type || 'เงินสงเคราะห์เพื่อการยังชีพ'),
+      registrationNo: displayRegistration,
+      beneficiaryName: displayName,
+      asnafCategory: asnafCode || asnafRaw,
+      asnafLabel: displayAsnafLabel,
+      assistanceType: caseTypeName || String(app.assistance_type || ''),
+      caseTitle,
+      assistanceFormatName: formatName,
+      memberId,
+      registryNumber: displayRegistration,
+      paymentStage,
+      paymentStageLabel,
+      handoverPipeline,
+      handoverPipelineLabel,
+      returnedAmount,
+      committedAmount,
+      installmentMode,
+      paidInstallmentCount,
+      batchNo,
+      sourceAccountLabel,
+      handoverReceiverName: handovers[0]?.receivedByName || '',
+      handoverApproverName: handoverApproverName || handovers[0]?.handedOverByName || '',
+      installmentLines,
       approvedAmount,
       withdrawnAmount,
       handedOverAmount,

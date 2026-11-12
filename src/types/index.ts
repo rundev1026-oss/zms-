@@ -984,6 +984,32 @@ export interface AssistanceFinancialDetail {
   asnafCategory: string;                   // 4. อัสนัฟ
   asnafLabel: string;                      // ชื่อภาษาไทยอัสนัฟ
   assistanceType: string;                  // 5. ประเภทการช่วยเหลือ
+  caseTitle?: string;
+  assistanceFormatName?: string;
+  memberId?: string;
+  registryNumber?: string;
+  paymentStage?: 'awaiting_draw' | 'awaiting_receipt' | 'cash_received' | 'partially_paid' | 'fully_paid' | 'partial_refund' | 'closed';
+  paymentStageLabel?: string;
+  handoverPipeline?: 'no_request' | 'pending_approval' | 'approved' | 'awaiting_handover' | 'handed_over' | 'partial_handover';
+  handoverPipelineLabel?: string;
+  returnedAmount?: number;
+  committedAmount?: number;
+  installmentMode?: 'single' | 'installment';
+  paidInstallmentCount?: number;
+  batchNo?: string;
+  sourceAccountLabel?: string;
+  handoverReceiverName?: string;
+  handoverApproverName?: string;
+  installmentLines?: {
+    installmentNo: number;
+    amount: number | null;
+    paidDate: string;
+    status: 'paid' | 'waiting';
+    proofUrl?: string;
+    proofName?: string;
+    recordedBy?: string;
+    reviewedBy?: string;
+  }[];
   approvedAmount: number;                  // 6. ยอดอนุมัติ
   withdrawnAmount: number;                 // 7. ยอดเบิกเงินสด (รวมยอดที่เบิกตามใบสำคัญที่ผูกกับคำร้องนี้)
   handedOverAmount: number;                // 8. ยอดที่ฝ่ายการเงินส่งมอบให้ผู้ดูแลแล้ว

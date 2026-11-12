@@ -95,6 +95,32 @@ export const formatThaiDate = (dateStr?: string) => {
   }
 };
 
+function money(value: number) {
+  return Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const PAYMENT_STAGE_STYLE: Record<string, string> = {
+  awaiting_draw: 'bg-slate-100 text-slate-800 border-slate-300',
+  awaiting_receipt: 'bg-amber-100 text-amber-900 border-amber-300',
+  cash_received: 'bg-sky-100 text-sky-900 border-sky-300',
+  partially_paid: 'bg-orange-100 text-orange-900 border-orange-300',
+  fully_paid: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+  partial_refund: 'bg-violet-100 text-violet-900 border-violet-300',
+  closed: 'bg-stone-200 text-stone-800 border-stone-300',
+};
+
+const DETAIL_TABS = [
+  { id: 'beneficiary', label: 'ผู้รับความช่วยเหลือ' },
+  { id: 'case', label: 'รายละเอียดเคส' },
+  { id: 'approval', label: 'ประวัติการอนุมัติ' },
+  { id: 'handover', label: 'เบิกและส่งมอบเงิน' },
+  { id: 'payment', label: 'การจ่ายและการแบ่งงวด' },
+  { id: 'documents', label: 'หลักฐานและเอกสาร' },
+  { id: 'followup', label: 'การติดตามผล' },
+] as const;
+
+type DetailTab = (typeof DETAIL_TABS)[number]['id'];
+
 interface DisbursementsViewProps {
   onNavigate: (view: string) => void;
 }
@@ -117,9 +143,15 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
   const [assistanceTypeFilter, setAssistanceTypeFilter] = useState<string>('all');
   const [dateStartFilter, setDateStartFilter] = useState<string>('');
   const [dateEndFilter, setDateEndFilter] = useState<string>('');
+  const [paymentStageFilter, setPaymentStageFilter] = useState<string>('all');
+  const [handoverPipelineFilter, setHandoverPipelineFilter] = useState<string>('all');
+  const [installmentFilter, setInstallmentFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [formatFilter, setFormatFilter] = useState<string>('all');
 
   // UI View Mode & Responsive Controls
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [detailTab, setDetailTab] = useState<DetailTab>('case');
   const [showFilterPanel, setShowFilterPanel] = useState<boolean>(true);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const pageSize = 12;
@@ -152,7 +184,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
   const [execProofUrl, setExecProofUrl] = useState<string>('');
   const [execProofName, setExecProofName] = useState<string>('');
   const [execStatus, setExecStatus] = useState<AssistanceOutcomeStatus>('completed');
-  // CRITICAL RULE: Checkbox ต้องไม่ถูกเลือกไว้ล่วงหน้า (defaultChecked = false)
+  // Checkbox starts unchecked and is controlled by this state.
   const [execIsConfirmed, setExecIsConfirmed] = useState<boolean>(false);
   const [isSubmittingExecution, setIsSubmittingExecution] = useState<boolean>(false);
 
@@ -192,6 +224,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
   // Open Detailed Modal & fetch fresh details
   const handleOpenDetail = async (item: AssistanceFinancialDetail) => {
     setSelectedDetail(item);
+    setDetailTab('case');
     setShowDetailModal(true);
     setIsDetailLoading(true);
     try {
@@ -514,6 +547,22 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
     return Array.from(set);
   }, [assistanceList]);
 
+  const availableBranches = useMemo(() => {
+    const set = new Set<string>();
+    assistanceList.forEach((item) => {
+      if (item.branchName) set.add(item.branchName);
+    });
+    return Array.from(set);
+  }, [assistanceList]);
+
+  const availableFormats = useMemo(() => {
+    const set = new Set<string>();
+    assistanceList.forEach((item) => {
+      if (item.assistanceFormatName) set.add(item.assistanceFormatName);
+    });
+    return Array.from(set);
+  }, [assistanceList]);
+
   // Filtered List
   const filteredList = useMemo(() => {
     return assistanceList.filter((item) => {
@@ -537,6 +586,16 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
       if (assistanceTypeFilter !== 'all' && item.assistanceType !== assistanceTypeFilter) {
         return false;
       }
+      if (paymentStageFilter !== 'all' && item.paymentStage !== paymentStageFilter) {
+        return false;
+      }
+      if (handoverPipelineFilter !== 'all' && item.handoverPipeline !== handoverPipelineFilter) {
+        return false;
+      }
+      if (installmentFilter === 'single' && item.installmentMode !== 'single') return false;
+      if (installmentFilter === 'installment' && item.installmentMode !== 'installment') return false;
+      if (branchFilter !== 'all' && item.branchName !== branchFilter) return false;
+      if (formatFilter !== 'all' && (item.assistanceFormatName || '') !== formatFilter) return false;
       // 6. Date Range Filter
       if (dateStartFilter) {
         const itemDate = (item.appliedDate || item.actualAssistanceDate || item.approvedDate || '').slice(0, 10);
@@ -555,6 +614,9 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
           item.beneficiaryName.toLowerCase().includes(q) ||
           item.withdrawalNo.toLowerCase().includes(q) ||
           item.assistanceType.toLowerCase().includes(q) ||
+          (item.caseTitle && item.caseTitle.toLowerCase().includes(q)) ||
+          (item.memberId && item.memberId.toLowerCase().includes(q)) ||
+          (item.assistanceFormatName && item.assistanceFormatName.toLowerCase().includes(q)) ||
           (item.branchName && item.branchName.toLowerCase().includes(q)) ||
           (item.area && item.area.toLowerCase().includes(q));
         if (!match) return false;
@@ -570,6 +632,11 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
     assistanceTypeFilter,
     dateStartFilter,
     dateEndFilter,
+    paymentStageFilter,
+    handoverPipelineFilter,
+    installmentFilter,
+    branchFilter,
+    formatFilter,
     searchTerm
   ]);
 
@@ -591,7 +658,12 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
     asnafFilter,
     assistanceTypeFilter,
     dateStartFilter,
-    dateEndFilter
+    dateEndFilter,
+    paymentStageFilter,
+    handoverPipelineFilter,
+    installmentFilter,
+    branchFilter,
+    formatFilter
   ]);
 
   // Clear all filters
@@ -604,6 +676,11 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
     setAssistanceTypeFilter('all');
     setDateStartFilter('');
     setDateEndFilter('');
+    setPaymentStageFilter('all');
+    setHandoverPipelineFilter('all');
+    setInstallmentFilter('all');
+    setBranchFilter('all');
+    setFormatFilter('all');
     setCurrentPage(1);
   };
 
@@ -668,7 +745,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="ค้นหาชื่อผู้รับ, เลขที่คำร้อง (APP-...), ทะเบียน (REG-...), หรือพื้นที่..."
+              placeholder="ค้นหาชื่อผู้รับ, เลขที่คำร้อง, เลขทะเบียน, ประเภทความช่วยเหลือ หรือสาขา"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm font-medium focus:bg-white focus:outline-teal-600 transition-all text-slate-800"
@@ -771,6 +848,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                   className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600"
                 >
                   <option value="all">หมวดอัสนัฟ: ทั้งหมด</option>
+                  <option value="faqir_miskin">ฟากีร–มิสกิน</option>
                   <option value="fakir">ผู้ยากไร้ (Faqir)</option>
                   <option value="miskin">ผู้ขัดสน (Miskin)</option>
                   <option value="gharimin">มีหนี้สินล้นพ้นตัว (Gharimin)</option>
@@ -821,13 +899,66 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">สถานะการเงิน</label>
+                <select value={paymentStageFilter} onChange={(e) => setPaymentStageFilter(e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600">
+                  <option value="all">สถานะการเงิน: ทั้งหมด</option>
+                  <option value="awaiting_draw">รอเบิกจ่าย</option>
+                  <option value="awaiting_receipt">รอรับเงิน</option>
+                  <option value="cash_received">ได้รับเงินแล้ว</option>
+                  <option value="partially_paid">จ่ายแล้วบางส่วน</option>
+                  <option value="fully_paid">จ่ายครบแล้ว</option>
+                  <option value="partial_refund">คืนเงินบางส่วน</option>
+                  <option value="closed">ปิดรายการ</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">สถานะการส่งมอบเงิน</label>
+                <select value={handoverPipelineFilter} onChange={(e) => setHandoverPipelineFilter(e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600">
+                  <option value="all">การส่งมอบ: ทั้งหมด</option>
+                  <option value="no_request">ยังไม่ส่งคำขอเบิก</option>
+                  <option value="pending_approval">รออนุมัติเบิก</option>
+                  <option value="awaiting_handover">รอส่งมอบเงิน</option>
+                  <option value="handed_over">ส่งมอบเงินแล้ว</option>
+                  <option value="partial_handover">ส่งมอบเงินบางส่วน</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">รูปแบบการช่วยเหลือ</label>
+                <select value={formatFilter} onChange={(e) => setFormatFilter(e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600">
+                  <option value="all">รูปแบบ: ทั้งหมด</option>
+                  {availableFormats.map((format) => (
+                    <option key={format} value={format}>{format}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">การแบ่งงวด</label>
+                <select value={installmentFilter} onChange={(e) => setInstallmentFilter(e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600">
+                  <option value="all">ครั้งเดียวและแบ่งงวด</option>
+                  <option value="single">จ่ายครั้งเดียว</option>
+                  <option value="installment">แบ่งงวด</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">สาขา</label>
+                <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-teal-600">
+                  <option value="all">สาขา: ทั้งหมด</option>
+                  {availableBranches.map((branch) => (
+                    <option key={branch} value={branch}>{branch}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Active filters status summary & clear button */}
             <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-200/60">
               <div className="flex items-center gap-2">
                 <span>แสดงผลลัพธ์ <strong>{filteredList.length}</strong> จากทั้งหมด {assistanceList.length} รายการ</span>
               </div>
 
-              {(searchTerm || financeStatusFilter !== 'all' || assistanceStatusFilter !== 'all' || outcomeStatusFilter !== 'all' || asnafFilter !== 'all' || assistanceTypeFilter !== 'all' || dateStartFilter || dateEndFilter) && (
+              {(searchTerm || financeStatusFilter !== 'all' || assistanceStatusFilter !== 'all' || outcomeStatusFilter !== 'all' || asnafFilter !== 'all' || assistanceTypeFilter !== 'all' || dateStartFilter || dateEndFilter || paymentStageFilter !== 'all' || handoverPipelineFilter !== 'all' || installmentFilter !== 'all' || branchFilter !== 'all' || formatFilter !== 'all') && (
                 <button
                   onClick={handleClearFilters}
                   className="text-teal-700 hover:text-teal-900 font-bold cursor-pointer underline flex items-center gap-1"
@@ -873,152 +1004,101 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
         /* CARD-BASED UI (Grid 2-3 cols on desktop, 2 on tablet, 1 on mobile) */
         /* ================================================================= */
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             {paginatedList.map((item) => {
-              const statusConfig = OUTCOME_STATUS_CONFIG[item.outcomeStatus || 'not_started'] || OUTCOME_STATUS_CONFIG.not_started;
               const asnafStyle = getAsnafColor(item.asnafCategory);
               const confirmedRecord = item.executionRecords?.find((r) => r.isConfirmed);
+              const paymentStyle = PAYMENT_STAGE_STYLE[item.paymentStage || 'awaiting_draw'] || PAYMENT_STAGE_STYLE.awaiting_draw;
+              const installmentTotal = Math.max(1, item.installmentCount || 1);
+              const paidInstallments = item.paidInstallmentCount || 0;
+              const installmentProgress = item.installmentMode === 'installment' ? Math.min(100, (paidInstallments / installmentTotal) * 100) : (item.disbursedAmount > 0 ? 100 : 0);
 
               return (
                 <div
                   key={item.applicationId}
                   className="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden group hover:border-teal-400"
                 >
-                  {/* Card Header (Section 4) */}
-                  <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-50 to-slate-100/60 border-b border-slate-100 flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-xs sm:text-sm text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs">
-                          {item.applicationNo}
-                        </span>
-                        <span className="text-[11px] text-teal-800 font-mono font-semibold">
-                          {item.registrationNo}
-                        </span>
+                  <div className="p-4 sm:p-5 space-y-4">
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-slate-800 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">คำร้อง {item.applicationNo}</span>
+                        <span className="font-mono text-[11px] text-teal-800 font-semibold">ทะเบียน {item.registrationNo}</span>
+                        {item.memberId && <span className="font-mono text-[11px] text-slate-500">{item.memberId}</span>}
                       </div>
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>บันทึกเมื่อ: {formatThaiDate(item.appliedDate)}</span>
-                      </div>
+                      <h3 className="text-xl sm:text-2xl font-black text-slate-950 leading-tight">{item.beneficiaryName}</h3>
                     </div>
 
-                    {/* Status Badges */}
-                    <div className="flex flex-col items-end gap-1.5">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        {statusConfig.label}
-                      </span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
-                        item.financeStatus === 'fully_handed_over' 
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                          : item.financeStatus === 'partially_handed_over'
-                          ? 'bg-amber-50 text-amber-800 border-amber-200'
-                          : 'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          item.financeStatus === 'fully_handed_over' ? 'bg-emerald-500' : item.financeStatus === 'partially_handed_over' ? 'bg-amber-500' : 'bg-slate-400'
-                        }`} />
-                        การเงิน: {item.financeStatusLabel}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card Body: Beneficiary, Details & Financial Info */}
-                  <div className="p-4 sm:p-5 space-y-4 flex-1 flex flex-col justify-between">
-                    {/* Beneficiary Info */}
-                    <div className="flex items-start gap-3.5">
-                      {/* Avatar */}
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-700 to-teal-900 text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0 border border-teal-600/30">
-                        {item.beneficiaryName.charAt(0) || 'ผ'}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-base sm:text-lg font-bold text-slate-900 truncate group-hover:text-teal-800 transition-colors">
-                          {item.beneficiaryName}
-                        </h3>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{item.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร'} {item.area ? `• ${item.area}` : ''}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Asnaf & Assistance Details */}
-                    <div className="space-y-2 pt-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${asnafStyle.bg} ${asnafStyle.text} ${asnafStyle.border}`}>
-                          {item.asnafLabel}
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/80">
-                          {item.assistanceType}
-                        </span>
-                      </div>
-
-                      {item.purpose && (
-                        <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50/80 border border-slate-100 p-2.5 rounded-xl">
-                          {item.purpose}
-                        </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${asnafStyle.bg} ${asnafStyle.text} ${asnafStyle.border}`}>{item.asnafLabel}</span>
+                      {item.assistanceType && <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-teal-50 text-teal-900 border border-teal-200">{item.assistanceType}</span>}
+                      {item.assistanceFormatName && item.assistanceFormatName !== item.assistanceType && (
+                        <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white text-slate-600 border border-slate-200">{item.assistanceFormatName}</span>
                       )}
-
-                      {/* Metadata Row */}
-                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 pt-1">
-                        <div>
-                          <span className="text-slate-400 block">วันที่อนุมัติ:</span>
-                          <span className="font-semibold text-slate-700">{formatThaiDate(item.approvedDate)}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block">วันที่ช่วยเหลือจริง:</span>
-                          <span className="font-semibold text-slate-700">{formatThaiDate(item.actualAssistanceDate) || 'ยังไม่ได้ส่งมอบ'}</span>
-                        </div>
-                        <div className="col-span-2">
-                          <span className="text-slate-400 block">เจ้าหน้าที่ผู้รับผิดชอบ:</span>
-                          <span className="font-semibold text-slate-700">{item.assignedOfficerName || item.recipientCaseWorkerName || '-'}</span>
-                        </div>
-                      </div>
+                      <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white text-slate-600 border border-slate-200">{item.installmentMode === 'installment' ? `แบ่ง ${installmentTotal} งวด` : 'จ่ายครั้งเดียว'}</span>
                     </div>
 
-                    {/* Financial Data Box */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50/90 border border-slate-200/80 space-y-2.5">
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <span className="text-[10px] text-slate-400 block uppercase font-medium">ยอดอนุมัติ</span>
-                          <span className="text-xs sm:text-sm font-bold text-slate-700 font-mono">
-                            ฿{item.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-emerald-700 block uppercase font-bold">จ่ายจริง</span>
-                          <span className="text-xs sm:text-sm font-black text-emerald-900 font-mono">
-                            ฿{item.disbursedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-slate-400 block uppercase font-medium">คงเหลือ</span>
-                          <span className="text-xs sm:text-sm font-bold text-slate-700 font-mono">
-                            ฿{item.remainingBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-500">
+                      <div>วันที่อนุมัติ <span className="font-semibold text-slate-800">{formatThaiDate(item.approvedDate) || '-'}</span></div>
+                      <div className="sm:text-right">สาขา <span className="font-semibold text-slate-800">{item.branchName || '-'}</span></div>
+                    </div>
 
-                      {/* Proof Status Row */}
-                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
-                        <div className="flex items-center gap-1.5 text-slate-500 truncate">
-                          <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{item.withdrawalNo}</span>
-                        </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${paymentStyle}`}>
+                        {item.paymentStageLabel || 'รอเบิกจ่าย'}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-600">{item.handoverPipelineLabel || 'ยังไม่ส่งคำขอเบิก'}</span>
+                    </div>
 
-                        {item.proofUrl ? (
-                          <button
-                            onClick={() => handleOpenProof(item.proofUrl!, item.proofName)}
-                            className="px-2 py-0.5 rounded-md bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold text-[11px] border border-teal-200 transition-colors inline-flex items-center gap-1 cursor-pointer shrink-0"
-                          >
-                            <FileCheck className="w-3 h-3 text-teal-600" />
-                            ดูหลักฐาน
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 italic">
-                            รอหลักฐาน
-                          </span>
-                        )}
+                    <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-50 text-[11px] font-bold text-slate-500">สถานะการเงิน</div>
+                      {[
+                        ['วงเงินที่ได้รับอนุมัติ', item.approvedAmount],
+                        ['ส่งมอบจากการเงิน', item.handedOverAmount],
+                        ['จ่ายจริง', item.disbursedAmount],
+                        ['คืนเงิน', item.returnedAmount || 0],
+                        ['คงเหลือที่ยังไม่ได้จ่าย', item.remainingBalance],
+                      ].map(([label, amount]) => (
+                        <div key={String(label)} className="px-3 py-2 flex items-center justify-between border-t border-slate-100 text-xs">
+                          <span className="text-slate-600">{label}</span>
+                          <span className="font-mono font-bold text-slate-900 tabular-nums">{money(Number(amount))} บาท</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-bold text-slate-500">การส่งมอบเงินจากฝ่ายการเงิน</p>
+                        <span className="text-[11px] font-bold text-slate-700">{item.handoverPipelineLabel || 'ยังไม่ส่งคำขอเบิก'}</span>
                       </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-3 text-[11px]">
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">เลขที่รอบเบิก</span><span className="font-mono font-semibold text-slate-800">{item.batchNo || (item.voucherNos && item.voucherNos.length > 0 ? item.voucherNos.join(', ') : 'ยังไม่มี')}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">วันที่ส่งมอบ</span><span className="font-semibold text-slate-800">{item.handoverDatetime || '-'}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">ผู้รับเงิน</span><span className="font-semibold text-slate-800">{item.handoverReceiverName || '-'}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">ผู้อนุมัติ</span><span className="font-semibold text-slate-800">{item.handoverApproverName || '-'}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">บัญชีต้นทาง</span><span className="font-semibold text-slate-800">{item.sourceAccountLabel || '-'}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">ยอดส่งมอบ</span><span className="font-mono font-bold text-slate-900">{money(item.handedOverAmount)} บาท</span></div>
+                      </div>
+                      {item.handedOverAmount > 0 && item.proofUrl ? (
+                        <button onClick={() => handleOpenProof(item.proofUrl!, item.proofName)} className="text-[11px] font-bold text-teal-800 underline cursor-pointer">เปิดหลักฐานการส่งมอบ</button>
+                      ) : (
+                        <p className="text-[11px] text-slate-400">ยังไม่มีหลักฐานการส่งมอบเงิน</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-600">{item.installmentMode === 'installment' ? `ความคืบหน้า ${paidInstallments}/${installmentTotal} งวด` : 'จ่ายครั้งเดียว'}</span>
+                        <span className="font-mono font-bold text-slate-800">จ่ายจริง {money(item.disbursedAmount)} บาท</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full bg-teal-700" style={{ width: `${installmentProgress}%` }} />
+                      </div>
+                      {item.installmentMode === 'installment' && (item.installmentLines || []).map((line) => (
+                        <div key={line.installmentNo} className="flex items-center justify-between text-[11px] border-t border-slate-100 pt-1.5">
+                          <span className="text-slate-700">งวดที่ {line.installmentNo}{line.amount != null ? ` · ${money(line.amount)} บาท` : ''}</span>
+                          <span className="font-bold text-slate-800">{line.status === 'paid' ? 'จ่ายแล้ว' : 'รอจ่าย'}{line.paidDate ? ` · ${formatThaiDate(line.paidDate)}` : ''}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -1151,7 +1231,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
 
                       {/* 2. ผู้รับความช่วยเหลือและอัสนัฟ */}
                       <td className="py-3.5 px-4 min-w-[240px] max-w-[300px]">
-                        <div className="font-bold text-slate-900 text-sm tracking-tight truncate max-w-[280px]" title={item.beneficiaryName}>
+                        <div className="font-black text-slate-950 text-sm truncate max-w-[280px]" title={item.beneficiaryName}>
                           {item.beneficiaryName}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
@@ -1174,26 +1254,10 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
 
                       {/* 3. สถานะการเงิน */}
                       <td className="py-3.5 px-4 text-center w-36 min-w-[130px]">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap border ${
-                            item.financeStatus === 'fully_handed_over'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : item.financeStatus === 'partially_handed_over'
-                              ? 'bg-amber-50 text-amber-800 border-amber-200'
-                              : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              item.financeStatus === 'fully_handed_over'
-                                ? 'bg-emerald-500'
-                                : item.financeStatus === 'partially_handed_over'
-                                ? 'bg-amber-500'
-                                : 'bg-slate-400'
-                            }`}
-                          />
-                          {item.financeStatusLabel}
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap border ${PAYMENT_STAGE_STYLE[item.paymentStage || 'awaiting_draw'] || PAYMENT_STAGE_STYLE.awaiting_draw}`}>
+                          {item.paymentStageLabel || 'รอเบิกจ่าย'}
                         </span>
+                        <div className="mt-1 text-[10px] text-slate-500">{item.handoverPipelineLabel || 'ยังไม่ส่งคำขอเบิก'}</div>
                         {hasDiscrepancy && (
                           <div className="mt-1">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap animate-pulse">
@@ -1374,8 +1438,10 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                         <RefreshCw className="w-4 h-4 text-teal-600 animate-spin" />
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 font-mono mt-0.5">
-                      {selectedDetail.applicationNo} • ผู้รับ: {selectedDetail.beneficiaryName} ({selectedDetail.registrationNo})
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      <span className="font-black text-slate-900">{selectedDetail.beneficiaryName}</span>
+                      <span className="font-mono"> · {selectedDetail.applicationNo} · {selectedDetail.registrationNo}</span>
+                      {selectedDetail.assistanceType ? <span> · {selectedDetail.assistanceType}</span> : null}
                     </p>
                   </div>
                 </div>
@@ -1394,7 +1460,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                      สถานะระบบร่วมกัน (Dual Independent Real-time Statuses)
+                      สถานะการเงินและสถานะการจ่าย
                     </span>
                     <div className="flex flex-wrap items-center gap-2">
                       {/* Finance Status */}
@@ -1408,7 +1474,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                         }`}
                       >
                         <span className="w-2 h-2 rounded-full bg-current" />
-                        การเงิน: {selectedDetail.financeStatusLabel}
+                        ส่งมอบ: {selectedDetail.handoverPipelineLabel || selectedDetail.financeStatusLabel}
                       </span>
 
                       {/* Assistance Status */}
@@ -1424,7 +1490,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                         }`}
                       >
                         <span className="w-2 h-2 rounded-full bg-current" />
-                        การช่วยเหลือ: {selectedDetail.assistanceStatusLabel}
+                        จ่ายเงิน: {selectedDetail.paymentStageLabel || selectedDetail.assistanceStatusLabel}
                       </span>
                     </div>
                   </div>
@@ -1449,8 +1515,36 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                   </div>
                 </div>
 
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {DETAIL_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setDetailTab(tab.id)}
+                      className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold border cursor-pointer ${detailTab === tab.id ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-600 border-slate-200'}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {detailTab === 'followup' && (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-2">
+                    <p className="font-bold text-slate-900">การติดตามผล</p>
+                    <p className="text-slate-600">{selectedDetail.hasFollowUpPlan ? `มีแผนติดตามผล สถานะ ${selectedDetail.followUpStatus}` : 'ยังไม่มีแผนติดตามผลสำหรับเคสนี้'}</p>
+                    <button onClick={() => onNavigate('follow-up')} className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-800 font-bold border border-indigo-200 cursor-pointer">เปิดการติดตามผล</button>
+                  </div>
+                )}
+
+                {detailTab === 'handover' && (!selectedDetail.handovers || selectedDetail.handovers.length === 0) && (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-1">
+                    <p className="font-bold text-slate-900">ยังไม่มีรายการส่งมอบเงินจากฝ่ายการเงิน</p>
+                    <p className="text-slate-600">สถานะ {selectedDetail.handoverPipelineLabel || 'ยังไม่ส่งคำขอเบิก'} · ยอดส่งมอบ {money(selectedDetail.handedOverAmount)} บาท</p>
+                  </div>
+                )}
+
                 {/* 13 Required Fields Grid */}
-                <div>
+                <div className={detailTab === 'beneficiary' || detailTab === 'case' || detailTab === 'approval' || detailTab === 'documents' ? '' : 'hidden'}>
                   <h3 className="font-bold text-slate-900 text-sm mb-2.5 flex items-center gap-1.5">
                     <Info className="w-4 h-4 text-teal-700" />
                     ข้อมูลความช่วยเหลือและการเงิน (13 รายการตามเกณฑ์)
@@ -1604,7 +1698,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                 )}
 
                 {/* Handover Records History */}
-                {selectedDetail.handovers && selectedDetail.handovers.length > 0 && (
+                {detailTab === 'handover' && selectedDetail.handovers && selectedDetail.handovers.length > 0 && (
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
                     <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                       <History className="w-4 h-4 text-teal-700" />
@@ -1641,7 +1735,7 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                   </div>
                 )}
                 {/* TASK 3: Assistance Execution Records History (ประวัติการดำเนินงานจริงและการยืนยันผลแต่ละงวด) */}
-                <div className="p-4 rounded-xl bg-teal-50/50 border border-teal-200/80 space-y-3">
+                <div className={`p-4 rounded-xl bg-teal-50/50 border border-teal-200/80 space-y-3 ${detailTab === 'payment' ? '' : 'hidden'}`}>
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-teal-950 text-xs flex items-center gap-1.5">
                       <CheckCheck className="w-4 h-4 text-teal-700" />
@@ -2278,7 +2372,6 @@ export function DisbursementsView({ onNavigate }: DisbursementsViewProps) {
                       id="confirm-completion-checkbox"
                       checked={execIsConfirmed}
                       onChange={(e) => setExecIsConfirmed(e.target.checked)}
-                      defaultChecked={false}
                       className="mt-1 w-5 h-5 text-teal-700 rounded-md border-slate-300 focus:ring-teal-500 cursor-pointer shrink-0"
                     />
                     <div className="space-y-1">

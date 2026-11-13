@@ -1,21 +1,12 @@
 import type { NextRequest } from 'next/server';
+import { resolveServerToken } from '@/lib/serverToken';
 import { buildSurveyPrintModel, type SurveyPrintImage } from './model';
 import { renderSurveyHtml } from './render';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 export function userToken(request: NextRequest): string | null {
-  const header = request.headers.get('authorization') || '';
-  if (header.startsWith('Bearer ')) {
-    const token = header.slice(7).trim();
-    if (token && token !== 'null' && token !== 'undefined') return token;
-  }
-  const cookie = request.headers.get('cookie') || '';
-  const session = cookie.match(/zms_session=([^;]+)/);
-  if (session) return decodeURIComponent(session[1]);
-  const stored = cookie.match(/zms_auth_token=([^;]+)/);
-  if (stored) return decodeURIComponent(stored[1]);
-  return null;
+  return resolveServerToken(request);
 }
 
 async function readJson(response: Response): Promise<any> {

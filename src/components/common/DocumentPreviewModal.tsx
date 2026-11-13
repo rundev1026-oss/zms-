@@ -66,6 +66,13 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     let created = '';
 
     const load = async () => {
+      if (doc.fileUrl?.startsWith('blob:')) {
+        if (active) {
+          setObjectUrl(doc.fileUrl);
+          setIsLoading(false);
+        }
+        return;
+      }
       const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null);
       const isRealJwt = token && token !== 'cookie-session' && token !== 'null' && token !== 'undefined';
       

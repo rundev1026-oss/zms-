@@ -17,7 +17,12 @@ import {
   Loader2,
 } from 'lucide-react';
 import { BeneficiaryDocument } from '@/types';
-import { isBeneficiaryId, uploadRegistryDocument, type PendingRegistryFile } from '@/lib/registryDocuments';
+import {
+  isBeneficiaryId,
+  uploadRegistryDocument,
+  computeDocumentChecklist,
+  type PendingRegistryFile,
+} from '@/lib/registryDocuments';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
 
 export interface UploadedDocumentItem {
@@ -116,16 +121,14 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
     setGeneralError(null);
 
     const beneficiaryUpload = entityType === 'beneficiary';
-    const allowedTypes = beneficiaryUpload
-      ? ['application/pdf', 'image/jpeg', 'image/png']
-      : ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-    const maxSizeBytes = beneficiaryUpload ? 10 * 1024 * 1024 : 25 * 1024 * 1024;
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    const maxSizeBytes = 25 * 1024 * 1024;
 
     const filesToUpload: File[] = Array.from(fileList);
 
     for (const file of filesToUpload) {
       if (!allowedTypes.includes(file.type)) {
-        setGeneralError(`ไฟล์ "${file.name}" ไม่ได้รับอนุญาต รองรับเฉพาะ PDF และไฟล์รูปภาพ`);
+        setGeneralError(`ไฟล์ "${file.name}" ไม่ได้รับอนุญาต รองรับเฉพาะ PDF, JPG, PNG และ WEBP`);
         return;
       }
       if (file.size > maxSizeBytes) {
@@ -144,12 +147,16 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
           if (!isBeneficiaryId(entityId)) {
             const pendingId = `pending-${crypto.randomUUID()}`;
             pendingFilesRef.current.set(pendingId, { file, category: selectedCategory });
+            const localObjectUrl =
+              typeof window !== 'undefined' && typeof URL.createObjectURL === 'function'
+                ? URL.createObjectURL(file)
+                : '';
             const pendingDoc: UploadedDocumentItem = {
               id: pendingId,
               name: file.name,
               category: selectedCategory,
               categoryLabel: categoryObj?.label || selectedCategory,
-              fileUrl: '',
+              fileUrl: localObjectUrl,
               fileSize: file.size,
               mimeType: file.type,
               storageProvider: 'local',
@@ -319,6 +326,9 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
         });
 
         const regData = await regRes.json();
+        if (!regRes.ok || !regData.success) {
+          throw new Error(regData.error || 'ลงทะเบียนเอกสารในฐานข้อมูลไม่สำเร็จ');
+        }
         const docRecord = regData.document;
 
         const categoryObj = DOCUMENT_CATEGORIES.find((c) => c.value === selectedCategory);
@@ -340,10 +350,10 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
           status: 'pending',
         };
 
-        const updatedDocs = [...documents, newDoc];
-        setDocuments(updatedDocs);
+        nextDocuments = [...nextDocuments, newDoc];
+        setDocuments(nextDocuments);
         if (onDocumentsChange) {
-          onDocumentsChange(updatedDocs);
+          onDocumentsChange(nextDocuments);
         }
 
         // Remove from uploading
@@ -358,9 +368,32 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
     }
   };
 
-  const handleRemoveDocument = (id: string) => {
+  const handleRemoveDocument = async (id: string) => {
+    const targetDoc = documents.find((d) => d.id === id);
     pendingFilesRef.current.delete(id);
     publishPending();
+    if (targetDoc && !targetDoc.localOnly && !id.startsWith('pending-')) {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('zms_auth_token') : null;
+        const headers: Record<string, string> = {};
+        if (token && token !== 'cookie-session' && token !== 'null' && token !== 'undefined') {
+          headers.Authorization = `Bearer ${token}`;
+        }
+        const res = await fetch(`/api/documents/${id}`, {
+          method: 'DELETE',
+          headers,
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setGeneralError(body.error || 'ลบเอกสารบนเซิร์ฟเวอร์ไม่สำเร็จ');
+          return;
+        }
+      } catch (err: any) {
+        setGeneralError(err?.message || 'ลบเอกสารไม่สำเร็จ');
+        return;
+      }
+    }
     const updated = documents.filter((d) => d.id !== id);
     setDocuments(updated);
     if (onDocumentsChange) {
@@ -439,11 +472,14 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full sm:w-auto px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
               >
-                {DOCUMENT_CATEGORIES.map((cat) => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
+                {DOCUMENT_CATEGORIES.map((cat) => {
+                  const count = documents.filter((d) => d.category === cat.value).length;
+                  return (
+                    <option key={cat.value} value={cat.value}>
+                      {count > 0 ? `✓ ${cat.label} (${count} ไฟล์)` : `○ ${cat.label} (0 ไฟล์)`}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -451,6 +487,42 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
               <Lock className="w-3.5 h-3.5 text-emerald-600" />
               <span>ความปลอดภัยสูงสุด (Direct S3 / Encryption)</span>
             </div>
+          </div>
+
+          {/* Quick Category Pills with Auto-Checklist Indicator */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {DOCUMENT_CATEGORIES.map((cat) => {
+              const count = documents.filter((d) => d.category === cat.value).length;
+              const isSelected = selectedCategory === cat.value;
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat.value)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all flex items-center gap-1 ${
+                    isSelected
+                      ? 'bg-[#0b2545] text-white border-[#0b2545] shadow-2xs'
+                      : count > 0
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>{count > 0 ? '✓' : '○'}</span>
+                  <span>{cat.label}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : count > 0
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {count} ไฟล์
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Drag & Drop Area */}
@@ -477,7 +549,10 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
               type="file"
               multiple
               accept=".pdf,.png,.jpg,.jpeg,.webp"
-              onChange={(e) => handleUpload(e.target.files)}
+              onChange={(e) => {
+                handleUpload(e.target.files);
+                e.target.value = '';
+              }}
               className="hidden"
             />
 

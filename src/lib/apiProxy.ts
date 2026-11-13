@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveServerToken } from './serverToken';
 
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:4000/api/v1';
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-only-access-secret-change-me-zms-enterprise-2026';
@@ -32,27 +33,8 @@ export async function proxyToNest(
     const headers = new Headers(options.headers || {});
     headers.set('Content-Type', 'application/json');
 
-    // Forward incoming authorization or inject service token
-    let authHeader = request.headers.get('authorization');
-    if (authHeader && (authHeader.includes('cookie-session') || authHeader.includes('null') || authHeader.includes('undefined'))) {
-      authHeader = null;
-    }
-    if (!authHeader) {
-      // Check cookies for token
-      const cookieHeader = request.headers.get('cookie') || '';
-      const match = cookieHeader.match(/zms_session=([^;]+)/) ||
-                    cookieHeader.match(/zms_access_token=([^;]+)/) ||
-                    cookieHeader.match(/zms_auth_token=([^;]+)/);
-      if (match) {
-        authHeader = `Bearer ${decodeURIComponent(match[1])}`;
-      }
-    }
-
-    if (authHeader) {
-      headers.set('authorization', authHeader);
-    } else {
-      headers.set('authorization', `Bearer ${createServiceToken()}`);
-    }
+    const token = resolveServerToken(request);
+    headers.set('authorization', `Bearer ${token}`);
 
     const cookieHeader = request.headers.get('cookie');
     if (cookieHeader) {

@@ -53,7 +53,7 @@ export class DocumentsService {
     const kind = detectAllowedFile(file.buffer);
     if (kind === null) {
       throw new AppException(HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR', 'ข้อมูลไม่ถูกต้อง', [
-        { field: 'file', message: 'รองรับเฉพาะไฟล์ pdf, jpg หรือ png ขนาดไม่เกิน 10 MB' },
+        { field: 'file', message: 'รองรับเฉพาะไฟล์ PDF, JPG, PNG หรือ WEBP ขนาดไม่เกิน 25 MB' },
       ]);
     }
     const originalFileName = safeOriginalName(file.originalname);
@@ -140,44 +140,111 @@ export class DocumentsService {
   }
 
   async remove(documentId: string, actor: AuthUser) {
-    const existing = await this.findActive(documentId);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.beneficiaryDocument.update({
-        where: { id: existing.id },
-        data: { deletedAt: new Date() },
-      });
-      await this.audit.record(tx, {
-        actorId: actor.id,
-        action: 'DOCUMENT_DELETE',
-        resourceType: 'beneficiary_document',
-        resourceId: existing.id,
-        metadata: { softDeleted: true },
-      });
+    const existing = await this.prisma.beneficiaryDocument.findFirst({
+      where: { id: documentId, deletedAt: null },
     });
-    return { id: existing.id, deleted: true };
+    if (existing) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.beneficiaryDocument.update({
+          where: { id: existing.id },
+          data: { deletedAt: new Date() },
+        });
+        await this.audit.record(tx, {
+          actorId: actor.id,
+          action: 'DOCUMENT_DELETE',
+          resourceType: 'beneficiary_document',
+          resourceId: existing.id,
+          metadata: { softDeleted: true },
+        });
+      });
+      return { id: existing.id, deleted: true };
+    }
+
+    const appDoc = await this.prisma.applicationDocument.findUnique({
+      where: { id: documentId },
+    });
+    if (appDoc) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.applicationDocument.delete({
+          where: { id: appDoc.id },
+        });
+        await this.audit.record(tx, {
+          actorId: actor.id,
+          action: 'DOCUMENT_DELETE',
+          resourceType: 'application_document',
+          resourceId: appDoc.id,
+          metadata: { applicationId: appDoc.applicationId, name: appDoc.name },
+        });
+      });
+      return { id: appDoc.id, deleted: true };
+    }
+
+    throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบเอกสาร');
   }
 
   async readContent(documentId: string, actor: AuthUser) {
-    const existing = await this.findActive(documentId);
-    const fullPath = this.resolve(existing.storageKey);
-    let bytes: Buffer;
-    try {
-      bytes = await readFile(fullPath);
-    } catch {
-      throw new AppException(HttpStatus.NOT_FOUND, 'FILE_MISSING', 'ไม่พบไฟล์ต้นฉบับ');
-    }
-    await this.audit.write({
-      actorId: actor.id,
-      action: 'DOCUMENT_DOWNLOAD',
-      resourceType: 'beneficiary_document',
-      resourceId: existing.id,
-      metadata: { sizeBytes: bytes.length },
+    const existing = await this.prisma.beneficiaryDocument.findFirst({
+      where: { id: documentId, deletedAt: null },
     });
-    return {
-      bytes,
-      mimeType: existing.mimeType,
-      fileName: existing.originalFileName,
-    };
+    if (existing) {
+      const fullPath = this.resolve(existing.storageKey);
+      let bytes: Buffer;
+      try {
+        bytes = await readFile(fullPath);
+      } catch {
+        throw new AppException(HttpStatus.NOT_FOUND, 'FILE_MISSING', 'ไม่พบไฟล์ต้นฉบับ');
+      }
+      await this.audit.write({
+        actorId: actor.id,
+        action: 'DOCUMENT_DOWNLOAD',
+        resourceType: 'beneficiary_document',
+        resourceId: existing.id,
+        metadata: { sizeBytes: bytes.length },
+      });
+      return {
+        bytes,
+        mimeType: existing.mimeType,
+        fileName: existing.originalFileName,
+      };
+    }
+
+    const appDoc = await this.prisma.applicationDocument.findUnique({
+      where: { id: documentId },
+    });
+    if (appDoc) {
+      const baseName = path.basename(appDoc.storagePath || appDoc.fileUrl || '');
+      if (!baseName || baseName === '.' || baseName === '..') {
+        throw new AppException(HttpStatus.NOT_FOUND, 'FILE_MISSING', 'ไม่พบไฟล์ต้นฉบับ');
+      }
+      const candidates = [
+        path.resolve(process.cwd(), 'public', 'uploads', 'documents', baseName),
+        path.resolve(process.cwd(), '..', '..', 'public', 'uploads', 'documents', baseName),
+      ];
+      let bytes: Buffer | null = null;
+      for (const candidate of candidates) {
+        try {
+          bytes = await readFile(candidate);
+          break;
+        } catch {}
+      }
+      if (!bytes) {
+        throw new AppException(HttpStatus.NOT_FOUND, 'FILE_MISSING', 'ไม่พบไฟล์ต้นฉบับ');
+      }
+      await this.audit.write({
+        actorId: actor.id,
+        action: 'DOCUMENT_DOWNLOAD',
+        resourceType: 'application_document',
+        resourceId: appDoc.id,
+        metadata: { sizeBytes: bytes.length },
+      });
+      return {
+        bytes,
+        mimeType: appDoc.mimeType || 'application/pdf',
+        fileName: appDoc.name,
+      };
+    }
+
+    throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบเอกสาร');
   }
 
   private async findActive(documentId: string) {
@@ -191,7 +258,7 @@ export class DocumentsService {
   }
 
   private resolve(storageKey: string): string {
-    if (!/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(pdf|jpg|png)$/i.test(storageKey)) {
+    if (!/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/i.test(storageKey)) {
       throw new AppException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'ไม่พบเอกสาร');
     }
     const root = path.resolve(this.storageRoot);

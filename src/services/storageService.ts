@@ -366,6 +366,65 @@ export class StorageService {
   }
 
   /**
+   * Ensure application_documents does not have a restrictive foreign key on application_id
+   */
+  private static schemaMigrated = false;
+  private static async ensureApplicationDocumentsSchema(db: any) {
+    if (this.schemaMigrated) return;
+    try {
+      const fkList = await db.execute(`PRAGMA foreign_key_list(application_documents)`);
+      if (fkList.rows.length > 0) {
+        await db.execute(`PRAGMA foreign_keys = OFF;`);
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS application_documents_v2 (
+            id TEXT PRIMARY KEY,
+            application_id TEXT DEFAULT '',
+            beneficiary_id TEXT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            file_url TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            upload_date TEXT NOT NULL,
+            storage_provider TEXT DEFAULT 'local',
+            storage_path TEXT,
+            file_size INTEGER DEFAULT 0,
+            mime_type TEXT,
+            checksum TEXT,
+            is_confidential INTEGER DEFAULT 1,
+            uploaded_by_id TEXT,
+            uploaded_by_name TEXT,
+            verified_by_id TEXT,
+            verified_by_name TEXT,
+            verified_date TEXT,
+            rejection_reason TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        await db.execute(`
+          INSERT OR IGNORE INTO application_documents_v2 (
+            id, application_id, beneficiary_id, name, category, file_url, status,
+            upload_date, storage_provider, storage_path, file_size, mime_type,
+            checksum, is_confidential, uploaded_by_id, uploaded_by_name,
+            verified_by_id, verified_by_name, verified_date, rejection_reason, created_at
+          )
+          SELECT
+            id, COALESCE(application_id, ''), beneficiary_id, name, category, file_url, status,
+            upload_date, COALESCE(storage_provider, 'local'), storage_path, COALESCE(file_size, 0), mime_type,
+            checksum, COALESCE(is_confidential, 1), uploaded_by_id, uploaded_by_name,
+            verified_by_id, verified_by_name, verified_date, rejection_reason, created_at
+          FROM application_documents;
+        `);
+        await db.execute(`DROP TABLE application_documents;`);
+        await db.execute(`ALTER TABLE application_documents_v2 RENAME TO application_documents;`);
+        await db.execute(`PRAGMA foreign_keys = ON;`);
+      }
+      this.schemaMigrated = true;
+    } catch (err) {
+      console.warn('ensureApplicationDocumentsSchema warning:', err);
+    }
+  }
+
+  /**
    * Register document in SQLite database
    */
   static async registerDocument(
@@ -374,6 +433,7 @@ export class StorageService {
   ) {
     await initDb();
     const db = getDb();
+    await this.ensureApplicationDocumentsSchema(db);
 
     const docId = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const uploadDateStr = new Date().toLocaleDateString('th-TH', {
@@ -383,23 +443,19 @@ export class StorageService {
     });
 
     const isBeneficiary = input.entityType === 'beneficiary';
-    let applicationId = isBeneficiary ? '' : (input.entityId || '');
-    const beneficiaryId = isBeneficiary ? input.entityId : null;
+    const applicationId = isBeneficiary ? '' : (input.entityId || 'draft');
+    let beneficiaryId: string | null = isBeneficiary ? input.entityId : null;
 
-    let appExists = false;
-    if (applicationId) {
-      const checkRes = await db.execute({
-        sql: 'SELECT id FROM assistance_applications WHERE id = ?',
-        args: [applicationId],
-      });
-      appExists = checkRes.rows.length > 0;
-    }
-
-    if (!appExists) {
-      const fallbackApp = await db.execute('SELECT id FROM assistance_applications LIMIT 1');
-      if (fallbackApp.rows.length > 0) {
-        applicationId = String(fallbackApp.rows[0].id);
-      }
+    if (!isBeneficiary && applicationId && applicationId !== 'draft') {
+      try {
+        const checkRes = await db.execute({
+          sql: 'SELECT beneficiary_id FROM assistance_applications WHERE id = ? OR application_no = ? LIMIT 1',
+          args: [applicationId, applicationId],
+        });
+        if (checkRes.rows.length > 0 && checkRes.rows[0].beneficiary_id) {
+          beneficiaryId = String(checkRes.rows[0].beneficiary_id);
+        }
+      } catch {}
     }
 
     await db.execute({
@@ -450,6 +506,7 @@ export class StorageService {
       name: input.name,
       category: input.category,
       fileUrl: input.fileUrl,
+      storagePath: input.storagePath,
       uploadDate: uploadDateStr,
       status: 'pending',
       storageProvider: input.storageProvider,
@@ -457,7 +514,45 @@ export class StorageService {
       mimeType: input.mimeType,
       uploadedById: actor?.id,
       uploadedByName: actor?.name,
+      fileExists: true,
     };
+  }
+
+  /**
+   * Fetch documents for a beneficiary or assistance request from SQLite
+   */
+  static async getDocumentsByEntity(
+    entityType: 'beneficiary' | 'assistance_request',
+    entityId: string
+  ) {
+    if (!entityId) return [];
+    await initDb();
+    const db = getDb();
+    const res = await db.execute({
+      sql:
+        entityType === 'beneficiary'
+          ? `SELECT * FROM application_documents WHERE beneficiary_id = ? ORDER BY created_at DESC`
+          : `SELECT * FROM application_documents WHERE application_id = ? ORDER BY created_at DESC`,
+      args: [entityId],
+    });
+    return res.rows.map((row: any) => {
+      const check = this.checkPhysicalFile(row);
+      return {
+        id: String(row.id),
+        name: String(row.name),
+        category: String(row.category || 'other_doc'),
+        fileUrl: String(row.file_url || `/api/storage/file/${row.id}`),
+        storagePath: row.storage_path ? String(row.storage_path) : undefined,
+        storageProvider: (row.storage_provider ? String(row.storage_provider) : 'local') as StorageProvider,
+        fileSize: Number(row.file_size || check.fileSize || 0),
+        mimeType: String(row.mime_type || this.getMimeType(String(row.name))),
+        uploadDate: String(row.upload_date || row.created_at || new Date().toISOString()),
+        status: String(row.status || 'pending'),
+        uploadedById: row.uploaded_by_id ? String(row.uploaded_by_id) : undefined,
+        uploadedByName: row.uploaded_by_name ? String(row.uploaded_by_name) : 'เจ้าหน้าที่ระบบ',
+        fileExists: check.exists,
+      };
+    });
   }
 
   /**

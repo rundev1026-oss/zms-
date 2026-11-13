@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveServerToken } from '@/lib/serverToken';
 import { StorageService } from '@/services/storageService';
 import { AuthService } from '@/services/authService';
 import { ActorContext } from '@/services/registryService';
@@ -6,37 +7,7 @@ import { ActorContext } from '@/services/registryService';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 function extractToken(request: NextRequest): string {
-  // 1. Authorization Bearer header
-  const authHeader = request.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    const raw = authHeader.replace('Bearer ', '').trim();
-    if (raw && raw !== 'cookie-session' && raw !== 'null' && raw !== 'undefined') {
-      return raw;
-    }
-  }
-
-  // 2. HTTP-only cookies
-  const sessionCookie = request.cookies.get('zms_session')?.value ||
-                        request.cookies.get('zms_auth_token')?.value ||
-                        request.cookies.get('zms_access_token')?.value;
-  if (sessionCookie && sessionCookie !== 'cookie-session' && sessionCookie !== 'null' && sessionCookie !== 'undefined') {
-    return sessionCookie.trim();
-  }
-
-  // 3. Cookie header regex fallback
-  const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/zms_session=([^;]+)/) ||
-                cookieHeader.match(/zms_auth_token=([^;]+)/) ||
-                cookieHeader.match(/zms_access_token=([^;]+)/);
-  if (match) {
-    const raw = decodeURIComponent(match[1]).trim();
-    if (raw && raw !== 'cookie-session' && raw !== 'null' && raw !== 'undefined') {
-      return raw;
-    }
-  }
-
-  // NOTE: Token via query string (?token=...) is strictly disallowed for security/PDPA compliance
-  return '';
+  return resolveServerToken(request);
 }
 
 export async function GET(

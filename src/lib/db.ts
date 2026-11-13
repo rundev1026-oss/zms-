@@ -328,18 +328,26 @@ export async function initDb(): Promise<void> {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS application_documents (
       id TEXT PRIMARY KEY,
-      application_id TEXT NOT NULL,
+      application_id TEXT DEFAULT '',
+      beneficiary_id TEXT,
       name TEXT NOT NULL,
       category TEXT NOT NULL,
       file_url TEXT NOT NULL,
       status TEXT DEFAULT 'pending',
       upload_date TEXT NOT NULL,
+      storage_provider TEXT DEFAULT 'local',
+      storage_path TEXT,
+      file_size INTEGER DEFAULT 0,
+      mime_type TEXT,
+      checksum TEXT,
+      is_confidential INTEGER DEFAULT 1,
+      uploaded_by_id TEXT,
+      uploaded_by_name TEXT,
       verified_by_id TEXT,
       verified_by_name TEXT,
       verified_date TEXT,
       rejection_reason TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (application_id) REFERENCES assistance_applications (id) ON DELETE CASCADE
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
@@ -659,6 +667,58 @@ export async function initDb(): Promise<void> {
   }
   if (!docColNames.includes('uploaded_by_name')) {
     try { await db.execute(`ALTER TABLE application_documents ADD COLUMN uploaded_by_name TEXT;`); } catch {}
+  }
+
+  // Migrate application_documents if it still has the legacy FOREIGN KEY on application_id
+  try {
+    const fkList = await db.execute(`PRAGMA foreign_key_list(application_documents)`);
+    if (fkList.rows.length > 0) {
+      await db.execute(`PRAGMA foreign_keys = OFF;`);
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS application_documents_v2 (
+          id TEXT PRIMARY KEY,
+          application_id TEXT DEFAULT '',
+          beneficiary_id TEXT,
+          name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          file_url TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          upload_date TEXT NOT NULL,
+          storage_provider TEXT DEFAULT 'local',
+          storage_path TEXT,
+          file_size INTEGER DEFAULT 0,
+          mime_type TEXT,
+          checksum TEXT,
+          is_confidential INTEGER DEFAULT 1,
+          uploaded_by_id TEXT,
+          uploaded_by_name TEXT,
+          verified_by_id TEXT,
+          verified_by_name TEXT,
+          verified_date TEXT,
+          rejection_reason TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await db.execute(`
+        INSERT OR IGNORE INTO application_documents_v2 (
+          id, application_id, beneficiary_id, name, category, file_url, status,
+          upload_date, storage_provider, storage_path, file_size, mime_type,
+          checksum, is_confidential, uploaded_by_id, uploaded_by_name,
+          verified_by_id, verified_by_name, verified_date, rejection_reason, created_at
+        )
+        SELECT
+          id, COALESCE(application_id, ''), beneficiary_id, name, category, file_url, status,
+          upload_date, COALESCE(storage_provider, 'local'), storage_path, COALESCE(file_size, 0), mime_type,
+          checksum, COALESCE(is_confidential, 1), uploaded_by_id, uploaded_by_name,
+          verified_by_id, verified_by_name, verified_date, rejection_reason, created_at
+        FROM application_documents;
+      `);
+      await db.execute(`DROP TABLE application_documents;`);
+      await db.execute(`ALTER TABLE application_documents_v2 RENAME TO application_documents;`);
+      await db.execute(`PRAGMA foreign_keys = ON;`);
+    }
+  } catch (err) {
+    console.warn('application_documents FK migration warning:', err);
   }
 
   // Safe backfill: ensure all existing beneficiaries have a registration_no and registration_status

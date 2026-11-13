@@ -42,7 +42,11 @@ import {
   MapPin
 } from 'lucide-react';
 import { DocumentUploader, UploadedDocumentItem } from '@/components/common/DocumentUploader';
-import { uploadPendingRegistryDocuments, type PendingRegistryFile } from '@/lib/registryDocuments';
+import {
+  uploadPendingRegistryDocuments,
+  computeDocumentChecklist,
+  type PendingRegistryFile,
+} from '@/lib/registryDocuments';
 import { GoogleMapsLocationPicker } from '@/components/common/GoogleMapsLocationPicker';
 import { calculateAge, getTodayISODate, normalizeBirthDateToCE } from '@/utils/ageCalculator';
 import { ThaiAddressFields } from '@/components/common/ThaiAddressFields';
@@ -77,7 +81,7 @@ interface MultiStepRegistrationViewProps {
 }
 
 export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberDetail }: MultiStepRegistrationViewProps) {
-  const { registerBeneficiaryProfile, updateBeneficiaryRegistry, createApplication, showToast, currentUser, funds, authToken } = useApp();
+  const { registerBeneficiaryProfile, updateBeneficiaryRegistry, createApplication, showToast, currentUser, funds, authToken, refreshData } = useApp();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const submitLockRef = useRef(false);
@@ -318,7 +322,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
   );
 
   // ========================================================
-  // ส่วน I: เอกสารแนบ
+  // ส่วน I: เอกสารแนบ (Auto-Checklist จากไฟล์ที่อัปโหลดจริง)
   // ========================================================
   const [hasIdCardDoc, setHasIdCardDoc] = useState<boolean>(false);
   const [hasHouseRegDoc, setHasHouseRegDoc] = useState<boolean>(false);
@@ -326,6 +330,21 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
   const [hasHousingPhotoDoc, setHasHousingPhotoDoc] = useState<boolean>(false);
   const [hasLandDoc, setHasLandDoc] = useState<boolean>(false);
   const [hasMedicalCertDoc, setHasMedicalCertDoc] = useState<boolean>(false);
+
+  const docChecklistSummary = useMemo(
+    () => computeDocumentChecklist(uploadedDocs),
+    [uploadedDocs],
+  );
+
+  useEffect(() => {
+    const counts = docChecklistSummary.countsByCategory;
+    setHasIdCardDoc((counts.id_card || 0) > 0);
+    setHasHouseRegDoc((counts.house_reg || 0) > 0);
+    setHasFamilyPhotoDoc((counts.family_photo || 0) > 0);
+    setHasHousingPhotoDoc(((counts.housing_exterior || 0) + (counts.housing_interior || 0)) > 0);
+    setHasLandDoc((counts.land_doc || 0) > 0);
+    setHasMedicalCertDoc((counts.medical_cert || 0) > 0);
+  }, [docChecklistSummary]);
 
   // Live Duplicate National ID check (Master Requirement Section 4)
   useEffect(() => {
@@ -851,6 +870,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
         } else {
           showToast('บันทึกเอกสารแนบเรียบร้อยแล้ว', 'success');
         }
+        await refreshData();
       };
 
       if (formMode === 'registry_only') {
@@ -872,8 +892,6 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
               onOpenMemberDetail(benId);
               return;
             }
-            await attachPendingDocuments(benId);
-            if (typeof window !== 'undefined') localStorage.removeItem('zms_draft_beneficiary');
             onNavigate('beneficiaries');
           }
         }
@@ -2225,85 +2243,67 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                 <FileText className="w-5 h-5 text-emerald-700" />  เอกสารแนบประกอบคำร้อง (PDPA Compliant)
               </h2>
 
-              <p className="text-xs text-slate-500">การติ๊กชื่อประเภทเอกสารไม่ใช่การแนบไฟล์ ให้เลือกไฟล์จริงในส่วนอัปโหลดด้านล่าง</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={hasIdCardDoc}
-                      onChange={(e) => setHasIdCardDoc(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded"
-                    />
-                    <span className="font-semibold text-slate-800">สำเนาบัตรประชาชนผู้ขอรับ</span>
+              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">
+                      สถานะเอกสารแนบอัตโนมัติ (Auto Document Checklist)
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      ระบบติ๊ก ✓ ประเภทเอกสารอัตโนมัติทันทีที่มีไฟล์แนบในหมวดนั้น ไม่ต้องติ๊กเอง
+                    </p>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">จำเป็น</span>
-                </label>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-bold">
+                      เอกสารที่แนบแล้ว {docChecklistSummary.attachedCategoriesCount} รายการ
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-200 text-slate-700 font-bold">
+                      เอกสารที่ยังไม่แนบ {docChecklistSummary.unattachedCategoriesCount} รายการ
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-900 font-extrabold">
+                      ความครบถ้วนของเอกสาร {docChecklistSummary.attachedCategoriesCount}/{docChecklistSummary.totalCategoriesCount}
+                    </span>
+                  </div>
+                </div>
 
-                <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={hasHouseRegDoc}
-                      onChange={(e) => setHasHouseRegDoc(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded"
-                    />
-                    <span className="font-semibold text-slate-800">สำเนาทะเบียนบ้าน</span>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">จำเป็น</span>
-                </label>
-
-                <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={hasFamilyPhotoDoc}
-                      onChange={(e) => setHasFamilyPhotoDoc(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded"
-                    />
-                    <span className="font-semibold text-slate-800">ภาพถ่ายครอบครัว</span>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">ถ้ามี</span>
-                </label>
-
-                <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={hasHousingPhotoDoc}
-                      onChange={(e) => setHasHousingPhotoDoc(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded"
-                    />
-                    <span className="font-semibold text-slate-800">ภาพถ่ายที่อยู่อาศัย (ใน/นอก)</span>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">ถ้ามี</span>
-                </label>
-
-                <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={hasMedicalCertDoc}
-                      onChange={(e) => setHasMedicalCertDoc(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded"
-                    />
-                    <span className="font-semibold text-slate-800">ใบรับรองแพทย์ / ประวัติการรักษา</span>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">ถ้ามี</span>
-                </label>
-
-                <label className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={hasLandDoc}
-                      onChange={(e) => setHasLandDoc(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded"
-                    />
-                    <span className="font-semibold text-slate-800">เอกสารสิทธิ์ที่ดิน (ถ้ามี)</span>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700">ตัวเลือก</span>
-                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  {docChecklistSummary.items.map((item) => (
+                    <div
+                      key={item.key}
+                      className={`p-3 rounded-xl border flex items-center justify-between ${
+                        item.attached
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                          : 'bg-white border-slate-200 text-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0 ${
+                            item.attached
+                              ? 'bg-emerald-600 text-white'
+                              : 'border-2 border-slate-300 text-slate-400'
+                          }`}
+                        >
+                          {item.attached ? '✓' : '○'}
+                        </span>
+                        <span className="font-bold truncate">
+                          {item.attached ? '✓' : '○'} {item.shortLabel} ({item.count} ไฟล์)
+                        </span>
+                      </div>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                          item.attached
+                            ? 'bg-emerald-600 text-white'
+                            : item.required
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {item.attached ? `แนบแล้ว (${item.count} ไฟล์)` : item.required ? 'จำเป็น (0 ไฟล์)' : 'ยังไม่แนบ (0 ไฟล์)'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Direct S3 / Cloud Storage Real File Uploader */}

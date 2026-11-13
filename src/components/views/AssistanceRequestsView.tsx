@@ -12,6 +12,7 @@ import {
 } from '@/types';
 import { formatPersonName } from '@zms/shared';
 import { normalizePrimaryGroupCode } from '@/lib/financeUtils';
+import { computeDocumentChecklist } from '@/lib/registryDocuments';
 import { DocumentListTable } from '@/components/common/DocumentListTable';
 import { ModalPortal, lockBodyScroll, unlockBodyScroll } from '@/components/common/Modal';
 import { AssistanceRequestFormModal } from '@/components/views/assistance/AssistanceRequestFormModal';
@@ -1633,54 +1634,107 @@ export function AssistanceRequestsView({
               )}
 
               {/* Attached Documents in Modal (Separated Request Documents vs Master Registry Documents) */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                    <FileText className="w-4 h-4 text-emerald-600" />
-                    <span>เอกสารประกอบเฉพาะคำร้องครั้งนี้ ({selectedApp.documents?.length || 0} รายการ)</span>
-                  </h4>
-                  <span className="text-[11px] text-slate-400">แยกอิสระจากเอกสารทะเบียนหลัก • เปิดดูและดาวน์โหลดได้ตามสิทธิ์</span>
-                </div>
-
-                <DocumentListTable
-                  documents={selectedApp.documents || []}
-                  readOnly={true}
-                />
-
-                {Array.isArray(selectedApp.registryDocuments) && selectedApp.registryDocuments.length > 0 && (
-                  <div className="pt-3 border-t border-slate-200 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-700">
-                        เอกสารเดิมจากทะเบียนผู้มีสิทธิ์หลัก ({selectedApp.registryDocuments.length} รายการ — อ่านอย่างเดียว)
-                      </span>
+              {(() => {
+                const combinedDocs = [
+                  ...(selectedApp.documents || []),
+                  ...(selectedApp.registryDocuments || []),
+                ];
+                const checklistSummary = computeDocumentChecklist(combinedDocs);
+                return (
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                      <div>
+                        <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                          <FileText className="w-4 h-4 text-emerald-600" />
+                          <span>
+                            รายการตรวจสอบเอกสารแนบอัตโนมัติ (Auto Document Checklist)
+                          </span>
+                        </h4>
+                        <span className="text-[11px] text-slate-400">
+                          รวมเอกสารเฉพาะคำร้อง ({selectedApp.documents?.length || 0} ไฟล์) และเอกสารจากทะเบียนหลัก ({selectedApp.registryDocuments?.length || 0} ไฟล์)
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-900 font-bold">
+                          เอกสารที่แนบแล้ว {checklistSummary.attachedCategoriesCount} รายการ
+                        </span>
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-200 text-slate-700 font-bold">
+                          เอกสารที่ยังไม่แนบ {checklistSummary.unattachedCategoriesCount} รายการ
+                        </span>
+                        <span className="px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-900 font-extrabold">
+                          ความครบถ้วนของเอกสาร {checklistSummary.attachedCategoriesCount}/{checklistSummary.totalCategoriesCount}
+                        </span>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {selectedApp.registryDocuments.map((rdoc) => (
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+                      {checklistSummary.items.map((item) => (
                         <div
-                          key={rdoc.id}
-                          className="p-2.5 rounded-lg bg-white border border-slate-200 flex items-center justify-between gap-2 text-xs"
+                          key={item.key}
+                          className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
+                            item.attached
+                              ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                              : 'bg-white border-slate-200 text-slate-500'
+                          }`}
                         >
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-800 truncate">{rdoc.name}</div>
-                            <div className="text-[10px] text-slate-400">หมวด: {rdoc.category}</div>
-                          </div>
-                          {rdoc.downloadUrl && (
-                            <a
-                              href={rdoc.downloadUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:underline shrink-0"
-                            >
-                              <span>เปิดดู</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
+                          <span className="font-semibold truncate">
+                            {item.attached ? '✓' : '○'} {item.shortLabel} ({item.count} ไฟล์)
+                          </span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                              item.attached
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            {item.attached ? 'แนบแล้ว' : 'ยังไม่แนบ'}
+                          </span>
                         </div>
                       ))}
                     </div>
+
+                    <div className="pt-2 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <h5 className="font-bold text-slate-800 text-xs">
+                          เอกสารประกอบเฉพาะคำร้องครั้งนี้ ({selectedApp.documents?.length || 0} รายการ)
+                        </h5>
+                        <span className="text-[11px] text-slate-400">
+                          เปิดดูตัวอย่างและดาวน์โหลดได้ตามสิทธิ์
+                        </span>
+                      </div>
+                      <DocumentListTable
+                        documents={selectedApp.documents || []}
+                        readOnly={true}
+                      />
+                    </div>
+
+                    {Array.isArray(selectedApp.registryDocuments) && selectedApp.registryDocuments.length > 0 && (
+                      <div className="pt-3 border-t border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-700">
+                            เอกสารจากทะเบียนผู้มีสิทธิ์หลัก ({selectedApp.registryDocuments.length} รายการ — เปิดดูและดาวน์โหลดได้)
+                          </span>
+                        </div>
+                        <DocumentListTable
+                          documents={selectedApp.registryDocuments.map((rdoc: any) => ({
+                            id: rdoc.id,
+                            name: rdoc.name,
+                            category: (rdoc.category || 'other_doc') as any,
+                            fileUrl: rdoc.fileUrl || `/api/documents/${rdoc.id}/content`,
+                            uploadDate: rdoc.uploadDate || rdoc.createdAt || '',
+                            fileSize: rdoc.fileSize || 0,
+                            mimeType: rdoc.mimeType || '',
+                            status: 'verified' as const,
+                            fileExists: rdoc.fileExists !== false,
+                            uploadedByName: rdoc.uploadedByName || 'เจ้าหน้าที่ทะเบียน',
+                          }))}
+                          readOnly={true}
+                        />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
               {/* Workflow Audit Timeline */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">

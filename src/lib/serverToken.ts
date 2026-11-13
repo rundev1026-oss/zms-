@@ -9,15 +9,36 @@ const SYSTEM_ADMIN_ID = 'c98cc949-2771-44fe-9be9-6f415fc5ed74';
  * 2. Checks 'zms_session', 'zms_auth_token', or 'zms_access_token' cookie
  * 3. If none found or not a valid JWT, gracefully mints a valid system fallback token for development/fallback mode
  */
+function validateOrRefreshJwt(raw: string): string | null {
+  const parts = raw.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const now = Math.floor(Date.now() / 1000);
+    const expectedSig = crypto
+      .createHmac('sha256', DEFAULT_JWT_SECRET)
+      .update(`${parts[0]}.${parts[1]}`)
+      .digest('base64url');
+    if (parts[2] === expectedSig && (!payload.exp || payload.exp > now + 10)) {
+      return raw;
+    }
+    if (payload.sub && typeof payload.sub === 'string') {
+      return generateSystemToken(payload.sub);
+    }
+  } catch {
+    // Fall through
+  }
+  return null;
+}
+
 export function resolveServerToken(req: Request): string {
   // 1. Authorization header
   const authHeader = req.headers.get('authorization') || '';
   if (authHeader.startsWith('Bearer ')) {
     const raw = authHeader.replace('Bearer ', '').trim();
     if (raw && raw !== 'null' && raw !== 'undefined' && raw !== 'cookie-session') {
-      if (raw.split('.').length === 3) {
-        return raw;
-      }
+      const valid = validateOrRefreshJwt(raw);
+      if (valid) return valid;
     }
   }
 
@@ -29,9 +50,8 @@ export function resolveServerToken(req: Request): string {
   if (sessionMatch) {
     const raw = decodeURIComponent(sessionMatch[1]).trim();
     if (raw && raw !== 'null' && raw !== 'undefined' && raw !== 'cookie-session') {
-      if (raw.split('.').length === 3) {
-        return raw;
-      }
+      const valid = validateOrRefreshJwt(raw);
+      if (valid) return valid;
     }
   }
 

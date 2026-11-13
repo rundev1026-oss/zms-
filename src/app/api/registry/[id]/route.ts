@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { splitPersonName } from '@zms/shared';
 import { RegistryService } from '@/services/registryService';
 import { AuthService } from '@/services/authService';
+import { StorageService } from '@/services/storageService';
 import { resolveServerToken } from '@/lib/serverToken';
+import { computeDocumentChecklist } from '@/lib/registryDocuments';
 import {
   EXPENSE_LINE_KEYS,
   INCOME_LINE_KEYS,
@@ -40,11 +42,31 @@ export async function GET(
       if (nestRes.ok) {
         const nestData = await nestRes.json();
         const mapped = mapNestBeneficiaryToRegistryItem(nestData);
+        const docsMap = new Map<string, any>();
+        for (const doc of mapped.documents || []) {
+          if (doc.id) docsMap.set(doc.id, doc);
+        }
         const docsRes = await fetch(`${API_BASE_URL}/beneficiaries/${id}/documents`, { headers });
         if (docsRes.ok) {
           const docs = await docsRes.json();
-          if (Array.isArray(docs)) mapped.documents = docs.map((document: any) => mapRegistryDocument(document));
+          if (Array.isArray(docs)) {
+            for (const document of docs) {
+              const m = mapRegistryDocument(document);
+              if (m.id) docsMap.set(m.id, m);
+            }
+          }
         }
+        try {
+          const localDocs = await StorageService.getDocumentsByEntity('beneficiary', id);
+          for (const document of localDocs) {
+            const m = mapRegistryDocument(document);
+            if (m.id && !docsMap.has(m.id)) docsMap.set(m.id, m);
+          }
+        } catch {}
+        mapped.documents = Array.from(docsMap.values());
+        const computedChecklist = computeDocumentChecklist(mapped.documents, mapped.documentChecklist);
+        mapped.documentChecklist = computedChecklist.checklist;
+        mapped.documentChecklistSummary = computedChecklist;
         return NextResponse.json({ success: true, data: mapped });
       }
     } catch (nestErr) {

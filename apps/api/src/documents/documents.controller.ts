@@ -37,7 +37,7 @@ export class DocumentsController {
   @RequirePermissions('documents.write')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'อัปโหลดเอกสารไปที่เก็บส่วนตัว' })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
   upload(
     @Param('beneficiaryId', ParseUUIDPipe) beneficiaryId: string,
     @Body() dto: UploadDocumentDto,

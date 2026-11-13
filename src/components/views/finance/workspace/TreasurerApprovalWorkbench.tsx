@@ -896,18 +896,14 @@ export function TreasurerApprovalWorkbench({
         setActionError('ไม่อนุญาตให้อนุมัติรอบเบิกที่ตนเองเป็นผู้จัดทำ (Segregation of Duties)');
         return;
       }
-      // Check treasurer balance
+      // Check source balance
       const currentBal = detail.treasurerAccount?.currentBalance ?? 0;
       if (currentBal < detail.totalWithdrawAmount) {
-        setActionError(`ยอดเงินคงเหลือในบัญชีเหรัญญิกไม่เพียงพอ (คงเหลือ ฿${currentBal.toLocaleString()} บาท, ยอดเบิกรอบนี้ ฿${detail.totalWithdrawAmount.toLocaleString()} บาท)`);
+        setActionError(`ยอดเงินคงเหลือในบัญชีต้นทางไม่เพียงพอ (คงเหลือ ฿${currentBal.toLocaleString()} บาท, ยอดเบิกรอบนี้ ฿${detail.totalWithdrawAmount.toLocaleString()} บาท)`);
         return;
       }
-      // STRICT CHECK: Evidence readiness before approval
-      if (!detail.transferEvidence?.isApprovalReady) {
-        if (!detail.transferEvidence || detail.transferEvidence.items.length === 0) {
-          setActionError('ไม่อนุญาตให้อนุมัติ: ยังไม่ได้แนบหลักฐานการโอนเงินเข้าบัญชีเหรัญญิก');
-          return;
-        }
+      // If evidence items exist, ensure they are verified and matched
+      if (detail.transferEvidence?.items && detail.transferEvidence.items.length > 0) {
         if (!detail.transferEvidence.isAmountMatched) {
           setActionError(`ไม่อนุญาตให้อนุมัติ: ยอดเงินตามหลักฐาน (฿${detail.transferEvidence.totalAmount.toLocaleString()} บาท) ไม่ตรงกับยอดขอเบิก (฿${detail.totalWithdrawAmount.toLocaleString()} บาท)`);
           return;
@@ -917,8 +913,6 @@ export function TreasurerApprovalWorkbench({
           setActionError('ไม่อนุญาตให้อนุมัติ: มีหลักฐานการโอนเงินที่ยังไม่ผ่านการตรวจสอบความถูกต้องโดยเหรัญญิก');
           return;
         }
-        setActionError('ไม่อนุญาตให้อนุมัติ: ข้อมูลหลักฐานการโอนเงินยังไม่พร้อมสำหรับการอนุมัติ');
-        return;
       }
     }
 
@@ -2431,14 +2425,14 @@ export function TreasurerApprovalWorkbench({
                             setReasonInput('');
                             setActionError('');
                           }}
-                          disabled={!detail.transferEvidence?.isApprovalReady}
+                          disabled={!detail.transferEvidence?.isApprovalReady && (detail.treasurerAccount?.currentBalance ?? 0) < detail.totalWithdrawAmount}
                           title={
-                            !detail.transferEvidence?.isApprovalReady
-                              ? 'ไม่สามารถอนุมัติได้: ต้องแนบหลักฐานการโอนเงินและตรวจสอบความถูกต้องให้ตรงกับยอดขอเบิกครบถ้วนก่อน'
+                            (detail.treasurerAccount?.currentBalance ?? 0) < detail.totalWithdrawAmount
+                              ? 'ไม่สามารถอนุมัติได้: ยอดเงินคงเหลือในบัญชีต้นทางไม่เพียงพอ'
                               : 'อนุมัติรอบการเบิกเงิน'
                           }
                           className={`zms-action inline-flex items-center gap-1.5 px-5 py-2 rounded-2xl text-white text-xs font-black transition shadow-xs ${
-                            detail.transferEvidence?.isApprovalReady
+                            detail.transferEvidence?.isApprovalReady || (detail.treasurerAccount?.currentBalance ?? 0) >= detail.totalWithdrawAmount
                               ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
                               : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
                           }`}

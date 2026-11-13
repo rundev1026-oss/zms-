@@ -1,4 +1,5 @@
 import { formatPersonName, splitPersonName } from '@zms/shared';
+import { computeDocumentChecklist } from './registryDocuments';
 
 export const INCOME_LINE_KEYS = [
   'salary',
@@ -881,8 +882,15 @@ export function mapRegistryDocument(document: any) {
       ? 'rejected'
       : 'pending';
   const fileExists = document.fileAvailable !== false && document.fileExists !== false;
+  const docId = String(document.id || '');
+  const isLocalSqliteDoc = docId.startsWith('doc-');
+  const fileUrl = isLocalSqliteDoc
+    ? document.fileUrl || `/api/storage/file/${docId}`
+    : docId
+      ? `/api/documents/${docId}/content`
+      : document.fileUrl || '';
   return {
-    id: document.id,
+    id: docId,
     name: document.name || document.originalFileName || 'เอกสาร',
     fileName: document.fileName || document.originalFileName || document.name,
     category: document.category || document.documentType || 'other_doc',
@@ -892,8 +900,8 @@ export function mapRegistryDocument(document: any) {
     status,
     fileExists,
     uploadDate: document.uploadDate || document.createdAt || '',
-    uploadedByName: document.uploadedByName || '',
-    fileUrl: document.id ? `/api/documents/${document.id}/content` : document.fileUrl || '',
+    uploadedByName: document.uploadedByName || 'เจ้าหน้าที่ระบบ',
+    fileUrl,
   };
 }
 
@@ -955,6 +963,8 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
   if (nestData.asnaf?.code) asnafKey = String(nestData.asnaf.code).toLowerCase();
 
   const primaryMemberCode = nestData.memberId || nestData.registryNumber || '';
+  const mappedDocuments = (nestData.documents || []).map((document: any) => mapRegistryDocument(document));
+  const computedChecklist = computeDocumentChecklist(mappedDocuments, nestData.documentChecklist);
   return {
     id: nestData.id,
     memberId: primaryMemberCode,
@@ -1024,7 +1034,9 @@ export function mapNestBeneficiaryToRegistryItem(nestData: any): any {
     hardshipReasons: situation.hardshipReasons || undefined,
     coordinator,
     certifier,
-    documents: (nestData.documents || []).map((document: any) => mapRegistryDocument(document)),
+    documents: mappedDocuments,
+    documentChecklist: computedChecklist.checklist,
+    documentChecklistSummary: computedChecklist,
     registeredDate: nestData.createdAt,
     createdAt: nestData.createdAt,
     updatedAt: nestData.updatedAt,

@@ -1777,6 +1777,17 @@ export interface CreateNotificationInput {
   expiresAt?: string | null;
 }
 
+export interface BeneficiaryDocumentChecklist {
+  nationalIdCopy?: boolean;
+  houseRegistration?: boolean;
+  housePhoto?: boolean;
+  incomeCertificate?: boolean;
+  medicalCertificate?: boolean;
+  debtProof?: boolean;
+  otherDocuments?: boolean;
+  otherDocumentsDetails?: string;
+}
+
 // ข้อมูลขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต (Zakat Beneficiary Registry)
 export interface BeneficiaryRegistryItem {
   id: string; // ben-...
@@ -1838,6 +1849,8 @@ export interface BeneficiaryRegistryItem {
   coordinator?: CoordinatorInfo;
   certifier?: CertifierInfo;
   documents?: BeneficiaryDocument[];
+  documentChecklist?: BeneficiaryDocumentChecklist;
+  documentChecklistSummary?: any;
   evaluatorChecklist?: EvaluatorChecklist;
   registrationStatus: RegistrationStatus;
   registeredDate: string;

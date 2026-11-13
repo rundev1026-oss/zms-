@@ -782,6 +782,8 @@ export function AssistanceRequestWizardModal({
           name: doc.name,
           category: doc.category || 'other_doc',
           fileUrl: doc.fileUrl,
+          storagePath: doc.storagePath || doc.fileUrl,
+          storageProvider: doc.storageProvider || 'local',
           mimeType: doc.mimeType || 'application/octet-stream',
           fileSize: Number(doc.fileSize || 0),
           isConfidential: true,

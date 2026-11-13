@@ -674,13 +674,15 @@ export class FinancialService {
       }
     }
 
+    const journalNo = `JV-INC-${Date.now().toString().slice(-6)}`;
+
     // 7. Insert Financial Transaction
     await db.execute({
       sql: `INSERT INTO financial_transactions (
         id, transaction_no, date, type, fund_id, fund_name, category, amount, payment_method,
         payer_or_payee, reference_no, receipt_url, slip_url, status, recorded_by_id, recorded_by_name, notes,
-        bank_account_id, money_type, zakat_year, donor_name, is_anonymous, usage_restriction
-      ) VALUES (?, ?, ?, 'income', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bank_account_id, money_type, zakat_year, donor_name, is_anonymous, usage_restriction, journal_no
+      ) VALUES (?, ?, ?, 'income', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         txnId,
         txnNo,
@@ -703,15 +705,59 @@ export class FinancialService {
         input.donorName || input.payer || null,
         input.isAnonymous ? 1 : 0,
         input.usageRestriction || null,
+        journalNo,
       ],
     });
 
-    // 8. Audit Log
+    // 7.1 Insert Balanced Double-Entry into General Ledger
+    const debitAccountCode = bankAccountId ? '1010-01' : '1020-01';
+    const debitAccountName = bankAccountId ? 'เงินฝากธนาคาร' : 'เงินสดในมือเหรัญญิก';
+    const revenueAccountCode = moneyType === 'zakat' ? '4101-01' : moneyType === 'sadaqah' ? '4102-01' : '4103-01';
+    const revenueAccountName = moneyType === 'zakat' ? 'รายรับเงินซะกาต' : moneyType === 'sadaqah' ? 'รายรับเงินศอดะเกาะฮ์' : 'รายรับเพื่อการบริหาร';
+
     const moneyTypeThMap: Record<string, string> = {
       zakat: 'เงินซะกาต',
       sadaqah: 'ศอดะเกาะฮ์ทั่วไป',
       operational_admin: 'เงินสำหรับบริหาร',
     };
+
+    await db.execute({
+      sql: `INSERT INTO general_ledger_entries (
+        id, journal_no, transaction_id, entry_date, account_code, account_name, account_category,
+        entry_type, amount, currency, description, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, 'asset', 'debit', ?, 'THB', ?, ?)`,
+      args: [
+        `gl-d-${txnId}`,
+        journalNo,
+        txnNo,
+        recordedDate,
+        debitAccountCode,
+        debitAccountName,
+        amount,
+        `รับ${moneyTypeThMap[moneyType] || 'เงิน'} จาก ${payerDisplay} (ใบรับเงิน ${receiptNo})`,
+        actor.name,
+      ],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO general_ledger_entries (
+        id, journal_no, transaction_id, entry_date, account_code, account_name, account_category,
+        entry_type, amount, currency, description, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, 'revenue', 'credit', ?, 'THB', ?, ?)`,
+      args: [
+        `gl-c-${txnId}`,
+        journalNo,
+        txnNo,
+        recordedDate,
+        revenueAccountCode,
+        revenueAccountName,
+        amount,
+        `รับ${moneyTypeThMap[moneyType] || 'เงิน'} เข้า ${fund.name} (ใบรับเงิน ${receiptNo})`,
+        actor.name,
+      ],
+    });
+
+    // 8. Audit Log
 
     await db.execute({
       sql: `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description)

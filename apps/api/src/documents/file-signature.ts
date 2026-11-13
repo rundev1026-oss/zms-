@@ -1,6 +1,6 @@
-export type AllowedFileKind = 'pdf' | 'jpg' | 'png';
+export type AllowedFileKind = 'pdf' | 'jpg' | 'png' | 'webp';
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
 
 export function detectAllowedFile(buffer: Buffer): AllowedFileKind | null {
   if (buffer.length === 0 || buffer.length > MAX_BYTES) {
@@ -21,6 +21,13 @@ export function detectAllowedFile(buffer: Buffer): AllowedFileKind | null {
   ) {
     return 'png';
   }
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'webp';
+  }
   return null;
 }
 
@@ -34,6 +41,9 @@ export function mimeForKind(kind: AllowedFileKind): string {
   }
   if (kind === 'jpg') {
     return 'image/jpeg';
+  }
+  if (kind === 'webp') {
+    return 'image/webp';
   }
   return 'image/png';
 }

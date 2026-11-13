@@ -193,7 +193,10 @@ export class AssistanceRequestsService {
           fileSize: doc.sizeBytes,
           status: String(doc.status || 'UPLOADED').toLowerCase(),
           createdAt: doc.createdAt.toISOString(),
-          downloadUrl: `/api/registry/${beneficiary.id}/documents/${doc.id}`,
+          uploadDate: doc.createdAt.toISOString(),
+          fileUrl: `/api/documents/${doc.id}/content`,
+          downloadUrl: `/api/documents/${doc.id}/content?inline=0`,
+          fileExists: true,
         }))
       : [];
 
@@ -768,6 +771,19 @@ export class AssistanceRequestsService {
                   province: true,
                 },
               },
+              documents: {
+                where: { deletedAt: null },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                  id: true,
+                  originalFileName: true,
+                  documentType: true,
+                  mimeType: true,
+                  sizeBytes: true,
+                  status: true,
+                  createdAt: true,
+                },
+              },
             },
           },
           documents: {
@@ -824,9 +840,23 @@ export class AssistanceRequestsService {
         ben?.addresses?.[0] ||
         null;
       const permCode = ben?.memberId ?? app.memberId ?? ben?.registryNumber ?? app.registrationNo ?? '';
+      const registryDocuments = ((ben as any)?.documents || []).map((doc: any) => ({
+        id: doc.id,
+        name: doc.originalFileName,
+        category: doc.documentType,
+        mimeType: doc.mimeType,
+        fileSize: doc.sizeBytes,
+        status: String(doc.status || 'UPLOADED').toLowerCase(),
+        createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : String(doc.createdAt),
+        uploadDate: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : String(doc.createdAt),
+        fileUrl: `/api/documents/${doc.id}/content`,
+        downloadUrl: `/api/documents/${doc.id}/content?inline=0`,
+        fileExists: true,
+      }));
 
       return {
         ...app,
+        registryDocuments,
         titlePrefix: ben?.title ?? '',
         firstName: ben?.firstName ?? '',
         lastName: ben?.lastName ?? '',
@@ -949,12 +979,16 @@ export class AssistanceRequestsService {
           fileSize: doc.sizeBytes,
           status: String(doc.status || 'UPLOADED').toLowerCase(),
           createdAt: doc.createdAt.toISOString(),
-          downloadUrl: `/api/registry/${ben?.id}/documents/${doc.id}`,
+          uploadDate: doc.createdAt.toISOString(),
+          fileUrl: `/api/documents/${doc.id}/content`,
+          downloadUrl: `/api/documents/${doc.id}/content?inline=0`,
+          fileExists: true,
         }))
       : [];
 
     return {
       ...app,
+      registryDocuments,
       titlePrefix: ben?.title ?? '',
       firstName: ben?.firstName ?? '',
       lastName: ben?.lastName ?? '',

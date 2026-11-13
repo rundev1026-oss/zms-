@@ -350,7 +350,7 @@ export function RelationshipMatrixTab() {
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={() => setShowAuditDrawer(!showAuditDrawer)}
-            className={`px-3.5 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`zms-action px-3.5 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
               showAuditDrawer
                 ? 'bg-teal-50 border-teal-200 text-teal-800 shadow-2xs'
                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -362,7 +362,7 @@ export function RelationshipMatrixTab() {
 
           <button
             onClick={fetchMatrixData}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            className="zms-action p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -558,13 +558,13 @@ export function RelationshipMatrixTab() {
                               type="button"
                               onClick={() => handleToggleCell(asnaf.code, t.id)}
                               disabled={isPending}
-                              className={`w-full py-1.5 px-2 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1 ${
+                              className={`zms-action w-full py-1.5 px-2 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1 ${
                                 isLinked
                                   ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-2xs hover:scale-102'
                                   : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600'
                               } ${isPending ? 'opacity-50 animate-pulse' : ''}`}
                               title={`คลิกเพื่อ${isLinked ? 'ปิด' : 'เปิด'}สิทธิ์สำหรับ [${asnaf.nameTh}] ↔ [${t.name}]`}
-                            >
+                             aria-label="เปิดสิทธิ์">
                               {isLinked ? (
                                 <>
                                   <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -583,7 +583,7 @@ export function RelationshipMatrixTab() {
                         <button
                           type="button"
                           onClick={() => setFormatModalType(t)}
-                          className="px-2.5 py-1.5 rounded-lg border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] inline-flex items-center gap-1.5 transition-colors shadow-2xs"
+                          className="zms-action px-2.5 py-1.5 rounded-lg border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] inline-flex items-center gap-1.5 transition-colors shadow-2xs"
                         >
                           <Layers className="w-3.5 h-3.5 text-sky-700" />
                           <span>{typeActiveFormats} รูปแบบ</span>
@@ -617,7 +617,7 @@ export function RelationshipMatrixTab() {
               </div>
               <button
                 onClick={() => setFormatModalType(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                className="zms-action w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -676,12 +676,12 @@ export function RelationshipMatrixTab() {
                           type="button"
                           onClick={() => handleToggleFormatLink(formatModalType.id, fmt.id, false)}
                           disabled={isUpdatingFormatLink}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                          className={`zms-action px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
                             isLinked
                               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                               : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
                           }`}
-                        >
+                         aria-label="เปิดใช้งาน" title="เปิดใช้งาน">
                           {isLinked ? (
                             <>
                               <Check className="w-3.5 h-3.5" />
@@ -723,7 +723,7 @@ export function RelationshipMatrixTab() {
             </div>
             <button
               onClick={() => setShowAuditDrawer(false)}
-              className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700"
+              className="zms-action p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700"
             >
               <X className="w-4 h-4" />
             </button>

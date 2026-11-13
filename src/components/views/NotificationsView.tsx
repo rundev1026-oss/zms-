@@ -213,9 +213,9 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
             type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors shadow-2xs disabled:opacity-50"
+            className="zms-action inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors shadow-2xs disabled:opacity-50"
             title="รีเฟรชข้อมูล"
-          >
+           aria-label="รีเฟรช">
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>รีเฟรช</span>
           </button>
@@ -225,8 +225,8 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
               type="button"
               onClick={handleMarkAllRead}
               disabled={isMarkingAll}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0b2545] hover:bg-[#143761] text-xs font-bold text-white transition-colors shadow-xs disabled:opacity-50"
-            >
+              className="zms-action inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0b2545] hover:bg-[#143761] text-xs font-bold text-white transition-colors shadow-xs disabled:opacity-50"
+             aria-label="ทำเครื่องหมายอ่านแล้วทั้งหมด" title="ทำเครื่องหมายอ่านแล้วทั้งหมด">
               <CheckCheck className="w-3.5 h-3.5 text-teal-300" />
               <span>ทำเครื่องหมายอ่านแล้วทั้งหมด</span>
             </button>
@@ -461,9 +461,9 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                     <button
                       type="button"
                       onClick={() => markNotificationAsRead(item.id)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors shadow-2xs"
+                      className="zms-action inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors shadow-2xs"
                       title="ทำเครื่องหมายว่าอ่านแล้ว"
-                    >
+                     aria-label="อ่านแล้ว">
                       <Check className="w-3.5 h-3.5 text-emerald-600" />
                       <span>อ่านแล้ว</span>
                     </button>
@@ -473,9 +473,9 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                     <button
                       type="button"
                       onClick={() => handleItemAction(item)}
-                      className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-[#0b2545] hover:bg-[#143761] text-xs font-bold text-white transition-colors shadow-xs"
+                      className="zms-action inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-[#0b2545] hover:bg-[#143761] text-xs font-bold text-white transition-colors shadow-xs"
                       title="เปิดดูข้อมูลที่เกี่ยวข้อง"
-                    >
+                     aria-label="เปิดดูข้อมูล">
                       <span>เปิดดูข้อมูล</span>
                       <ArrowRight className="w-3.5 h-3.5 text-teal-300" />
                     </button>

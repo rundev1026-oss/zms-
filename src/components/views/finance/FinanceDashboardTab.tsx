@@ -264,14 +264,14 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
             <button
               onClick={fetchDashboardData}
               disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              className="zms-action flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               รีเฟรชข้อมูล
             </button>
             <button
               onClick={() => onNavigateTab('reports')}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
+              className="zms-action flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
               ดูรายงานทางการเงิน
@@ -432,7 +432,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
             <button
               type="button"
               onClick={() => onNavigateTab(operationalOverview.cashOnHand.targetTab || 'cash_flow')}
-              className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+              className="zms-action mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
             >
               ดูรายการ
               <ArrowRight className="w-4 h-4" />
@@ -469,7 +469,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
             <button
               type="button"
               onClick={() => onNavigateTab(operationalOverview.pendingApprovals.targetTab || 'cash_flow')}
-              className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+              className="zms-action mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
             >
               ดูรายการ
               <ArrowRight className="w-4 h-4" />
@@ -506,7 +506,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
             <button
               type="button"
               onClick={() => onNavigateTab(operationalOverview.pendingHandovers.targetTab || 'cash_flow_handovers')}
-              className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              className="zms-action mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
             >
               ดูรายการ
               <ArrowRight className="w-4 h-4" />
@@ -543,7 +543,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
             <button
               type="button"
               onClick={() => onNavigateTab(operationalOverview.pendingAssistanceConfirmations.targetTab || 'aid_expenses')}
-              className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+              className="zms-action mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
             >
               ดูรายการ
               <ArrowRight className="w-4 h-4" />
@@ -580,7 +580,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
             <button
               type="button"
               onClick={() => onNavigateTab(operationalOverview.pendingPettyClearances.targetTab || 'cash_flow_history')}
-              className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-700 hover:bg-rose-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+              className="zms-action mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-700 hover:bg-rose-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
             >
               ดูรายการ
               <ArrowRight className="w-4 h-4" />
@@ -613,7 +613,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
             <button
               type="button"
               onClick={() => onNavigateTab(operationalOverview.recentDisbursements.targetTab || 'cash_flow_history')}
-              className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+              className="zms-action mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold text-sm shadow-xs cursor-pointer transition-colors focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
             >
               ดูรายการ
               <ArrowRight className="w-4 h-4" />
@@ -632,7 +632,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
               <button
                 type="button"
                 onClick={() => onNavigateTab('cash_flow_history')}
-                className="text-xs text-teal-700 font-bold hover:underline inline-flex items-center gap-1"
+                className="zms-action text-xs text-teal-700 font-bold hover:underline inline-flex items-center gap-1"
               >
                 ดูประวัติทั้งหมด ({operationalOverview.recentDisbursements.count} รายการ)
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -693,7 +693,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
                 `รอบปีซะกาต ${zakatYear} — กระทบยอดธุรกรรมจริงที่ผ่านการช่วยเหลือและมีหลักฐานครบถ้วน`,
                 verifiedAid.drillDown.verifiedAidItems
               )}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-900 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition-all shadow-sm"
+              className="zms-action flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-900 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition-all shadow-sm"
             >
               <Eye className="w-3.5 h-3.5" />
               ดูรายการแจกแจงทั้งหมด ({verifiedAid.drillDown.verifiedAidItems.length} รายการ)
@@ -1681,7 +1681,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
               'รายการเงินสดที่ผู้ดูแลเคสส่งคืน บันทึกกลับรายการเข้ากองทุนจริงพร้อมหลักฐานใบเสร็จ',
               verifiedAid.drillDown.refundItems
             )}
-            className="text-xs text-purple-700 font-semibold hover:underline flex items-center gap-1"
+            className="zms-action text-xs text-purple-700 font-semibold hover:underline flex items-center gap-1"
           >
             <span>ดูทั้งหมด ({verifiedAid.refundRecords?.length || 0})</span>
             <ChevronRight className="w-3.5 h-3.5" />
@@ -1812,7 +1812,7 @@ export function FinanceDashboardTab({ onNavigateTab }: FinanceDashboardTabProps)
               {drillDownSearch && (
                 <button
                   onClick={() => setDrillDownSearch('')}
-                  className="text-slate-400 hover:text-slate-600 text-xs"
+                  className="zms-action text-slate-400 hover:text-slate-600 text-xs"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>

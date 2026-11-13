@@ -71,7 +71,7 @@ export function GlobalToastContainer() {
             <button
               type="button"
               onClick={() => removeToast(toast.id)}
-              className="text-slate-400 hover:text-white transition-colors p-1.5 -mr-1 -mt-1 rounded-lg hover:bg-white/10 shrink-0"
+              className="zms-action text-slate-400 hover:text-white transition-colors p-1.5 -mr-1 -mt-1 rounded-lg hover:bg-white/10 shrink-0"
               title="ปิดแจ้งเตือน"
               aria-label="ปิดแจ้งเตือน"
             >

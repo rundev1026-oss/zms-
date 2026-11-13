@@ -320,7 +320,7 @@ export function FinanceStaffBatchSettlementModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
+            className="zms-action rounded-xl p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
           >
             <X className="h-5 w-5" />
           </button>
@@ -364,7 +364,7 @@ export function FinanceStaffBatchSettlementModal({
                       type="button"
                       disabled={busy}
                       onClick={handleConfirmReceipt}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-700 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-800 disabled:opacity-50 transition"
+                      className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-indigo-700 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-800 disabled:opacity-50 transition"
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       {busy ? 'กำลังยืนยัน...' : 'ยืนยันรับเงินสดเข้าระบบ'}
@@ -511,7 +511,7 @@ export function FinanceStaffBatchSettlementModal({
                                       setProofUrl('');
                                       setNotes('');
                                     }}
-                                    className="inline-flex items-center gap-1 rounded-xl bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 hover:bg-teal-100 disabled:opacity-40 transition border border-teal-200"
+                                    className="zms-action inline-flex items-center gap-1 rounded-xl bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 hover:bg-teal-100 disabled:opacity-40 transition border border-teal-200"
                                   >
                                     <Receipt className="h-3.5 w-3.5" /> บันทึกจ่ายจริง
                                   </button>
@@ -597,7 +597,7 @@ export function FinanceStaffBatchSettlementModal({
                                       setProofUrl('');
                                       setNotes('');
                                     }}
-                                    className="inline-flex items-center gap-1 rounded-xl bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 hover:bg-teal-100 disabled:opacity-40 transition border border-teal-200"
+                                    className="zms-action inline-flex items-center gap-1 rounded-xl bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 hover:bg-teal-100 disabled:opacity-40 transition border border-teal-200"
                                   >
                                     <Receipt className="h-3.5 w-3.5" /> ตัดยอดจ่ายจริง
                                   </button>
@@ -664,7 +664,7 @@ export function FinanceStaffBatchSettlementModal({
                 <button
                   type="button"
                   onClick={() => setSettleItem(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                  className="zms-action rounded-lg p-1 text-slate-400 hover:bg-slate-100"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -771,7 +771,7 @@ export function FinanceStaffBatchSettlementModal({
                 <button
                   type="button"
                   onClick={() => setIsRefundModalOpen(false)}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                  className="zms-action rounded-lg p-1 text-slate-400 hover:bg-slate-100"
                 >
                   <X className="h-4 w-4" />
                 </button>

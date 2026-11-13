@@ -477,9 +477,9 @@ export function GoogleMapsLocationPicker({
             <button
               type="button"
               onClick={() => setIsClearConfirmOpen(true)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl font-semibold transition-colors"
+              className="zms-action inline-flex items-center gap-1 px-2.5 py-1.5 text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl font-semibold transition-colors"
               title="ล้างตำแหน่งพิกัดนี้"
-            >
+             aria-label="ล้างตำแหน่ง">
               <Trash2 className="w-3.5 h-3.5 text-rose-600" />
               <span>ล้างตำแหน่ง</span>
             </button>
@@ -490,7 +490,7 @@ export function GoogleMapsLocationPicker({
               type="button"
               onClick={handleGetCurrentLocation}
               disabled={isLocatingUser}
-              className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-semibold transition-colors"
+              className="zms-action inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-semibold transition-colors"
               title="ใช้ตำแหน่ง GPS ปัจจุบันของอุปกรณ์"
             >
               <LocateFixed className={`w-3.5 h-3.5 ${isLocatingUser ? 'animate-spin text-emerald-600' : 'text-slate-600'}`} />
@@ -623,8 +623,7 @@ export function GoogleMapsLocationPicker({
         {/* Map Canvas */}
         <div 
           ref={mapRef} 
-          className="w-full h-72 sm:h-80 bg-slate-100 relative"
-          style={{ minHeight: '280px' }}
+          className="relative h-56 w-full bg-slate-100 sm:h-72 md:h-80"
         >
           {/* Fallback View when Google Maps script is not loaded or missing API key */}
           {(!apiKey || loadError || !isGoogleMapsLoaded) && (
@@ -671,7 +670,7 @@ export function GoogleMapsLocationPicker({
                     <button
                       type="button"
                       onClick={handleCopyCoords}
-                      className="inline-flex items-center gap-1 text-[11px] text-slate-600 hover:text-slate-900 font-semibold"
+                      className="zms-action inline-flex items-center gap-1 text-[11px] text-slate-600 hover:text-slate-900 font-semibold"
                     >
                       {copiedCoords ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedCoords ? 'คัดลอกแล้ว' : 'คัดลอกพิกัด'}</span>
@@ -750,7 +749,7 @@ export function GoogleMapsLocationPicker({
                 <button
                   type="button"
                   onClick={handleCopyCoords}
-                  className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
+                  className="zms-action p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
                   title="คัดลอกพิกัดละติจูด, ลองจิจูด"
                 >
                   {copiedCoords ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -777,7 +776,7 @@ export function GoogleMapsLocationPicker({
               <button
                 type="button"
                 onClick={handleApplyLocation}
-                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                className="zms-action flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>{appliedFeedback ? 'บันทึกแล้ว!' : 'ใช้ตำแหน่งนี้'}</span>

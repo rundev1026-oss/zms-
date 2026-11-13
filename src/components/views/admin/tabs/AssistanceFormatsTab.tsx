@@ -308,15 +308,15 @@ export function AssistanceFormatsTab() {
           <button
             type="button"
             onClick={openAddModal}
-            className="px-4 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-          >
+            className="zms-action px-4 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+           aria-label="เพิ่มรูปแบบใหม่" title="เพิ่มรูปแบบใหม่">
             <Plus className="w-4 h-4 text-emerald-300" />
             <span>เพิ่มรูปแบบใหม่</span>
           </button>
           <button
             type="button"
             onClick={fetchFormats}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            className="zms-action p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -493,7 +493,7 @@ export function AssistanceFormatsTab() {
                         <button
                           type="button"
                           onClick={() => setDetailFormat(fmt)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:bg-teal-50 hover:text-teal-700 transition-colors"
+                          className="zms-action p-1.5 rounded-lg text-slate-500 hover:bg-teal-50 hover:text-teal-700 transition-colors"
                           title="ดูรายละเอียดรูปแบบ"
                         >
                           <Eye className="w-4 h-4" />
@@ -501,7 +501,7 @@ export function AssistanceFormatsTab() {
                         <button
                           type="button"
                           onClick={() => openEditModal(fmt)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                          className="zms-action p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                           title="แก้ไขรายละเอียดรูปแบบ"
                         >
                           <Edit className="w-4 h-4" />
@@ -509,7 +509,7 @@ export function AssistanceFormatsTab() {
                         <button
                           type="button"
                           onClick={() => setDeleteConfirmTarget(fmt)}
-                          className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors"
+                          className="zms-action p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors"
                           title="ลบรูปแบบการส่งมอบ"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -542,7 +542,7 @@ export function AssistanceFormatsTab() {
               </div>
               <button
                 onClick={() => setEditingFormat(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                className="zms-action w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -680,8 +680,8 @@ export function AssistanceFormatsTab() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-800 hover:bg-teal-900 active:scale-98 transition-all flex items-center gap-2"
-                >
+                  className="zms-action px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-800 hover:bg-teal-900 active:scale-98 transition-all flex items-center gap-2"
+                 aria-label="กำลังบันทึก..." title="กำลังบันทึก...">
                   {isSubmitting ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -714,7 +714,7 @@ export function AssistanceFormatsTab() {
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                className="zms-action w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -875,8 +875,8 @@ export function AssistanceFormatsTab() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-800 hover:bg-teal-900 active:scale-98 transition-all flex items-center gap-2"
-                >
+                  className="zms-action px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-800 hover:bg-teal-900 active:scale-98 transition-all flex items-center gap-2"
+                 aria-label="กำลังบันทึก..." title="กำลังบันทึก...">
                   {isSubmitting ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -922,7 +922,7 @@ export function AssistanceFormatsTab() {
               <button
                 type="button"
                 onClick={() => setDetailFormat(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                className="zms-action w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -996,8 +996,8 @@ export function AssistanceFormatsTab() {
                     setDetailFormat(null);
                     openEditModal(target);
                   }}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1.5"
-                >
+                  className="zms-action px-4 py-2 rounded-xl text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1.5"
+                 aria-label="แก้ไขข้อมูลนี้" title="แก้ไขข้อมูลนี้">
                   <Edit className="w-3.5 h-3.5" />
                   <span>แก้ไขข้อมูลนี้</span>
                 </button>
@@ -1083,8 +1083,8 @@ export function AssistanceFormatsTab() {
                     type="button"
                     disabled={isDeleting}
                     onClick={handleDeleteFormat}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors flex items-center gap-2"
-                  >
+                    className="zms-action px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors flex items-center gap-2"
+                   aria-label="กำลังลบ..." title="กำลังลบ...">
                     {isDeleting ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />

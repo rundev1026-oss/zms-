@@ -422,7 +422,7 @@ export default function ProfilePage() {
                     <button
                       type="submit"
                       disabled={isSaving}
-                      className="px-6 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-400 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5"
+                      className="zms-action px-6 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-400 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5"
                     >
                       <Save className="w-4 h-4" />
                       <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไขโปรไฟล์'}</span>
@@ -465,7 +465,7 @@ export default function ProfilePage() {
                       <button
                         type="button"
                         onClick={() => setShowCurrentPass(!showCurrentPass)}
-                        className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                        className="zms-action absolute right-3 top-3 text-slate-400 hover:text-slate-600"
                       >
                         {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -487,7 +487,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setShowNewPass(!showNewPass)}
-                          className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                          className="zms-action absolute right-3 top-3 text-slate-400 hover:text-slate-600"
                         >
                           {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>

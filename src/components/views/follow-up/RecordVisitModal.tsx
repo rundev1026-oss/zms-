@@ -565,16 +565,16 @@ export function RecordVisitModal({ isOpen, onClose, plan, onSuccess }: RecordVis
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors min-h-[36px]"
-              >
+                className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors min-h-[36px]"
+               aria-label="ถ่ายรูป" title="ถ่ายรูป">
                 <Camera className="w-3.5 h-3.5 text-slate-700" />
                 <span>ถ่ายรูป</span>
               </button>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-colors min-h-[36px]"
-              >
+                className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-colors min-h-[36px]"
+               aria-label="เลือกไฟล์รูปภาพ" title="เลือกไฟล์รูปภาพ">
                 <Upload className="w-3.5 h-3.5 text-teal-700" />
                 <span>เลือกไฟล์รูปภาพ</span>
               </button>
@@ -625,7 +625,7 @@ export function RecordVisitModal({ isOpen, onClose, plan, onSuccess }: RecordVis
                     <button
                       type="button"
                       onClick={() => handleRemovePhoto(idx)}
-                      className="absolute top-1.5 right-1.5 w-7 h-7 bg-rose-600/90 text-white rounded-lg flex items-center justify-center hover:bg-rose-700 transition-colors shadow-xs"
+                      className="zms-action absolute top-1.5 right-1.5 w-7 h-7 bg-rose-600/90 text-white rounded-lg flex items-center justify-center hover:bg-rose-700 transition-colors shadow-xs"
                       title="ลบรูปนี้"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -671,8 +671,8 @@ export function RecordVisitModal({ isOpen, onClose, plan, onSuccess }: RecordVis
           <button
             type="submit"
             disabled={isSubmitting}
-            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition-colors shadow-xs disabled:opacity-50 min-h-[40px]"
-          >
+            className="zms-action inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition-colors shadow-xs disabled:opacity-50 min-h-[40px]"
+           aria-label="กำลังบันทึก..." title="กำลังบันทึก...">
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />

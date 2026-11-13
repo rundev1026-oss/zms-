@@ -31,8 +31,8 @@ export function ErrorState({
         <button
           type="button"
           onClick={onRetry}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
-        >
+          className="zms-action inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
+         aria-label="ลองใหม่อีกครั้ง" title="ลองใหม่อีกครั้ง">
           <RefreshCw className="w-3.5 h-3.5" />
           <span>ลองใหม่อีกครั้ง</span>
         </button>

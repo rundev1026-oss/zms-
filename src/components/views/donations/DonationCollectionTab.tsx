@@ -600,12 +600,12 @@ export function DonationCollectionTab({
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('bank_transfer')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
+                  className={`zms-action p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
                     paymentMethod === 'bank_transfer'
                       ? 'bg-emerald-50 text-emerald-900 border-emerald-600 shadow-2xs'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
-                >
+                 aria-label="โอนธนาคาร" title="โอนธนาคาร">
                   <Building2 className="w-5 h-5 text-emerald-700" />
                   <span>โอนธนาคาร</span>
                 </button>
@@ -613,12 +613,12 @@ export function DonationCollectionTab({
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cash')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
+                  className={`zms-action p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
                     paymentMethod === 'cash'
                       ? 'bg-emerald-50 text-emerald-900 border-emerald-600 shadow-2xs'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
-                >
+                 aria-label="เงินสด (Cash)" title="เงินสด (Cash)">
                   <Banknote className="w-5 h-5 text-emerald-700" />
                   <span>เงินสด (Cash)</span>
                 </button>
@@ -626,12 +626,12 @@ export function DonationCollectionTab({
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('promptpay_qr')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
+                  className={`zms-action p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
                     paymentMethod === 'promptpay_qr'
                       ? 'bg-emerald-50 text-emerald-900 border-emerald-600 shadow-2xs'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
-                >
+                 aria-label="PromptPay QR" title="PromptPay QR">
                   <QrCode className="w-5 h-5 text-emerald-700" />
                   <span>PromptPay QR</span>
                 </button>
@@ -806,8 +806,8 @@ export function DonationCollectionTab({
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('bank_transfer')}
-                        className="w-full py-2 px-3 rounded-xl bg-emerald-800 text-white font-bold text-xs hover:bg-emerald-900 transition-colors flex items-center justify-center gap-1.5"
-                      >
+                        className="zms-action w-full py-2 px-3 rounded-xl bg-emerald-800 text-white font-bold text-xs hover:bg-emerald-900 transition-colors flex items-center justify-center gap-1.5"
+                       aria-label="สลับไปใช้การโอนเงินผ่านธนาคาร (มีบัญชีรองรับ)" title="สลับไปใช้การโอนเงินผ่านธนาคาร (มีบัญชีรองรับ)">
                         <Building2 className="w-3.5 h-3.5" />
                         <span>สลับไปใช้การโอนเงินผ่านธนาคาร (มีบัญชีรองรับ)</span>
                       </button>

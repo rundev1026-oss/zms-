@@ -379,28 +379,28 @@ export function BankTransfersTab({
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setModalMode('transfer')}
-            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+            className="zms-action px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 transition-colors"
           >
             <ArrowLeftRight className="w-4 h-4" />
             โอนระหว่างบัญชี
           </button>
           <button
             onClick={() => setModalMode('deposit')}
-            className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+            className="zms-action px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 transition-colors"
           >
             <ArrowDownToLine className="w-4 h-4" />
             นำเงินสดเข้าบัญชี
           </button>
           <button
             onClick={() => setModalMode('withdraw')}
-            className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+            className="zms-action px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 transition-colors"
           >
             <ArrowUpFromLine className="w-4 h-4" />
             ถอนเงินสดสำรอง
           </button>
           <button
             onClick={fetchTransactions}
-            className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+            className="zms-action p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />

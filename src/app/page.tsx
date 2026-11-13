@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PublicHeader } from '@/components/layout/PublicHeader';
@@ -37,6 +38,7 @@ import { TreasurerApprovalWorkbench } from '@/components/views/finance/workspace
 import { useApp } from '@/context/AppContext';
 
 export default function Home() {
+  const router = useRouter();
   const { currentUser } = useApp();
 
   // Mode: 'public' (Default for portal visitors) | 'admin' (Staff workbench)
@@ -55,6 +57,7 @@ export default function Home() {
   const [selectedCampaignTitle, setSelectedCampaignTitle] = useState<string | undefined>(undefined);
   const [selectedCampaignFundId, setSelectedCampaignFundId] = useState<string>('fund-1');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const adminMainRef = useRef<HTMLElement>(null);
 
   // Auto detect hash on mount
   useEffect(() => {
@@ -67,8 +70,7 @@ export default function Home() {
         setPortalMode('admin');
         setCurrentView('disbursements');
       } else if (hash === 'treasurer-workbench') {
-        setPortalMode('admin');
-        setCurrentView('treasurer-workbench');
+        router.replace('/finance/disbursement-approval');
       } else if (hash === 'about') {
         setPortalMode('public');
         setCurrentView('public-about');
@@ -89,7 +91,11 @@ export default function Home() {
         setCurrentView('public-payment');
       }
     }
-  }, []);
+  }, [router]);
+
+  useEffect(() => {
+    adminMainRef.current?.scrollTo({ top: 0 });
+  }, [currentView]);
 
   const getBreadcrumbTitle = (view: string) => {
     switch (view) {
@@ -262,13 +268,18 @@ export default function Home() {
       />
 
       {/* 2 & 3. Main Workspace Area: Sidebar + Main Content */}
-      <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden relative">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* 2. Left Sidebar (Independent scrolling if long, fixed desktop width, slide-over on mobile) */}
         <Sidebar
           currentView={currentView}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
           onNavigate={(view) => {
+            if (view === 'finance' || view.startsWith('finance/')) {
+              router.push(view === 'finance' ? '/finance/dashboard' : `/${view}`);
+              setIsMobileSidebarOpen(false);
+              return;
+            }
             setCurrentView(view);
             setIsMobileSidebarOpen(false);
           }}
@@ -277,7 +288,10 @@ export default function Home() {
         {/* 3. Main Content (Primary scrollable viewport area, distinct bounds, no double scrollbars) */}
         <main
           id="main-content-scroll"
-          className={`flex-1 min-h-0 overflow-y-auto overscroll-contain focus:outline-hidden touch-scroll w-full ${
+          ref={adminMainRef}
+          className={`min-h-0 min-w-0 w-full flex-1 touch-scroll overscroll-y-contain focus:outline-hidden ${
+            isMobileSidebarOpen ? 'max-md:overflow-hidden md:overflow-x-hidden md:overflow-y-auto' : 'overflow-x-hidden overflow-y-auto'
+          } ${
             currentView === 'finance'
               ? 'p-3 sm:p-5 lg:px-6 lg:py-5 max-w-none m-0'
               : 'p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto'

@@ -157,7 +157,7 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
 
           <button
             onClick={() => showToast('ส่งออกรายงานสรุปผู้บริหารเป็น PDF เรียบร้อย', 'success')}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-xl text-xs font-semibold hover:bg-emerald-800 transition-colors shadow-xs"
+            className="zms-action flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-xl text-xs font-semibold hover:bg-emerald-800 transition-colors shadow-xs"
           >
             <Download className="w-3.5 h-3.5" /> ส่งออกรายงาน
           </button>
@@ -631,8 +631,8 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
             </div>
             <button
               onClick={() => onNavigate('branches-depts')}
-              className="text-xs font-semibold text-emerald-700 hover:underline flex items-center gap-1 self-start sm:self-auto"
-            >
+              className="zms-action text-xs font-semibold text-emerald-700 hover:underline flex items-center gap-1 self-start sm:self-auto"
+             aria-label="จัดการโครงสร้างสาขาและแผนก" title="จัดการโครงสร้างสาขาและแผนก">
               <span>จัดการโครงสร้างสาขาและแผนก</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>

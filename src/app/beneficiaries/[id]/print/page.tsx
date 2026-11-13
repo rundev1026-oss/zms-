@@ -105,8 +105,8 @@ function BeneficiarySurveyPrintContent() {
             <button
               type="button"
               onClick={() => router.back()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
-            >
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+             aria-label="กลับ" title="กลับ">
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>กลับ</span>
             </button>
@@ -142,9 +142,9 @@ function BeneficiarySurveyPrintContent() {
             <button
               type="button"
               onClick={() => setVerifyModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 transition-colors"
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 transition-colors"
               title="ตรวจสอบความถูกต้องของรหัสสมาชิกและรหัสทะเบียน"
-            >
+             aria-label="ตรวจสอบรหัส">
               <ShieldCheck className="w-4 h-4 text-sky-600" />
               <span>ตรวจสอบรหัส</span>
             </button>
@@ -153,7 +153,7 @@ function BeneficiarySurveyPrintContent() {
               type="button"
               onClick={downloadPdf}
               disabled={loading || downloading || !pdfUrl}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{downloading ? 'กำลังสร้างไฟล์...' : 'ดาวน์โหลด PDF'}</span>
@@ -163,8 +163,8 @@ function BeneficiarySurveyPrintContent() {
               type="button"
               onClick={printDocument}
               disabled={loading || !pdfUrl}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-800 transition-colors disabled:opacity-50"
-            >
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-800 transition-colors disabled:opacity-50"
+             aria-label="พิมพ์เอกสาร" title="พิมพ์เอกสาร">
               <Printer className="w-3.5 h-3.5" />
               <span>พิมพ์เอกสาร</span>
             </button>
@@ -208,7 +208,7 @@ function BeneficiarySurveyPrintContent() {
               <button
                 type="button"
                 onClick={() => setVerifyModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                className="zms-action p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
               >
                 <X className="w-4 h-4" />
               </button>

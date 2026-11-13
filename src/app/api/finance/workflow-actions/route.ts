@@ -78,6 +78,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: result });
     }
 
+    if (view === 'staff_cases') {
+      const actor = {
+        id: searchParams.get('actorId') || '',
+        name: searchParams.get('actorName') || '',
+        role: searchParams.get('actorRole') || 'guest',
+      };
+      const items = await FinancialWorkflowService.listStaffPayableCases(actor as any);
+      return NextResponse.json({ success: true, data: items });
+    }
+
     if (view === 'batch_detail') {
       const workflowId = searchParams.get('workflowId') || searchParams.get('id');
       if (!workflowId) {
@@ -145,6 +155,16 @@ export async function POST(req: NextRequest) {
 
     if (action === 'treasurer_review') {
       const result = await FinancialWorkflowService.treasurerReviewBatch(input.workflowId, input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'pay_case') {
+      const result = await FinancialWorkflowService.confirmStaffCasePayment(input, actor);
+      return NextResponse.json({ success: true, data: result }, { status: 200 });
+    }
+
+    if (action === 'refund_staff_cash') {
+      const result = await FinancialWorkflowService.refundUnspentStaffCash(input, actor);
       return NextResponse.json({ success: true, data: result }, { status: 200 });
     }
 

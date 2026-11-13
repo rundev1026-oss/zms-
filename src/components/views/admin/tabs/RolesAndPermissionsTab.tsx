@@ -163,15 +163,15 @@ export function RolesAndPermissionsTab() {
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={fetchRoles}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            className="zms-action p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => setIsRoleModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-800 text-white font-semibold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all"
-          >
+            className="zms-action inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-800 text-white font-semibold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all"
+           aria-label="จัดการบทบาททั้งหมด (Role Manager)" title="จัดการบทบาททั้งหมด (Role Manager)">
             <Plus className="w-4 h-4" />
             <span>จัดการบทบาททั้งหมด (Role Manager)</span>
           </button>
@@ -274,8 +274,8 @@ export function RolesAndPermissionsTab() {
                   <button
                     onClick={handleSaveMatrix}
                     disabled={isSavingMatrix || !hasMatrixChanges}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-800 text-white font-semibold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all disabled:opacity-50"
-                  >
+                    className="zms-action inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-800 text-white font-semibold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all disabled:opacity-50"
+                   aria-label="กำลังบันทึก..." title="กำลังบันทึก...">
                     {isSavingMatrix ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />

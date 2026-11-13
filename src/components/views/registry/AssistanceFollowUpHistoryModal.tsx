@@ -239,8 +239,8 @@ export function AssistanceFollowUpHistoryModal({
                 <button
                   type="button"
                   onClick={() => setIsManageModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-all shadow-xs active:scale-95 shrink-0 self-start sm:self-center"
-                >
+                  className="zms-action inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-all shadow-xs active:scale-95 shrink-0 self-start sm:self-center"
+                 aria-label="บันทึกผลการติดตาม" title="บันทึกผลการติดตาม">
                   <PlusCircle className="w-4 h-4" />
                   <span>บันทึกผลการติดตาม</span>
                 </button>
@@ -328,8 +328,8 @@ export function AssistanceFollowUpHistoryModal({
                 <button
                   type="button"
                   onClick={() => setIsManageModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-                >
+                  className="zms-action inline-flex items-center gap-1.5 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                 aria-label="บันทึกการติดตามครั้งแรก" title="บันทึกการติดตามครั้งแรก">
                   <PlusCircle className="w-3.5 h-3.5" />
                   <span>บันทึกการติดตามครั้งแรก</span>
                 </button>
@@ -382,8 +382,8 @@ export function AssistanceFollowUpHistoryModal({
                         <button
                           type="button"
                           onClick={() => setSelectedVisitRecord(rec)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors"
-                        >
+                          className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors"
+                         aria-label="ดูรายละเอียดครั้งนี้" title="ดูรายละเอียดครั้งนี้">
                           <Eye className="w-3.5 h-3.5 text-slate-600" />
                           <span>ดูรายละเอียดครั้งนี้</span>
                         </button>

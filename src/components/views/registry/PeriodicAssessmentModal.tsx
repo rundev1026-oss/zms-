@@ -215,7 +215,7 @@ export function PeriodicAssessmentModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            className="zms-action p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -239,7 +239,7 @@ export function PeriodicAssessmentModal({
                     onClose();
                     onEditMemberFirst();
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-teal-300 text-teal-800 hover:bg-teal-100 text-xs font-semibold transition-colors shadow-2xs"
+                  className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-teal-300 text-teal-800 hover:bg-teal-100 text-xs font-semibold transition-colors shadow-2xs"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                   ข้อมูลสมาชิกเปลี่ยน? แก้ไขข้อมูลปัจจุบันก่อนประเมิน
@@ -459,36 +459,36 @@ export function PeriodicAssessmentModal({
                 <button
                   type="button"
                   onClick={() => handleEligibilityChange('ELIGIBLE')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                  className={`zms-action p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
                     eligibilityResult === 'ELIGIBLE'
                       ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20'
                       : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
-                >
+                 aria-label="ผ่านเกณฑ์" title="ผ่านเกณฑ์">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>ผ่านเกณฑ์</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleEligibilityChange('NOT_ELIGIBLE')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                  className={`zms-action p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
                     eligibilityResult === 'NOT_ELIGIBLE'
                       ? 'bg-rose-50 border-rose-500 text-rose-800 ring-2 ring-rose-500/20'
                       : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
-                >
+                 aria-label="ไม่ผ่านเกณฑ์" title="ไม่ผ่านเกณฑ์">
                   <XCircle className="w-4 h-4 text-rose-600" />
                   <span>ไม่ผ่านเกณฑ์</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleEligibilityChange('PENDING')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                  className={`zms-action p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
                     eligibilityResult === 'PENDING'
                       ? 'bg-amber-50 border-amber-500 text-amber-800 ring-2 ring-amber-500/20'
                       : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
-                >
+                 aria-label="รอพิจารณา" title="รอพิจารณา">
                   <Clock className="w-4 h-4 text-amber-600" />
                   <span>รอพิจารณา</span>
                 </button>
@@ -613,7 +613,7 @@ export function PeriodicAssessmentModal({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold shadow-sm transition-colors disabled:opacity-60"
+              className="zms-action inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold shadow-sm transition-colors disabled:opacity-60"
             >
               <ClipboardCheck className="w-4 h-4" />
               {isSubmitting ? 'กำลังบันทึกผลการประเมิน...' : 'บันทึกผลการประเมินสิทธิ์รอบใหม่'}

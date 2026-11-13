@@ -763,8 +763,8 @@ export function AssistanceRequestFormView({
                   onOpenRequestDetail(submittedResult.applicationId);
                 }
               }}
-              className="px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition flex items-center gap-2 min-h-[44px]"
-            >
+              className="zms-action px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition flex items-center gap-2 min-h-[44px]"
+             aria-label="ดูรายการคำร้องในระบบ" title="ดูรายการคำร้องในระบบ">
               <span>ดูรายการคำร้องในระบบ</span>
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -782,7 +782,7 @@ export function AssistanceRequestFormView({
           <button
             type="button"
             onClick={() => onNavigate('assistance-requests')}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition min-h-[40px] min-w-[40px] flex items-center justify-center"
+            className="zms-action p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition min-h-[40px] min-w-[40px] flex items-center justify-center"
             title="กลับสู่หน้ารายการคำร้อง"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -808,8 +808,8 @@ export function AssistanceRequestFormView({
             type="button"
             onClick={() => void handleSaveOrSubmit('draft')}
             disabled={isSubmitting || !beneficiaryProfile}
-            className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition disabled:opacity-50 min-h-[40px]"
-          >
+            className="zms-action flex items-center gap-1.5 px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition disabled:opacity-50 min-h-[40px]"
+           aria-label="บันทึกเป็น" title="บันทึกเป็น">
             <Save className="w-3.5 h-3.5 text-slate-500" />
             <span className="hidden sm:inline">บันทึกเป็น</span>ฉบับร่าง
           </button>
@@ -931,7 +931,7 @@ export function AssistanceRequestFormView({
                     type="button"
                     disabled={isFetchingBeneficiary || !searchQuery.trim()}
                     onClick={() => void loadBeneficiaryProfile(searchQuery)}
-                    className="px-5 py-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px]"
+                    className="zms-action px-5 py-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px]"
                   >
                     {isFetchingBeneficiary ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1751,8 +1751,8 @@ export function AssistanceRequestFormView({
                 type="button"
                 onClick={handlePrevStep}
                 disabled={isSubmitting}
-                className="px-4 sm:px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold text-xs transition flex items-center gap-1.5 min-h-[44px]"
-              >
+                data-keep-label className="zms-action px-4 sm:px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold text-xs transition flex items-center gap-1.5 min-h-[44px]"
+               aria-label="ย้อนกลับ" title="ย้อนกลับ">
                 <ChevronLeft className="w-4 h-4" />
                 <span>ย้อนกลับ</span>
               </button>
@@ -1765,8 +1765,8 @@ export function AssistanceRequestFormView({
                 type="button"
                 onClick={handleNextStep}
                 disabled={currentStep === 1 && !beneficiaryProfile}
-                className="px-5 sm:px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 min-h-[44px]"
-              >
+                data-keep-label className="zms-action px-5 sm:px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 min-h-[44px]"
+               aria-label="ถัดไป" title="ถัดไป">
                 <span>ถัดไป</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -1784,8 +1784,8 @@ export function AssistanceRequestFormView({
                   type="button"
                   onClick={() => void handleSaveOrSubmit('submitted')}
                   disabled={isSubmitting || submitLock || !hasCertified}
-                  className="px-6 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition flex items-center gap-2 disabled:opacity-50 min-h-[44px]"
-                >
+                  className="zms-action px-6 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition flex items-center gap-2 disabled:opacity-50 min-h-[44px]"
+                 aria-label="ยืนยันและส่งคำร้อง" title="ยืนยันและส่งคำร้อง">
                   {isSubmitting ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
                   ) : (

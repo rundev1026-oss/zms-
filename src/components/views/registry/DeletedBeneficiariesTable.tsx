@@ -115,8 +115,8 @@ export const DeletedBeneficiariesTable: React.FC<DeletedBeneficiariesTableProps>
             type="button"
             onClick={() => fetchDeleted()}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
-          >
+            className="zms-action flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+           aria-label="รีเฟรช" title="รีเฟรช">
             <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
             <span>รีเฟรช</span>
           </button>
@@ -260,7 +260,7 @@ export const DeletedBeneficiariesTable: React.FC<DeletedBeneficiariesTableProps>
                           <button
                             type="button"
                             onClick={() => onViewAudit({ id: item.id, registryNumber: item.registryNumber, fullName })}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-[#0b2545] hover:bg-slate-100 transition-colors"
+                            className="zms-action p-1.5 rounded-lg text-slate-500 hover:text-[#0b2545] hover:bg-slate-100 transition-colors"
                             title="ดูประวัติ Audit Log"
                           >
                             <History className="w-4 h-4" />
@@ -270,9 +270,9 @@ export const DeletedBeneficiariesTable: React.FC<DeletedBeneficiariesTableProps>
                           <button
                             type="button"
                             onClick={() => onRestore({ id: item.id, registryNumber: item.registryNumber, fullName })}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors"
+                            className="zms-action flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors"
                             title="กู้คืนทะเบียนกลับสู่ระบบ"
-                          >
+                           aria-label="กู้คืน">
                             <RotateCcw className="w-3.5 h-3.5 text-emerald-700" />
                             <span>กู้คืน</span>
                           </button>
@@ -296,7 +296,7 @@ export const DeletedBeneficiariesTable: React.FC<DeletedBeneficiariesTableProps>
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
+              className="zms-action p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -306,7 +306,7 @@ export const DeletedBeneficiariesTable: React.FC<DeletedBeneficiariesTableProps>
             <button
               onClick={() => setPage((p) => Math.min(Math.ceil(total / pageSize) || 1, p + 1))}
               disabled={page >= Math.ceil(total / pageSize)}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
+              className="zms-action p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

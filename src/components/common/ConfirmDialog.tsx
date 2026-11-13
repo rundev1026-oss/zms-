@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle, Info, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Info, CheckCircle2, Check, X, Loader2 } from 'lucide-react';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -90,18 +90,23 @@ export function ConfirmDialog({
               type="button"
               disabled={isLoading}
               onClick={onClose}
-              className="px-4 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              aria-label={cancelLabel}
+              title={cancelLabel}
+              className="zms-action inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
             >
-              {cancelLabel}
+              <X className="w-4 h-4" />
+              <span>{cancelLabel}</span>
             </button>
 
             <button
               type="button"
               disabled={isLoading}
               onClick={onConfirm}
-              className={`inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-medium rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50 ${currentStyle.confirmButton}`}
+              aria-label={confirmLabel}
+              title={confirmLabel}
+              className={`zms-action inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-medium rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50 ${currentStyle.confirmButton}`}
             >
-              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               <span>{confirmLabel}</span>
             </button>
           </div>

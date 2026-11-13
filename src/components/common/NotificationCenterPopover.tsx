@@ -163,7 +163,7 @@ export function NotificationCenterPopover({ onNavigate }: NotificationCenterPopo
             refreshNotifications();
           }
         }}
-        className={`relative w-10 h-10 min-w-[40px] min-h-[40px] sm:w-11 sm:h-11 sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center rounded-xl transition-all duration-200 border ${
+        className={`relative flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border transition-all duration-200 ${
           isOpen
             ? 'bg-slate-100 text-[#0b2545] border-slate-300 shadow-inner'
             : 'text-slate-600 hover:text-[#0b2545] hover:bg-slate-100 border-transparent hover:border-slate-200'
@@ -209,9 +209,9 @@ export function NotificationCenterPopover({ onNavigate }: NotificationCenterPopo
                 type="button"
                 onClick={handleMarkAllRead}
                 disabled={isMarkingAll}
-                className="text-[11px] text-teal-300 hover:text-white flex items-center gap-1 font-semibold transition-colors disabled:opacity-50"
+                className="zms-action text-[11px] text-teal-300 hover:text-white flex items-center gap-1 font-semibold transition-colors disabled:opacity-50"
                 title="ทำเครื่องหมายว่าอ่านแล้วทั้งหมด"
-              >
+               aria-label="อ่านทั้งหมด">
                 <CheckCheck className="w-3.5 h-3.5" />
                 <span>อ่านทั้งหมด</span>
               </button>
@@ -327,7 +327,7 @@ export function NotificationCenterPopover({ onNavigate }: NotificationCenterPopo
                           e.stopPropagation();
                           markNotificationAsRead(item.id);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all shrink-0"
+                        className="zms-action opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all shrink-0"
                         title="ทำเครื่องหมายว่าอ่านแล้ว"
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -347,8 +347,8 @@ export function NotificationCenterPopover({ onNavigate }: NotificationCenterPopo
             <button
               type="button"
               onClick={handleViewAll}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0b2545] hover:bg-[#143761] text-white font-bold transition-colors"
-            >
+              className="zms-action inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0b2545] hover:bg-[#143761] text-white font-bold transition-colors"
+             aria-label="ดูการแจ้งเตือนทั้งหมด" title="ดูการแจ้งเตือนทั้งหมด">
               <span>ดูการแจ้งเตือนทั้งหมด</span>
               <ExternalLink className="w-3 h-3" />
             </button>

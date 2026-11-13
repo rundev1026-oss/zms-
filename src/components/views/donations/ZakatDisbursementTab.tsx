@@ -277,7 +277,7 @@ export function ZakatDisbursementTab({
           <button
             onClick={fetchApprovedApps}
             disabled={isLoading}
-            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+            className="zms-action p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
             title="รีเฟรชข้อมูลคิว"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
@@ -336,8 +336,8 @@ export function ZakatDisbursementTab({
                     <td className="py-3 px-4 text-center">
                       <button
                         onClick={() => handleOpenDisburseModal(item)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-1.5 mx-auto"
-                      >
+                        className="zms-action px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-1.5 mx-auto"
+                       aria-label="จ่ายเงินซะกาต" title="จ่ายเงินซะกาต">
                         <Wallet className="w-3.5 h-3.5" />
                         <span>จ่ายเงินซะกาต</span>
                       </button>
@@ -362,7 +362,7 @@ export function ZakatDisbursementTab({
                 </div>
                 <button
                   onClick={() => setSelectedApp(null)}
-                  className="p-1 rounded-lg text-emerald-200 hover:text-white hover:bg-white/10 transition-colors"
+                  className="zms-action p-1 rounded-lg text-emerald-200 hover:text-white hover:bg-white/10 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -556,8 +556,8 @@ export function ZakatDisbursementTab({
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                  >
+                    className="zms-action px-5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                   aria-label="กำลังประมวลผล..." title="กำลังประมวลผล...">
                     {isSubmitting ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />

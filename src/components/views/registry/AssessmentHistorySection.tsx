@@ -192,7 +192,7 @@ export function AssessmentHistorySection({
           <button
             type="button"
             onClick={onOpenNewAssessment}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors shrink-0"
+            className="zms-action inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors shrink-0"
           >
             <ClipboardCheck className="w-4 h-4" />
             ประเมินสิทธิ์ใหม่
@@ -215,7 +215,7 @@ export function AssessmentHistorySection({
             <button
               type="button"
               onClick={onOpenNewAssessment}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800"
+              className="zms-action inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800"
             >
               <ClipboardCheck className="w-4 h-4" />
               เริ่มประเมินสิทธิ์ครั้งแรก
@@ -307,7 +307,7 @@ export function AssessmentHistorySection({
                       <button
                         type="button"
                         onClick={() => setSelectedSnapshotAsm(asm)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-300/80 transition-colors"
+                        className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-300/80 transition-colors"
                       >
                         <Camera className="w-3.5 h-3.5 text-teal-700" />
                         ดู Snapshot ณ วันประเมิน
@@ -388,7 +388,7 @@ export function AssessmentHistorySection({
                           type="button"
                           disabled={updatingId === asm.id}
                           onClick={() => handleUpdateAssessmentStatus(asm, 'APPROVED', 'ELIGIBLE')}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold disabled:opacity-50"
+                          className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold disabled:opacity-50"
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
                           อนุมัติผลประเมิน
@@ -419,7 +419,7 @@ export function AssessmentHistorySection({
                           type="button"
                           disabled={updatingId === asm.id}
                           onClick={() => handleUpdateAssessmentStatus(asm, 'RETURNED_FOR_CORRECTION', 'PENDING')}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold disabled:opacity-50"
+                          className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold disabled:opacity-50"
                         >
                           <RotateCcw className="w-3 h-3" />
                           ส่งกลับแก้ไข
@@ -453,7 +453,7 @@ export function AssessmentHistorySection({
               <button
                 type="button"
                 onClick={() => setSelectedSnapshotAsm(null)}
-                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10"
+                className="zms-action p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10"
               >
                 <X className="w-5 h-5" />
               </button>

@@ -126,7 +126,7 @@ export function LocationSection({
                 type="button"
                 onClick={handleSave}
                 disabled={isSaving || isSavingLocation}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors shadow-md disabled:opacity-50"
+                className="zms-action inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors shadow-md disabled:opacity-50"
               >
                 {isSaving || isSavingLocation ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -138,6 +138,13 @@ export function LocationSection({
             )}
           </div>
         </div>
+
+        {!hasCoords && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <strong className="block font-bold">ยังไม่ได้ระบุพิกัดบ้าน</strong>
+            <span>แผนที่ด้านล่างเป็นพื้นที่สำหรับค้นหาเท่านั้น จุดกึ่งกลางแผนที่ไม่ถูกบันทึกเป็นตำแหน่งของสมาชิก</span>
+          </div>
+        )}
 
         {/* Coords & Metadata Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs pt-4">

@@ -75,7 +75,7 @@ export function DocumentsSection({
           <button
             type="button"
             onClick={() => setIsUploading(!isUploading)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs shrink-0 self-start sm:self-auto"
+            className="zms-action inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs shrink-0 self-start sm:self-auto"
           >
             <UploadCloud className="w-4 h-4" />
             <span>{isUploading ? 'ปิดหน้าต่างอัปโหลด' : 'เพิ่มเอกสาร / จัดการเอกสาร'}</span>
@@ -84,11 +84,11 @@ export function DocumentsSection({
       </div>
 
       {/* Category Pills Filter */}
-      <div className="bg-slate-100/80 p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto text-xs touch-scroll">
+      <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-slate-100/80 p-1.5 text-xs">
         <button
           type="button"
           onClick={() => setSelectedCategoryFilter('all')}
-          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
+          className={`min-h-11 px-3 rounded-xl font-bold transition-colors ${
             selectedCategoryFilter === 'all'
               ? 'bg-[#0b2545] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -99,7 +99,7 @@ export function DocumentsSection({
         <button
           type="button"
           onClick={() => setSelectedCategoryFilter('id_card')}
-          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
+          className={`min-h-11 px-3 rounded-xl font-bold transition-colors ${
             selectedCategoryFilter === 'id_card'
               ? 'bg-[#0b2545] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -110,7 +110,7 @@ export function DocumentsSection({
         <button
           type="button"
           onClick={() => setSelectedCategoryFilter('family_photo')}
-          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
+          className={`min-h-11 px-3 rounded-xl font-bold transition-colors ${
             selectedCategoryFilter === 'family_photo'
               ? 'bg-[#0b2545] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -121,7 +121,7 @@ export function DocumentsSection({
         <button
           type="button"
           onClick={() => setSelectedCategoryFilter('housing_exterior')}
-          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
+          className={`min-h-11 px-3 rounded-xl font-bold transition-colors ${
             selectedCategoryFilter === 'housing_exterior'
               ? 'bg-[#0b2545] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -132,7 +132,7 @@ export function DocumentsSection({
         <button
           type="button"
           onClick={() => setSelectedCategoryFilter('income_proof')}
-          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
+          className={`min-h-11 px-3 rounded-xl font-bold transition-colors ${
             selectedCategoryFilter === 'income_proof'
               ? 'bg-[#0b2545] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -143,7 +143,7 @@ export function DocumentsSection({
         <button
           type="button"
           onClick={() => setSelectedCategoryFilter('medical_cert')}
-          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
+          className={`min-h-11 px-3 rounded-xl font-bold transition-colors ${
             selectedCategoryFilter === 'medical_cert'
               ? 'bg-[#0b2545] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'

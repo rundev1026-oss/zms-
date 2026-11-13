@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       const fullName = formatPersonName(name) || 'ไม่ระบุชื่อ';
 
       // Determine asnaf category key
-      let asnafCategory = 'miskin';
+      let asnafCategory = '';
       if (item.asnafCategory) {
         asnafCategory = String(item.asnafCategory).toLowerCase();
       } else if (item.asnaf?.code) {

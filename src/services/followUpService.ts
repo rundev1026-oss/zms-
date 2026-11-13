@@ -159,6 +159,106 @@ export function calculatePlanStatus(data: {
   return 'not_started';
 }
 
+function textOrUndefined(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text.length > 0 ? text : undefined;
+}
+
+const FOLLOW_UP_PLAN_COLUMNS = `
+  p.*,
+  a.application_no,
+  a.disbursement_ref,
+  a.disbursement_date,
+  a.approved_amount,
+  a.disbursed_amount,
+  a.approved_date,
+  a.asnaf_category AS application_asnaf,
+  a.assistance_format_name,
+  a.assistance_type_details,
+  a.necessity_details,
+  b.full_name AS beneficiary_name,
+  b.registration_no,
+  b.national_id,
+  b.phone,
+  b.asnaf_category AS beneficiary_asnaf,
+  COALESCE(b.residence_address, h.address, '') AS address,
+  COALESCE(h.province, '') AS province,
+  at.name AS assistance_type_master_name,
+  (
+    SELECT fr.followup_date
+    FROM follow_up_records fr
+    WHERE fr.plan_id = p.id
+    ORDER BY fr.visit_number DESC, fr.created_at DESC
+    LIMIT 1
+  ) AS last_followup_date
+`;
+
+const FOLLOW_UP_PLAN_FROM = `
+  FROM follow_up_plans p
+  INNER JOIN assistance_applications a ON p.assistance_record_id = a.id
+  INNER JOIN beneficiaries b ON p.beneficiary_id = b.id
+  LEFT JOIN households h ON b.household_id = h.id
+  LEFT JOIN assistance_types at ON a.assistance_type_id = at.id
+`;
+
+function mapFollowUpPlanRow(r: Record<string, unknown>): FollowUpPlan {
+  const typeStr = String(r.assistance_type ?? '');
+  const minVisits = Number(r.min_visits) || getMandatoryMinVisits(typeStr);
+  const completedVisits = Number(r.completed_visits) || 0;
+  const remainingVisits = Math.max(0, minVisits - completedVisits);
+  const requiresFollowup = Boolean(r.requires_followup);
+  const nextFollowupDate = textOrUndefined(r.next_followup_date);
+  const addressDetails = textOrUndefined(r.address_details);
+  const province = textOrUndefined(r.province);
+  const dynamicStatus = calculatePlanStatus({
+    requiresFollowup,
+    minVisits,
+    completedVisits,
+    nextFollowupDate,
+    isTerminated: !requiresFollowup,
+    requiresAdditional: r.status === 'requires_additional',
+  });
+
+  return {
+    id: String(r.id),
+    assistanceRecordId: String(r.assistance_record_id),
+    applicationNo: String(r.application_no),
+    disbursementRef: r.disbursement_ref ? String(r.disbursement_ref) : undefined,
+    beneficiaryId: String(r.beneficiary_id),
+    beneficiaryName: String(r.beneficiary_name),
+    registrationNo: String(r.registration_no),
+    nationalId: r.national_id ? String(r.national_id) : undefined,
+    phone: r.phone ? String(r.phone) : undefined,
+    address: addressDetails ? `${addressDetails} ${province || ''}`.trim() : undefined,
+    assistanceType: typeStr,
+    assistanceTypeName: getAssistanceTypeTitle(typeStr),
+    assistanceFormatName: textOrUndefined(r.assistance_format_name) || textOrUndefined(r.assistance_type_master_name),
+    assistancePurpose: textOrUndefined(r.necessity_details) || textOrUndefined(r.assistance_type_details),
+    asnafCategory: textOrUndefined(r.application_asnaf) || textOrUndefined(r.beneficiary_asnaf),
+    disbursementDate: textOrUndefined(r.disbursement_date),
+    approvedDate: textOrUndefined(r.approved_date),
+    disbursedAmount: r.disbursed_amount ? Number(r.disbursed_amount) : undefined,
+    approvedAmount: r.approved_amount ? Number(r.approved_amount) : undefined,
+    requiresFollowup,
+    optOutReason: textOrUndefined(r.opt_out_reason),
+    minVisits,
+    completedVisits,
+    remainingVisits,
+    status: dynamicStatus,
+    statusTh: formatThaiStatus(dynamicStatus),
+    lastFollowupDate: textOrUndefined(r.last_followup_date),
+    nextFollowupDate,
+    assignedOfficerId: String(r.assigned_officer_id || ''),
+    assignedOfficerName: String(r.assigned_officer_name || ''),
+    branchId: r.branch_id ? String(r.branch_id) : undefined,
+    branchName: r.branch_name ? String(r.branch_name) : undefined,
+    notes: textOrUndefined(r.notes),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  };
+}
+
 export class FollowUpService {
   /**
    * Ensure follow-up tables exist in SQLite
@@ -445,75 +545,16 @@ export class FollowUpService {
 
     // Query all plans joined with applications and beneficiaries
     const res = await db.execute(`
-      SELECT 
-        p.*,
-        a.application_no, a.disbursement_ref, a.disbursement_date, a.approved_amount, a.disbursed_amount,
-        b.full_name as beneficiary_name, b.registration_no, b.national_id, b.phone,
-        COALESCE(b.residence_address, h.address, '') as address,
-        COALESCE(h.province, '') as province
-      FROM follow_up_plans p
-      INNER JOIN assistance_applications a ON p.assistance_record_id = a.id
-      INNER JOIN beneficiaries b ON p.beneficiary_id = b.id
-      LEFT JOIN households h ON b.household_id = h.id
+      SELECT
+        ${FOLLOW_UP_PLAN_COLUMNS}
+      ${FOLLOW_UP_PLAN_FROM}
       ORDER BY p.updated_at DESC
     `);
 
     const allPlans: FollowUpPlan[] = [];
 
     for (const r of res.rows) {
-      const typeStr = String(r.assistance_type);
-      const isHousing = isHousingAssistance(typeStr);
-      const isCareer = isCareerAssistance(typeStr);
-      const minVisits = Number(r.min_visits) || (isCareer ? 6 : (isHousing ? 1 : 1));
-      const completedVisits = Number(r.completed_visits) || 0;
-      const remainingVisits = Math.max(0, minVisits - completedVisits);
-      const requiresFollowup = Boolean(r.requires_followup);
-      const nextFollowupDate = r.next_followup_date ? String(r.next_followup_date) : undefined;
-
-      // Dynamically calculate status based on actual records and next date
-      const dynamicStatus = calculatePlanStatus({
-        requiresFollowup,
-        minVisits,
-        completedVisits,
-        nextFollowupDate,
-        isTerminated: !requiresFollowup,
-        requiresAdditional: r.status === 'requires_additional',
-      });
-
-      const plan: FollowUpPlan = {
-        id: String(r.id),
-        assistanceRecordId: String(r.assistance_record_id),
-        applicationNo: String(r.application_no),
-        disbursementRef: r.disbursement_ref ? String(r.disbursement_ref) : undefined,
-        beneficiaryId: String(r.beneficiary_id),
-        beneficiaryName: String(r.beneficiary_name),
-        registrationNo: String(r.registration_no),
-        nationalId: r.national_id ? String(r.national_id) : undefined,
-        phone: r.phone ? String(r.phone) : undefined,
-        address: r.address_details ? `${String(r.address_details)} ${r.province ? String(r.province) : ''}`.trim() : undefined,
-        assistanceType: typeStr,
-        assistanceTypeName: getAssistanceTypeTitle(typeStr),
-        disbursementDate: r.disbursement_date ? String(r.disbursement_date) : undefined,
-        disbursedAmount: r.disbursed_amount ? Number(r.disbursed_amount) : undefined,
-        approvedAmount: r.approved_amount ? Number(r.approved_amount) : undefined,
-        requiresFollowup,
-        optOutReason: r.opt_out_reason ? String(r.opt_out_reason) : undefined,
-        minVisits,
-        completedVisits,
-        remainingVisits,
-        status: dynamicStatus,
-        statusTh: formatThaiStatus(dynamicStatus),
-        nextFollowupDate,
-        assignedOfficerId: String(r.assigned_officer_id || ''),
-        assignedOfficerName: String(r.assigned_officer_name || ''),
-        branchId: r.branch_id ? String(r.branch_id) : undefined,
-        branchName: r.branch_name ? String(r.branch_name) : undefined,
-        notes: r.notes ? String(r.notes) : undefined,
-        createdAt: String(r.created_at),
-        updatedAt: String(r.updated_at),
-      };
-
-      allPlans.push(plan);
+      allPlans.push(mapFollowUpPlanRow(r as unknown as Record<string, unknown>));
     }
 
     // Calculate Summary Stats from all real plans
@@ -650,16 +691,9 @@ export class FollowUpService {
 
     const planRes = await db.execute({
       sql: `
-        SELECT 
-          p.*,
-          a.application_no, a.disbursement_ref, a.disbursement_date, a.approved_amount, a.disbursed_amount,
-          b.full_name as beneficiary_name, b.registration_no, b.national_id, b.phone,
-          COALESCE(b.residence_address, h.address, '') as address,
-          COALESCE(h.province, '') as province
-        FROM follow_up_plans p
-        INNER JOIN assistance_applications a ON p.assistance_record_id = a.id
-        INNER JOIN beneficiaries b ON p.beneficiary_id = b.id
-        LEFT JOIN households h ON b.household_id = h.id
+        SELECT
+          ${FOLLOW_UP_PLAN_COLUMNS}
+        ${FOLLOW_UP_PLAN_FROM}
         WHERE p.id = ?
       `,
       args: [planId],
@@ -667,13 +701,6 @@ export class FollowUpService {
 
     if (planRes.rows.length === 0) return null;
     const r = planRes.rows[0];
-
-    const typeStr = String(r.assistance_type);
-    const minVisits = Number(r.min_visits) || getMandatoryMinVisits(typeStr);
-    const completedVisits = Number(r.completed_visits) || 0;
-    const remainingVisits = Math.max(0, minVisits - completedVisits);
-    const requiresFollowup = Boolean(r.requires_followup);
-    const nextFollowupDate = r.next_followup_date ? String(r.next_followup_date) : undefined;
 
     // Fetch records
     const recordsRes = await db.execute({
@@ -744,46 +771,8 @@ export class FollowUpService {
       createdAt: String(al.created_at),
     }));
 
-    const dynamicStatus = calculatePlanStatus({
-      requiresFollowup,
-      minVisits,
-      completedVisits,
-      nextFollowupDate,
-      isTerminated: !requiresFollowup,
-      requiresAdditional: r.status === 'requires_additional',
-    });
-
     return {
-      id: String(r.id),
-      assistanceRecordId: String(r.assistance_record_id),
-      applicationNo: String(r.application_no),
-      disbursementRef: r.disbursement_ref ? String(r.disbursement_ref) : undefined,
-      beneficiaryId: String(r.beneficiary_id),
-      beneficiaryName: String(r.beneficiary_name),
-      registrationNo: String(r.registration_no),
-      nationalId: r.national_id ? String(r.national_id) : undefined,
-      phone: r.phone ? String(r.phone) : undefined,
-      address: r.address_details ? `${String(r.address_details)} ${r.province ? String(r.province) : ''}`.trim() : undefined,
-      assistanceType: typeStr,
-      assistanceTypeName: getAssistanceTypeTitle(typeStr),
-      disbursementDate: r.disbursement_date ? String(r.disbursement_date) : undefined,
-      disbursedAmount: r.disbursed_amount ? Number(r.disbursed_amount) : undefined,
-      approvedAmount: r.approved_amount ? Number(r.approved_amount) : undefined,
-      requiresFollowup,
-      optOutReason: r.opt_out_reason ? String(r.opt_out_reason) : undefined,
-      minVisits,
-      completedVisits,
-      remainingVisits,
-      status: dynamicStatus,
-      statusTh: formatThaiStatus(dynamicStatus),
-      nextFollowupDate,
-      assignedOfficerId: String(r.assigned_officer_id || ''),
-      assignedOfficerName: String(r.assigned_officer_name || ''),
-      branchId: r.branch_id ? String(r.branch_id) : undefined,
-      branchName: r.branch_name ? String(r.branch_name) : undefined,
-      notes: r.notes ? String(r.notes) : undefined,
-      createdAt: String(r.created_at),
-      updatedAt: String(r.updated_at),
+      ...mapFollowUpPlanRow(r as unknown as Record<string, unknown>),
       records,
       auditLogs,
     };

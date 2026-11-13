@@ -81,7 +81,7 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              className="zms-action p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -147,8 +147,8 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
               <button
                 type="submit"
                 disabled={!isFormValid || isSubmitting}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold transition-colors shadow-sm"
-              >
+                className="zms-action flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold transition-colors shadow-sm"
+               aria-label="กำลังกู้คืน..." title="กำลังกู้คืน...">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />

@@ -125,7 +125,7 @@ export function MemberRequestsSection({
           <button
             type="button"
             onClick={onOpenCreateRequest}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors shrink-0"
+            className="zms-action inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors shrink-0"
           >
             <PlusCircle className="w-4 h-4" />
             ยื่นคำร้องขอความช่วยเหลือ
@@ -196,8 +196,8 @@ export function MemberRequestsSection({
                       <button
                         type="button"
                         onClick={() => onNavigateToRequests(req.id)}
-                        className="inline-flex items-center gap-1 text-sky-700 hover:underline font-semibold"
-                      >
+                        className="zms-action inline-flex items-center gap-1 text-sky-700 hover:underline font-semibold"
+                       aria-label="เปิดหน้าคำร้อง" title="เปิดหน้าคำร้อง">
                         <span>เปิดหน้าคำร้อง</span>
                         <ExternalLink className="w-3 h-3" />
                       </button>

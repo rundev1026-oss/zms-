@@ -573,7 +573,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
             type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors shadow-2xs"
+            className="zms-action flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors shadow-2xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
             รีเฟรชข้อมูล
@@ -982,7 +982,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                 <button
                   type="button"
                   onClick={() => setSelectedAppId(null)}
-                  className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-emerald-700"
+                  className="zms-action flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-emerald-700"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   กลับไปหน้ารายการคำร้อง
@@ -1069,7 +1069,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                   <button
                     type="button"
                     onClick={() => setShowMaskedId(!showMaskedId)}
-                    className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium"
+                    className="zms-action text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium"
                   >
                     {showMaskedId ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                     {showMaskedId ? 'แสดงเลข ปชช.' : 'ซ่อนเลข ปชช.'}
@@ -1618,7 +1618,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                       type="button"
                       disabled={isSubmitting}
                       onClick={() => setConfirmAction('return')}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                      className="zms-action flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
                     >
                       <RotateCcw className="w-4 h-4 text-amber-700" />
                       ส่งกลับแก้ไข
@@ -1629,7 +1629,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                       type="button"
                       disabled={isSubmitting}
                       onClick={() => setConfirmAction('reject')}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                      className="zms-action flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-300 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
                     >
                       <XCircle className="w-4 h-4 text-rose-700" />
                       ไม่อนุมัติ
@@ -1650,7 +1650,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                           ? 'คำร้องนี้ต้องผ่านการประเมินสิทธิ์ให้เสร็จสิ้นก่อนจึงจะสามารถพิจารณาอนุมัติได้'
                           : undefined
                       }
-                      className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold text-white shadow-xs transition-all ${
+                      className={`zms-action flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold text-white shadow-xs transition-all ${
                         resolvedData?.isAllSufficient &&
                         approvalAmount > 0 &&
                         !isSubmitting &&

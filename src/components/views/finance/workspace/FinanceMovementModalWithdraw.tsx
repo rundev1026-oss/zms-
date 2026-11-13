@@ -115,7 +115,7 @@ export function FinanceMovementModalWithdraw({ isOpen, onClose, banks, actor, on
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            className="zms-action rounded-full p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -157,7 +157,7 @@ export function FinanceMovementModalWithdraw({ isOpen, onClose, banks, actor, on
               <button
                 type="button"
                 onClick={() => setMode('full_instant')}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                className={`zms-action flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
                   mode === 'full_instant'
                     ? 'border-amber-500 bg-white text-amber-800 shadow-xs ring-2 ring-amber-100'
                     : 'border-slate-200 bg-white/50 text-slate-600 hover:bg-white'
@@ -169,7 +169,7 @@ export function FinanceMovementModalWithdraw({ isOpen, onClose, banks, actor, on
               <button
                 type="button"
                 onClick={() => setMode('draft_request')}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                className={`zms-action flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
                   mode === 'draft_request'
                     ? 'border-amber-500 bg-white text-amber-800 shadow-xs ring-2 ring-amber-100'
                     : 'border-slate-200 bg-white/50 text-slate-600 hover:bg-white'
@@ -308,7 +308,7 @@ export function FinanceMovementModalWithdraw({ isOpen, onClose, banks, actor, on
               <button
                 type="button"
                 onClick={() => setProofUrl('https://placehold.co/600x800.png?text=Bank+Withdrawal+Slip')}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                className="zms-action inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
               >
                 <UploadCloud className="h-3.5 w-3.5" /> จำลองสลิปถอน
               </button>
@@ -353,7 +353,7 @@ export function FinanceMovementModalWithdraw({ isOpen, onClose, banks, actor, on
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#D97706] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-amber-700/20 transition hover:bg-[#b45309] active:scale-[0.98] disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#D97706] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-amber-700/20 transition hover:bg-[#b45309] active:scale-[0.98] disabled:opacity-50"
             >
               {submitting ? (
                 <>

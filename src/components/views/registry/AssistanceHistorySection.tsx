@@ -201,8 +201,8 @@ export function AssistanceHistorySection({
           <button
             type="button"
             onClick={handlePrintSummary}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors shadow-xs"
-          >
+            className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors shadow-xs"
+           aria-label="พิมพ์รายงานประวัติ" title="พิมพ์รายงานประวัติ">
             <Printer className="w-3.5 h-3.5 text-slate-600" />
             <span>พิมพ์รายงานประวัติ</span>
           </button>
@@ -211,8 +211,8 @@ export function AssistanceHistorySection({
             <button
               type="button"
               onClick={onOpenNewAssistanceDialog}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0b2545] hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-            >
+              className="zms-action inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0b2545] hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+             aria-label="ยื่นคำร้องใหม่ให้บุคคลนี้" title="ยื่นคำร้องใหม่ให้บุคคลนี้">
               <FilePlus2 className="w-3.5 h-3.5 text-amber-300" />
               <span>ยื่นคำร้องใหม่ให้บุคคลนี้</span>
             </button>
@@ -288,8 +288,8 @@ export function AssistanceHistorySection({
                 <button
                   type="button"
                   onClick={onOpenNewAssistanceDialog}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-                >
+                  className="zms-action inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                 aria-label="ยื่นคำร้องขอรับความช่วยเหลือ" title="ยื่นคำร้องขอรับความช่วยเหลือ">
                   <FilePlus2 className="w-3.5 h-3.5" />
                   <span>ยื่นคำร้องขอรับความช่วยเหลือ</span>
                 </button>
@@ -440,9 +440,9 @@ export function AssistanceHistorySection({
                         <button
                           type="button"
                           onClick={() => onOpenReceiptModal(aid)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors shadow-2xs"
+                          className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors shadow-2xs"
                           title="เปิดดูใบสำคัญจ่าย ใบเสร็จรับเงิน สลิปโอนเงิน และเอกสารส่งมอบ"
-                        >
+                         aria-label="ดูรายละเอียด &amp; ใบเสร็จ">
                           <Receipt className="w-3.5 h-3.5 text-slate-600" />
                           <span>ดูรายละเอียด & ใบเสร็จ</span>
                         </button>
@@ -451,7 +451,7 @@ export function AssistanceHistorySection({
                         <button
                           type="button"
                           onClick={() => setExpandedAppId(isExpanded ? null : aid.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-medium"
+                          className="zms-action inline-flex items-center gap-1 px-2.5 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-medium"
                         >
                           <span>{isExpanded ? 'ย่อข้อมูล' : 'ข้อมูลเพิ่มเติม'}</span>
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -467,7 +467,7 @@ export function AssistanceHistorySection({
                               setSelectedPlanForHistory(linkedPlan);
                               setSelectedAidForHistory(aid);
                             }}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs active:scale-95"
+                            className="zms-action inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs active:scale-95"
                             title="เปิดดูประวัติการลงพื้นที่ติดตามทุกครั้ง เรียงจากใหม่ไปเก่า พร้อมรูปหลักฐาน"
                           >
                             <History className="w-3.5 h-3.5 text-amber-300" />
@@ -488,9 +488,9 @@ export function AssistanceHistorySection({
                           <button
                             type="button"
                             onClick={() => setSelectedPlanIdForManage(linkedPlan.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold transition-colors shadow-2xs"
+                            className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold transition-colors shadow-2xs"
                             title="บันทึกผลการลงพื้นที่จริง พร้อมแนบรูปถ่าย"
-                          >
+                           aria-label="บันทึกการติดตาม">
                             <Camera className="w-3.5 h-3.5 text-teal-700" />
                             <span>บันทึกการติดตาม</span>
                           </button>
@@ -545,8 +545,8 @@ export function AssistanceHistorySection({
                             <button
                               type="button"
                               onClick={() => onOpenReceiptModal(aid)}
-                              className="text-blue-700 hover:text-blue-900 font-bold text-xs inline-flex items-center gap-1"
-                            >
+                              className="zms-action text-blue-700 hover:text-blue-900 font-bold text-xs inline-flex items-center gap-1"
+                             aria-label="ดูหลักฐานภาพถ่าย" title="ดูหลักฐานภาพถ่าย">
                               <span>ดูหลักฐานภาพถ่าย</span>
                               <ExternalLink className="w-3 h-3" />
                             </button>

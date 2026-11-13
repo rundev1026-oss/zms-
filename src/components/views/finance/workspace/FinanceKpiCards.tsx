@@ -134,7 +134,7 @@ export function FinanceKpiCards({ data, loading }: { data: KpiData | null; loadi
           </div>
           <div>
             <div className="flex items-center gap-0.5 text-[11px] text-rose-600">
-              <ArrowUpRight className="h-3 w-3 shrink-0" /> จ่ายให้ จนท.
+              <ArrowUpRight className="h-3 w-3 shrink-0" /> โอนให้เจ้าหน้าที่
             </div>
             <div className="font-semibold text-rose-700 whitespace-nowrap">฿{fmt(treasurer.paidToStaff)}</div>
           </div>
@@ -173,11 +173,11 @@ export function FinanceKpiCards({ data, loading }: { data: KpiData | null; loadi
 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-1.5 border-t border-slate-100 pt-3 text-xs">
           <div>
-            <div className="text-[11px] text-slate-400">เงินรับมา</div>
+            <div className="text-[11px] text-slate-400">รับจากเหรัญญิก</div>
             <div className="font-semibold text-slate-700 whitespace-nowrap">฿{fmt(staff.receivedCash)}</div>
           </div>
           <div>
-            <div className="text-[11px] text-amber-600">กันไว้จ่าย</div>
+            <div className="text-[11px] text-slate-400">ยอดยกมา</div>
             <div className="font-semibold text-amber-700 whitespace-nowrap">฿{fmt(staff.reservedCash)}</div>
           </div>
           <div>

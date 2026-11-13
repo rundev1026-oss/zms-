@@ -1251,7 +1251,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                         onNavigate('beneficiaries');
                       }
                     }}
-                    className="py-2.5 px-4 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs shrink-0"
+                    className="zms-action py-2.5 px-4 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs shrink-0"
                   >
                     <span>เปิดข้อมูลสมาชิกเดิม ({duplicateMember.memberCode})</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -1767,7 +1767,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                           <button
                             type="button"
                             onClick={() => removePastAssistance(idx)}
-                            className="mt-4 p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                            className="zms-action mt-4 p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1779,7 +1779,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                   <button
                     type="button"
                     onClick={addPastAssistance}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
+                    className="zms-action flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
                   >
                     <Plus className="w-3.5 h-3.5" /> เพิ่มประวัติการช่วยเหลือ
                   </button>
@@ -1992,7 +1992,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                 <button
                   type="button"
                   onClick={addMember}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 text-white rounded-xl text-xs font-semibold hover:bg-emerald-800"
+                  className="zms-action flex items-center gap-1 px-3 py-1.5 bg-emerald-700 text-white rounded-xl text-xs font-semibold hover:bg-emerald-800"
                 >
                   <Plus className="w-3.5 h-3.5" /> เพิ่มสมาชิก
                 </button>
@@ -2065,7 +2065,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                       <button
                         type="button"
                         onClick={() => removeMember(idx)}
-                        className="mt-3.5 p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                        className="zms-action mt-3.5 p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -2337,7 +2337,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
               <button
                 type="button"
                 onClick={() => setCurrentStep((s) => s - 1)}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[44px]"
+                data-keep-label className="zms-action w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[44px]"
               >
                 <ChevronLeft className="w-4 h-4" /> ขั้นตอนก่อนหน้า
               </button>
@@ -2350,7 +2350,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
               type="button"
               disabled={isSubmitting}
               onClick={() => handleSubmit('draft')}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-colors min-h-[44px]"
+              data-keep-label className="zms-action flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-colors min-h-[44px]"
             >
               <Save className="w-4 h-4 text-slate-500" /> บันทึกฉบับร่าง (Draft)
             </button>
@@ -2359,7 +2359,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-5 py-2.5 bg-emerald-700 text-white hover:bg-emerald-800 rounded-xl text-xs font-semibold transition-colors shadow-xs min-h-[44px]"
+                data-keep-label className="zms-action flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-5 py-2.5 bg-emerald-700 text-white hover:bg-emerald-800 rounded-xl text-xs font-semibold transition-colors shadow-xs min-h-[44px]"
               >
                 ถัดไป <ChevronRight className="w-4 h-4" />
               </button>
@@ -2368,7 +2368,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => handleSubmit('submitted')}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-700 text-white hover:bg-emerald-800 rounded-xl text-xs font-bold transition-colors shadow-md min-h-[44px]"
+                data-keep-label className="zms-action flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-700 text-white hover:bg-emerald-800 rounded-xl text-xs font-bold transition-colors shadow-md min-h-[44px]"
               >
                 <Check className="w-4 h-4" /> {isSubmitting ? 'กำลังส่งคำร้อง...' : 'ยื่นคำร้องขอรับความช่วยเหลือ'}
               </button>

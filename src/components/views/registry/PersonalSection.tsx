@@ -47,6 +47,7 @@ interface PersonalSectionProps {
   setActiveSubTab: (subTab: PersonalSubTab) => void;
   asnafLabels: Record<string, string>;
   canViewUnmaskedId?: boolean;
+  showSubNav?: boolean;
 }
 
 const HOUSING_TYPE_LABELS: Record<string, string> = {
@@ -112,6 +113,7 @@ export function PersonalSection({
   setActiveSubTab,
   asnafLabels,
   canViewUnmaskedId = false,
+  showSubNav = true,
 }: PersonalSectionProps) {
   const [showUnmaskedId, setShowUnmaskedId] = useState<boolean>(false);
 
@@ -250,7 +252,7 @@ export function PersonalSection({
 
   return (
     <div className="space-y-6">
-      {/* Sub-Section Navigation Pills */}
+      {showSubNav && (
       <div className="bg-slate-100/80 p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto text-xs touch-scroll">
         <button
           type="button"
@@ -319,6 +321,7 @@ export function PersonalSection({
           1.5 ความช่วยเหลืออื่น ({pastAidList.length})
         </button>
       </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 1.1 ข้อมูลส่วนบุคคลและที่อยู่ */}
@@ -339,8 +342,8 @@ export function PersonalSection({
               <button
                 type="button"
                 onClick={() => onStartEdit('info')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-              >
+                className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+               aria-label="แก้ไขข้อมูลส่วนบุคคล" title="แก้ไขข้อมูลส่วนบุคคล">
                 <Edit className="w-3.5 h-3.5" />
                 <span>แก้ไขข้อมูลส่วนบุคคล</span>
               </button>
@@ -356,7 +359,7 @@ export function PersonalSection({
                   <span className="font-bold text-slate-900 block pb-1 border-b border-slate-200 text-xs text-emerald-800">
                     ข้อมูลประจำตัวและช่องทางติดต่อ
                   </span>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <span className="text-slate-400 block text-[11px]">รหัสทะเบียนผู้มีสิทธิ์:</span>
                       <strong className="text-slate-900 font-mono font-bold block text-sm">{registry.registrationNo}</strong>
@@ -373,7 +376,7 @@ export function PersonalSection({
                           <button
                             type="button"
                             onClick={() => setShowUnmaskedId(!showUnmaskedId)}
-                            className="text-slate-400 hover:text-slate-700"
+                            className="zms-action text-slate-400 hover:text-slate-700"
                             title={showUnmaskedId ? 'ซ่อนเลขบัตร' : 'แสดงเลขบัตรเต็ม'}
                           >
                             {showUnmaskedId ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -394,7 +397,7 @@ export function PersonalSection({
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">สถานภาพสมรส:</span>
-                      <span className="text-slate-900 block">{MARITAL_STATUS_LABELS[registry.maritalStatus || ''] || registry.maritalStatus || 'สมรส'}</span>
+                      <span className="text-slate-900 block">{MARITAL_STATUS_LABELS[registry.maritalStatus || ''] || registry.maritalStatus || 'ยังไม่มีข้อมูล'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">อาชีพ:</span>
@@ -426,13 +429,33 @@ export function PersonalSection({
                     ที่อยู่และการครอบครองที่อยู่อาศัย
                   </span>
                   <div className="space-y-2">
-                    <div>
-                      <span className="text-slate-400 block text-[11px]">ที่อยู่ปัจจุบัน:</span>
-                      <span className="text-slate-900 block font-medium leading-relaxed">
-                        {registry.address || '-'} ชุมชน{registry.community || '-'} ต.{registry.subdistrict || '-'} อ.{registry.district || '-'} จ.{registry.province || '-'} {registry.postcode || ''}
-                      </span>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[11px]">ที่อยู่ปัจจุบัน:</span>
+                        <span className="text-slate-900 block font-medium leading-relaxed">{registry.address || 'ยังไม่มีข้อมูล'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">ชุมชน:</span>
+                        <span className="text-slate-900 block">{registry.community || 'ยังไม่มีข้อมูล'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">ตำบล:</span>
+                        <span className="text-slate-900 block">{registry.subdistrict || 'ยังไม่มีข้อมูล'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">อำเภอ:</span>
+                        <span className="text-slate-900 block">{registry.district || 'ยังไม่มีข้อมูล'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">จังหวัด:</span>
+                        <span className="text-slate-900 block">{registry.province || 'ยังไม่มีข้อมูล'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">รหัสไปรษณีย์:</span>
+                        <span className="text-slate-900 block">{registry.postcode || 'ยังไม่มีข้อมูล'}</span>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
                       <div>
                         <span className="text-slate-400 block text-[11px]">ลักษณะการครอบครองที่อยู่อาศัย:</span>
                         <span className="text-slate-900 block font-bold">
@@ -727,8 +750,8 @@ export function PersonalSection({
               <button
                 type="button"
                 onClick={() => onStartEdit('household')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-              >
+                className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+               aria-label="แก้ไขข้อมูลครัวเรือน" title="แก้ไขข้อมูลครัวเรือน">
                 <Edit className="w-3.5 h-3.5" />
                 <span>แก้ไขข้อมูลครัวเรือน</span>
               </button>
@@ -756,7 +779,23 @@ export function PersonalSection({
 
             {/* Household members table */}
             {!isEditing ? (
-              <div className="border border-slate-200 rounded-xl overflow-x-auto">
+              <>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:hidden">
+                {householdList.length === 0 ? (
+                  <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-[15px] text-slate-500">ยังไม่มีข้อมูลสมาชิกในครัวเรือน</p>
+                ) : householdList.map((m, idx) => (
+                  <article key={m.id || idx} className="rounded-xl border border-slate-200 bg-white p-3 leading-6">
+                    <h4 className="text-[16px] font-bold text-[#0B2545]">{m.fullName || 'ไม่ระบุชื่อ'}</h4>
+                    <p className="text-[14px] text-slate-600">{m.relation || 'ไม่ระบุความสัมพันธ์'} · {m.age ? `${m.age} ปี` : 'ไม่ระบุอายุ'}</p>
+                    <p className="text-[14px] text-slate-700">อาชีพ {m.occupation || 'ยังไม่มีข้อมูล'}</p>
+                    <p className="text-[14px] text-slate-700">รายได้ {m.monthlyIncome === null || m.monthlyIncome === undefined ? 'ยังไม่มีข้อมูล' : `฿${Number(m.monthlyIncome).toLocaleString('th-TH')}`}</p>
+                    {(m.educationStatus || m.notes || m.healthNotes) && (
+                      <p className="text-[13px] text-slate-500">{[m.educationStatus, m.healthNotes, m.notes].filter(Boolean).join(' · ')}</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto rounded-xl border border-slate-200 lg:block">
                 <table className="w-full text-left text-xs min-w-[650px]">
                   <thead>
                     <tr className="bg-slate-100/80 border-b border-slate-200 font-bold text-slate-700">
@@ -796,6 +835,7 @@ export function PersonalSection({
                   </tbody>
                 </table>
               </div>
+              </>
             ) : (
               /* Editable household members table */
               <div className="space-y-3">
@@ -804,8 +844,8 @@ export function PersonalSection({
                   <button
                     type="button"
                     onClick={handleAddMember}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors"
-                  >
+                    className="zms-action inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors"
+                   aria-label="เพิ่มสมาชิก" title="เพิ่มสมาชิก">
                     <Plus className="w-3.5 h-3.5" />
                     <span>เพิ่มสมาชิก</span>
                   </button>
@@ -819,8 +859,8 @@ export function PersonalSection({
                         <button
                           type="button"
                           onClick={() => handleRemoveMember(idx)}
-                          className="text-rose-600 hover:text-rose-800 font-bold text-xs flex items-center gap-1"
-                        >
+                          className="zms-action text-rose-600 hover:text-rose-800 font-bold text-xs flex items-center gap-1"
+                         aria-label="ลบ" title="ลบ">
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>ลบ</span>
                         </button>
@@ -928,8 +968,8 @@ export function PersonalSection({
               <button
                 type="button"
                 onClick={() => onStartEdit('economy')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-              >
+                className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+               aria-label="แก้ไขข้อมูลรายได้-รายจ่าย" title="แก้ไขข้อมูลรายได้-รายจ่าย">
                 <Edit className="w-3.5 h-3.5" />
                 <span>แก้ไขข้อมูลรายได้-รายจ่าย</span>
               </button>
@@ -938,28 +978,28 @@ export function PersonalSection({
 
           <div className="p-5 space-y-5">
             {/* 4 Summary Metric Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-1 gap-3 text-xs min-[420px]:grid-cols-2 xl:grid-cols-4">
               <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
                 <span className="text-[11px] text-emerald-800 font-semibold block">รายได้รวมต่อเดือน</span>
-                <span className="text-base sm:text-lg font-bold text-emerald-900 font-mono">
+                <span className="text-xl font-bold text-emerald-900 font-mono">
                   {formatCurrencyOrNotProvided(totalIncome)}
                 </span>
               </div>
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200">
                 <span className="text-[11px] text-rose-800 font-semibold block">รายจ่ายรวมต่อเดือน</span>
-                <span className="text-base sm:text-lg font-bold text-rose-900 font-mono">
+                <span className="text-xl font-bold text-rose-900 font-mono">
                   {formatCurrencyOrNotProvided(totalExpense)}
                 </span>
               </div>
               <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200">
                 <span className="text-[11px] text-slate-700 font-semibold block">รายได้คงเหลือโดยประมาณ</span>
-                <span className={`text-base sm:text-lg font-bold font-mono ${netEstimated !== null && netEstimated < 0 ? 'text-rose-700' : 'text-slate-900'}`}>
+                <span className={`text-xl font-bold font-mono ${netEstimated !== null && netEstimated < 0 ? 'text-rose-700' : 'text-slate-900'}`}>
                   {formatCurrencyOrNotProvided(netEstimated)}
                 </span>
               </div>
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
                 <span className="text-[11px] text-amber-800 font-semibold block">ยอดหนี้สินคงค้าง</span>
-                <span className="text-base sm:text-lg font-bold text-amber-900 font-mono">
+                <span className="text-xl font-bold text-amber-900 font-mono">
                   {formatCurrencyOrNotProvided(isEditing ? editForm.debtAmount : registry.debtAmount)}
                 </span>
               </div>
@@ -1336,8 +1376,8 @@ export function PersonalSection({
               <button
                 type="button"
                 onClick={() => onStartEdit('limitations')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-              >
+                className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+               aria-label="แก้ไขสภาพปัจจุบันและข้อจำกัด" title="แก้ไขสภาพปัจจุบันและข้อจำกัด">
                 <Edit className="w-3.5 h-3.5" />
                 <span>แก้ไขสภาพปัจจุบันและข้อจำกัด</span>
               </button>
@@ -1445,12 +1485,12 @@ export function PersonalSection({
       {/* ========================================================================= */}
       {(activeSubTab === 'all' || activeSubTab === 'other_aid') && (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-xs">
+          <div className="@container/aid flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/80 p-4">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-xs shrink-0">
                 <Building className="w-4 h-4" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="font-bold text-slate-900 text-sm">
                   1.5 ความช่วยเหลือจากหน่วยงานอื่น ({pastAidList.length} รายการ)
                 </h3>
@@ -1461,9 +1501,11 @@ export function PersonalSection({
               <button
                 type="button"
                 onClick={() => onStartEdit('other_aid')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                aria-label="แก้ไขความช่วยเหลืออื่น"
+                title="แก้ไขความช่วยเหลืออื่น"
+                className="zms-action inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-teal-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-teal-500 active:bg-teal-700"
               >
-                <Edit className="w-3.5 h-3.5" />
+                <Edit className="h-3.5 w-3.5" />
                 <span>แก้ไขความช่วยเหลืออื่น</span>
               </button>
             )}
@@ -1471,7 +1513,20 @@ export function PersonalSection({
 
           <div className="p-5">
             {!isEditing ? (
-              <div className="border border-slate-200 rounded-xl overflow-x-auto">
+              <>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:hidden">
+                {pastAidList.length === 0 ? (
+                  <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-[15px] text-slate-500">ยังไม่มีประวัติการได้รับความช่วยเหลือจากหน่วยงานอื่น</p>
+                ) : pastAidList.map((aid, idx) => (
+                  <article key={aid.id || idx} className="rounded-xl border border-slate-200 bg-white p-3 leading-6">
+                    <h4 className="text-[16px] font-bold text-[#0B2545]">{aid.agency || 'ไม่ระบุหน่วยงาน'}</h4>
+                    <p className="text-[14px] text-slate-700">{aid.assistanceType || 'ไม่ระบุประเภท'} · {aid.format || 'ไม่ระบุรูปแบบ'}</p>
+                    <p className="text-[14px] text-slate-700">{aid.amountOrItems || 'ไม่ระบุจำนวน'} · {aid.yearReceived || aid.dateReceived || 'ไม่ระบุวันที่'}</p>
+                    {(aid.evidenceDoc || aid.notes) && <p className="text-[13px] text-slate-500">{[aid.evidenceDoc, aid.notes].filter(Boolean).join(' · ')}</p>}
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto rounded-xl border border-slate-200 lg:block">
                 <table className="w-full text-left text-xs min-w-[600px]">
                   <thead>
                     <tr className="bg-slate-100/80 border-b border-slate-200 font-bold text-slate-700">
@@ -1511,6 +1566,7 @@ export function PersonalSection({
                   </tbody>
                 </table>
               </div>
+              </>
             ) : (
               /* Editable external assistance items */
               <div className="space-y-3">
@@ -1519,8 +1575,8 @@ export function PersonalSection({
                   <button
                     type="button"
                     onClick={handleAddPastAid}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition-colors"
-                  >
+                    className="zms-action inline-flex items-center gap-1 px-3 py-1 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition-colors"
+                   aria-label="เพิ่มรายการ" title="เพิ่มรายการ">
                     <Plus className="w-3.5 h-3.5" />
                     <span>เพิ่มรายการ</span>
                   </button>
@@ -1534,8 +1590,8 @@ export function PersonalSection({
                         <button
                           type="button"
                           onClick={() => handleRemovePastAid(idx)}
-                          className="text-rose-600 hover:text-rose-800 font-bold text-xs flex items-center gap-1"
-                        >
+                          className="zms-action text-rose-600 hover:text-rose-800 font-bold text-xs flex items-center gap-1"
+                         aria-label="ลบ" title="ลบ">
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>ลบ</span>
                         </button>

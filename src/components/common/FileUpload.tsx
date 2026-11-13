@@ -121,7 +121,7 @@ export function FileUpload({
             <button
               type="button"
               onClick={handleClear}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+              className="zms-action p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
               title="ลบไฟล์"
             >
               <Trash2 className="w-4 h-4" />

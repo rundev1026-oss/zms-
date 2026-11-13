@@ -451,7 +451,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 1.1 Beneficiary Registries from real database
-      const regRes = await fetch('/api/registry', { headers: authHeaders, credentials: 'include' });
+      const regRes = await fetch('/api/registry?page=1&limit=100', { headers: authHeaders, credentials: 'include' });
       if (regRes.ok) {
         const regJson = await regRes.json();
         if (regJson.success) {

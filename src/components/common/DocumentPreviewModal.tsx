@@ -284,7 +284,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   type="button"
                   onClick={handleZoomOut}
                   title="ซูมออก (-)"
-                  className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors"
+                  className="zms-action p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors"
                 >
                   <ZoomOut className="w-4 h-4" />
                 </button>
@@ -300,7 +300,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   type="button"
                   onClick={handleZoomIn}
                   title="ซูมเข้า (+)"
-                  className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors"
+                  className="zms-action p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors"
                 >
                   <ZoomIn className="w-4 h-4" />
                 </button>
@@ -308,7 +308,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   type="button"
                   onClick={handleRotate}
                   title="หมุน 90 องศา"
-                  className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors ml-1"
+                  className="zms-action p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors ml-1"
                 >
                   <RotateCw className="w-4 h-4" />
                 </button>
@@ -321,9 +321,9 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 type="button"
                 onClick={handleDownload}
                 disabled={isDownloading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm transition-colors"
+                className="zms-action flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm transition-colors"
                 title="ดาวน์โหลดไฟล์เก็บไว้ในเครื่อง"
-              >
+               aria-label="ดาวน์โหลด">
                 {isDownloading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
@@ -337,7 +337,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <button
               type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors hidden md:block"
+              className="zms-action p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors hidden md:block"
               title={isFullscreen ? 'ย่อหน้าต่าง' : 'ขยายเต็มจอ'}
             >
               {isFullscreen ? (
@@ -351,7 +351,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors ml-1"
+              className="zms-action p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors ml-1"
               title="ปิดหน้าต่าง (Esc)"
             >
               <X className="w-5 h-5" />
@@ -460,16 +460,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 <button
                   type="button"
                   onClick={handleRetry}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-                >
+                  className="zms-action px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                 aria-label="ลองใหม่อีกครั้ง" title="ลองใหม่อีกครั้ง">
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>ลองใหม่อีกครั้ง</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleDownload}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-                >
+                  className="zms-action px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                 aria-label="ลองดาวน์โหลดแทน" title="ลองดาวน์โหลดแทน">
                   <Download className="w-3.5 h-3.5" />
                   <span>ลองดาวน์โหลดแทน</span>
                 </button>
@@ -566,8 +566,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   type="button"
                   onClick={handleDownload}
                   disabled={isDownloading}
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
-                >
+                  className="zms-action w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+                 aria-label="ดาวน์โหลดเอกสารเพื่อเปิดดูบนเครื่อง" title="ดาวน์โหลดเอกสารเพื่อเปิดดูบนเครื่อง">
                   {isDownloading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (

@@ -874,7 +874,7 @@ export function AssistanceRequestWizardModal({
               type="button"
               onClick={handleClose}
               disabled={isSubmitting}
-              className="p-2 rounded-xl text-teal-200/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+              className="zms-action p-2 rounded-xl text-teal-200/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
               aria-label="ปิดหน้าต่าง"
             >
               <X className="w-5 h-5" />
@@ -1063,8 +1063,8 @@ export function AssistanceRequestWizardModal({
                         onNavigate('assistance-requests');
                         onOpenRequestDetail(submittedApplication.id);
                       }}
-                      className="px-5 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-medium text-xs shadow-xs transition flex items-center justify-center gap-1.5"
-                    >
+                      className="zms-action px-5 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-medium text-xs shadow-xs transition flex items-center justify-center gap-1.5"
+                     aria-label="ดูรายการคำร้อง" title="ดูรายการคำร้อง">
                       <span>ดูรายการคำร้อง</span>
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -1775,9 +1775,9 @@ export function AssistanceRequestWizardModal({
                     type="button"
                     onClick={handleGoToStep2}
                     disabled={Boolean(duplicateCheck?.hasDuplicate)}
-                    className="px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-semibold text-xs shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-keep-label className="zms-action px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-semibold text-xs shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={duplicateCheck?.hasDuplicate ? duplicateCheck.message : undefined}
-                  >
+                   aria-label="ถัดไป">
                     <span>ถัดไป</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
@@ -1790,8 +1790,8 @@ export function AssistanceRequestWizardModal({
                   <button
                     type="button"
                     onClick={() => setCurrentStep(1)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-medium text-xs hover:bg-slate-100 transition flex items-center gap-1.5"
-                  >
+                    data-keep-label className="zms-action px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-medium text-xs hover:bg-slate-100 transition flex items-center gap-1.5"
+                   aria-label="ย้อนกลับ" title="ย้อนกลับ">
                     <ChevronLeft className="w-4 h-4" />
                     <span>ย้อนกลับ</span>
                   </button>
@@ -1799,8 +1799,8 @@ export function AssistanceRequestWizardModal({
                   <button
                     type="button"
                     onClick={handleGoToStep3}
-                    className="px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-semibold text-xs shadow-xs transition flex items-center gap-1.5"
-                  >
+                    data-keep-label className="zms-action px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-semibold text-xs shadow-xs transition flex items-center gap-1.5"
+                   aria-label="ถัดไป" title="ถัดไป">
                     <span>ถัดไป</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
@@ -1814,8 +1814,8 @@ export function AssistanceRequestWizardModal({
                     type="button"
                     onClick={() => setCurrentStep(2)}
                     disabled={isSubmitting}
-                    className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-medium text-xs hover:bg-slate-100 transition flex items-center gap-1.5 disabled:opacity-50"
-                  >
+                    data-keep-label className="zms-action px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-medium text-xs hover:bg-slate-100 transition flex items-center gap-1.5 disabled:opacity-50"
+                   aria-label="ย้อนกลับ" title="ย้อนกลับ">
                     <ChevronLeft className="w-4 h-4" />
                     <span>ย้อนกลับ</span>
                   </button>
@@ -1837,8 +1837,8 @@ export function AssistanceRequestWizardModal({
                       type="button"
                       onClick={() => setShowConfirmSubmitDialog(true)}
                       disabled={isSubmitting || !hasCertified}
-                      className="px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition disabled:opacity-50 flex items-center gap-1.5"
-                    >
+                      data-keep-label className="zms-action px-5 py-2 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-xs transition disabled:opacity-50 flex items-center gap-1.5"
+                     aria-label="ยืนยันส่งคำร้อง" title="ยืนยันส่งคำร้อง">
                       {isSubmitting ? (
                         <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (

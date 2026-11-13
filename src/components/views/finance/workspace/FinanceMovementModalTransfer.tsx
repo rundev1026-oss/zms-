@@ -132,7 +132,7 @@ export function FinanceMovementModalTransfer({ isOpen, onClose, banks, actor, on
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            className="zms-action rounded-full p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -147,12 +147,12 @@ export function FinanceMovementModalTransfer({ isOpen, onClose, banks, actor, on
             <button
               type="button"
               onClick={() => setTransferMode('bank_to_bank')}
-              className={`flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
+              className={`zms-action flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
                 transferMode === 'bank_to_bank'
                   ? 'border-blue-600 bg-white text-blue-800 shadow-sm ring-2 ring-blue-100'
                   : 'border-slate-200 bg-white/60 text-slate-600 hover:bg-white'
               }`}
-            >
+             aria-label="1. ธนาคารสู่ธนาคาร" title="1. ธนาคารสู่ธนาคาร">
               <Building2 className={`h-5 w-5 ${transferMode === 'bank_to_bank' ? 'text-blue-600' : 'text-slate-400'}`} />
               <div className="mt-1 text-xs font-bold">1. ธนาคารสู่ธนาคาร</div>
               <div className="text-[10px] text-slate-400">Bank to Bank</div>
@@ -161,12 +161,12 @@ export function FinanceMovementModalTransfer({ isOpen, onClose, banks, actor, on
             <button
               type="button"
               onClick={() => setTransferMode('bank_to_treasurer')}
-              className={`flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
+              className={`zms-action flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
                 transferMode === 'bank_to_treasurer'
                   ? 'border-blue-600 bg-white text-blue-800 shadow-sm ring-2 ring-blue-100'
                   : 'border-slate-200 bg-white/60 text-slate-600 hover:bg-white'
               }`}
-            >
+             aria-label="2. ธนาคารสู่เหรัญญิก" title="2. ธนาคารสู่เหรัญญิก">
               <Vault className={`h-5 w-5 ${transferMode === 'bank_to_treasurer' ? 'text-amber-600' : 'text-slate-400'}`} />
               <div className="mt-1 text-xs font-bold">2. ธนาคารสู่เหรัญญิก</div>
               <div className="text-[10px] text-slate-400">Bank to Treasurer</div>
@@ -175,12 +175,12 @@ export function FinanceMovementModalTransfer({ isOpen, onClose, banks, actor, on
             <button
               type="button"
               onClick={() => setTransferMode('treasurer_to_staff')}
-              className={`flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
+              className={`zms-action flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
                 transferMode === 'treasurer_to_staff'
                   ? 'border-blue-600 bg-white text-blue-800 shadow-sm ring-2 ring-blue-100'
                   : 'border-slate-200 bg-white/60 text-slate-600 hover:bg-white'
               }`}
-            >
+             aria-label="3. เหรัญญิกสู่เจ้าหน้าที่" title="3. เหรัญญิกสู่เจ้าหน้าที่">
               <HandCoins className={`h-5 w-5 ${transferMode === 'treasurer_to_staff' ? 'text-indigo-600' : 'text-slate-400'}`} />
               <div className="mt-1 text-xs font-bold">3. เหรัญญิกสู่เจ้าหน้าที่</div>
               <div className="text-[10px] text-slate-400">Cash Float Handover</div>
@@ -189,12 +189,12 @@ export function FinanceMovementModalTransfer({ isOpen, onClose, banks, actor, on
             <button
               type="button"
               onClick={() => setTransferMode('staff_to_treasurer')}
-              className={`flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
+              className={`zms-action flex flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
                 transferMode === 'staff_to_treasurer'
                   ? 'border-blue-600 bg-white text-blue-800 shadow-sm ring-2 ring-blue-100'
                   : 'border-slate-200 bg-white/60 text-slate-600 hover:bg-white'
               }`}
-            >
+             aria-label="4. เจ้าหน้าที่คืนเงินสด" title="4. เจ้าหน้าที่คืนเงินสด">
               <RotateCcw className={`h-5 w-5 ${transferMode === 'staff_to_treasurer' ? 'text-emerald-600' : 'text-slate-400'}`} />
               <div className="mt-1 text-xs font-bold">4. เจ้าหน้าที่คืนเงินสด</div>
               <div className="text-[10px] text-slate-400">Staff Cash Refund</div>
@@ -379,7 +379,7 @@ export function FinanceMovementModalTransfer({ isOpen, onClose, banks, actor, on
               <button
                 type="button"
                 onClick={() => setSlipUrl('https://placehold.co/600x800.png?text=Transfer+Slip')}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 transition hover:bg-blue-100"
+                className="zms-action inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 transition hover:bg-blue-100"
               >
                 <UploadCloud className="h-3.5 w-3.5" /> จำลองสลิป
               </button>
@@ -428,7 +428,7 @@ export function FinanceMovementModalTransfer({ isOpen, onClose, banks, actor, on
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-700/20 transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-700/20 transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50"
             >
               {submitting ? (
                 <>

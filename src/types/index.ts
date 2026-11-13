@@ -1864,6 +1864,9 @@ export interface BeneficiaryRegistryItem {
   editHistory?: RegistryEditHistoryItem[];
   // Linked Assistance Data
   assistanceApplicationsCount?: number;
+  pendingRequestCount?: number;
+  approvedRequestCount?: number;
+  disbursedAidCount?: number;
   totalAssistanceReceived?: number;
   latestApplicationNo?: string;
   latestApplicationStatus?: ApplicationStatus;
@@ -2017,7 +2020,15 @@ export interface FollowUpPlan {
   address?: string;
   assistanceType: string;
   assistanceTypeName: string;
+  /** รูปแบบความช่วยเหลือจากข้อมูลคำร้องจริง เช่น ซ่อมแซมที่อยู่อาศัย */
+  assistanceFormatName?: string;
+  /** รายละเอียดหรือวัตถุประสงค์จากคำร้อง */
+  assistancePurpose?: string;
+  /** อัสนัฟจากคำร้องหรือทะเบียนผู้รับ */
+  asnafCategory?: string;
   disbursementDate?: string;
+  /** วันที่อนุมัติจากคำร้อง */
+  approvedDate?: string;
   disbursedAmount?: number;
   approvedAmount?: number;
   requiresFollowup: boolean;
@@ -2027,6 +2038,8 @@ export interface FollowUpPlan {
   remainingVisits: number;
   status: FollowUpStatus;
   statusTh?: string;
+  /** วันที่ติดตามล่าสุดจากบันทึกผลจริง */
+  lastFollowupDate?: string;
   nextFollowupDate?: string;
   assignedOfficerId: string;
   assignedOfficerName: string;

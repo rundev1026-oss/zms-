@@ -159,7 +159,7 @@ export function AdminExpensesTab({
           {['super_admin', 'finance'].includes(currentUser.role) && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all"
+              className="zms-action inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" />
               บันทึกค่าใช้จ่ายบริหาร
@@ -497,7 +497,7 @@ export function AdminExpensesTab({
                     type="button"
                     disabled={isSubmitting}
                     onClick={handleFinalExpense}
-                    className="min-h-[48px] px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:bg-slate-300"
+                    className="zms-action min-h-[48px] px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:bg-slate-300"
                   >
                     {isSubmitting ? (
                       <>

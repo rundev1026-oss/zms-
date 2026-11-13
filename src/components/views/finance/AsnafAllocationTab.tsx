@@ -136,7 +136,7 @@ export function AsnafAllocationTab({ currentUser, showToast }: AsnafAllocationTa
         <div className="flex items-center gap-3">
           <button
             onClick={fetchAllocations}
-            className="p-2 text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-xl transition-colors"
+            className="zms-action p-2 text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-xl transition-colors"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -146,7 +146,7 @@ export function AsnafAllocationTab({ currentUser, showToast }: AsnafAllocationTa
               {!isEditing ? (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all"
+                  className="zms-action inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all"
                 >
                   <Sliders className="w-4 h-4" />
                   ปรับสัดส่วนเปอร์เซ็นต์
@@ -165,7 +165,7 @@ export function AsnafAllocationTab({ currentUser, showToast }: AsnafAllocationTa
                   <button
                     onClick={handleOpenSave}
                     disabled={!isSumValid}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all disabled:opacity-50"
+                    className="zms-action inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all disabled:opacity-50"
                   >
                     <Save className="w-4 h-4" />
                     บันทึกสัดส่วนใหม่

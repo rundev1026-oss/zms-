@@ -46,8 +46,8 @@ export function CoordinatorSection({
           <button
             type="button"
             onClick={onStartEdit}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-          >
+            className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+           aria-label="แก้ไขข้อมูลผู้ประสานงาน/รับรอง" title="แก้ไขข้อมูลผู้ประสานงาน/รับรอง">
             <Edit className="w-3.5 h-3.5" />
             <span>แก้ไขข้อมูลผู้ประสานงาน/รับรอง</span>
           </button>
@@ -81,10 +81,16 @@ export function CoordinatorSection({
                   </strong>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
                   <div>
-                    <span className="text-slate-400 block text-[11px]">เบอร์โทรศัพท์:</span>
-                    <span className="text-slate-900 block font-medium">{coordinator.phone || '-'}</span>
+                    <span className="text-slate-400 block text-[13px]">เบอร์โทรศัพท์:</span>
+                    {coordinator.phone ? (
+                      <a href={`tel:${String(coordinator.phone).replace(/[^\d+]/g, '')}`} className="inline-flex min-h-11 items-center text-[16px] font-bold text-[#0D9488]">
+                        {coordinator.phone}
+                      </a>
+                    ) : (
+                      <span className="text-slate-500">ยังไม่มีข้อมูล</span>
+                    )}
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px]">อาชีพ:</span>

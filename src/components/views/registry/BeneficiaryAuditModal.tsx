@@ -89,7 +89,7 @@ export const BeneficiaryAuditModal: React.FC<BeneficiaryAuditModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              className="zms-action p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>

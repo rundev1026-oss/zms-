@@ -662,17 +662,17 @@ export function AssistanceRequestsView({
           <button
             onClick={() => refreshData()}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[40px]"
+            className="zms-action flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[40px]"
             title="รีเฟรชข้อมูลล่าสุด"
-          >
+           aria-label="รีเฟรช">
             <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
             <span>รีเฟรช</span>
           </button>
 
           <button
             onClick={handleOpenWizard}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs min-h-[40px]"
-          >
+            className="zms-action flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs min-h-[40px]"
+           aria-label="ยื่นคำร้องขอความช่วยเหลือใหม่" title="ยื่นคำร้องขอความช่วยเหลือใหม่">
             <Plus className="w-4 h-4" />
             <span>ยื่นคำร้องขอความช่วยเหลือใหม่</span>
           </button>
@@ -756,7 +756,7 @@ export function AssistanceRequestsView({
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="zms-action absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -965,7 +965,7 @@ export function AssistanceRequestsView({
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => openApplicationDetail(app)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-[#0b2545] hover:bg-slate-100 transition-colors"
+                            className="zms-action p-1.5 rounded-lg text-slate-600 hover:text-[#0b2545] hover:bg-slate-100 transition-colors"
                             title="ดูรายละเอียดคำร้อง & ติดตาม Workflow"
                           >
                             <Eye className="w-4 h-4" />
@@ -1053,7 +1053,7 @@ export function AssistanceRequestsView({
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
+              className="zms-action p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -1063,7 +1063,7 @@ export function AssistanceRequestsView({
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
+              className="zms-action p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -1107,7 +1107,7 @@ export function AssistanceRequestsView({
 
               <button
                 onClick={() => setSelectedApp(null)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+                className="zms-action w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1289,8 +1289,8 @@ export function AssistanceRequestsView({
                         <button
                           type="button"
                           onClick={() => handleStartEditClassification(selectedApp)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-teal-800 bg-white border border-teal-300 rounded-lg hover:bg-teal-50 transition-colors shadow-2xs"
-                        >
+                          className="zms-action inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-teal-800 bg-white border border-teal-300 rounded-lg hover:bg-teal-50 transition-colors shadow-2xs"
+                         aria-label="แก้ไขกองทุน/ประเภทคำร้อง" title="แก้ไขกองทุน/ประเภทคำร้อง">
                           <Edit className="w-3 h-3" />
                           <span>แก้ไขกองทุน/ประเภทคำร้อง</span>
                         </button>
@@ -1411,8 +1411,8 @@ export function AssistanceRequestsView({
                           type="button"
                           onClick={handleSaveClassificationEdit}
                           disabled={isSavingClassification}
-                          className="px-3.5 py-1.5 bg-teal-800 hover:bg-teal-900 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
-                        >
+                          className="zms-action px-3.5 py-1.5 bg-teal-800 hover:bg-teal-900 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                         aria-label="กำลังบันทึก..." title="กำลังบันทึก...">
                           {isSavingClassification ? (
                             <span>กำลังบันทึก...</span>
                           ) : (
@@ -1823,7 +1823,7 @@ export function AssistanceRequestsView({
             >
             <div className="p-4 bg-emerald-800 text-white flex items-center justify-between">
               <h3 className="font-bold text-sm">พิจารณาอนุมัติคำร้องขอความช่วยเหลือ</h3>
-              <button onClick={() => setShowApprovalDialog(false)} className="text-white/80 hover:text-white">
+              <button onClick={() => setShowApprovalDialog(false)} className="zms-action text-white/80 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1959,7 +1959,7 @@ export function AssistanceRequestsView({
             >
             <div className="p-4 bg-rose-800 text-white flex items-center justify-between">
               <h3 className="font-bold text-sm">บันทึกผลการไม่อนุมัติคำร้อง</h3>
-              <button onClick={() => setShowRejectionDialog(false)} className="text-white/80 hover:text-white">
+              <button onClick={() => setShowRejectionDialog(false)} className="zms-action text-white/80 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2019,7 +2019,7 @@ export function AssistanceRequestsView({
             >
             <div className="p-4 bg-teal-800 text-white flex items-center justify-between">
               <h3 className="font-bold text-sm">ดำเนินการช่วยเหลือ / จ่ายเงินสวัสดิการ</h3>
-              <button onClick={() => setShowDisburseDialog(false)} className="text-white/80 hover:text-white">
+              <button onClick={() => setShowDisburseDialog(false)} className="zms-action text-white/80 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2105,7 +2105,7 @@ export function AssistanceRequestsView({
                 <Ban className="w-5 h-5 text-stone-300" />
                 <h3 className="font-bold text-sm">ยกเลิกคำร้องขอความช่วยเหลือ</h3>
               </div>
-              <button onClick={() => setShowCancelDialog(false)} className="text-white/80 hover:text-white">
+              <button onClick={() => setShowCancelDialog(false)} className="zms-action text-white/80 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>

@@ -65,7 +65,7 @@ export function Notification({
         <button
           type="button"
           onClick={onClose}
-          className="text-slate-400 hover:text-slate-700 p-1 rounded-md transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
+          className="zms-action text-slate-400 hover:text-slate-700 p-1 rounded-md transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
           title="ปิดการแจ้งเตือน"
         >
           <X className="w-4 h-4" />

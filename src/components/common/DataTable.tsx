@@ -262,7 +262,7 @@ export function DataTable<T extends Record<string, any>>({
               type="button"
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(1)}
-              className="p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+              className="zms-action p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               title="หน้าแรก"
             >
               <ChevronsLeft className="w-4 h-4" />
@@ -271,7 +271,7 @@ export function DataTable<T extends Record<string, any>>({
               type="button"
               disabled={currentPage === 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+              className="zms-action p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               title="ก่อนหน้า"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -285,7 +285,7 @@ export function DataTable<T extends Record<string, any>>({
               type="button"
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+              className="zms-action p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               title="ถัดไป"
             >
               <ChevronRight className="w-4 h-4" />
@@ -294,7 +294,7 @@ export function DataTable<T extends Record<string, any>>({
               type="button"
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(totalPages)}
-              className="p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+              className="zms-action p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               title="หน้าสุดท้าย"
             >
               <ChevronsRight className="w-4 h-4" />

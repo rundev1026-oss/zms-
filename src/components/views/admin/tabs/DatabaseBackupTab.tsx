@@ -128,7 +128,7 @@ export function DatabaseBackupTab() {
               type="button"
               onClick={fetchBackupHistory}
               disabled={isLoadingHistory}
-              className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+              className="zms-action p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
               title="รีเฟรชประวัติการสำรองข้อมูล"
             >
               <RefreshCw className={`w-4 h-4 ${isLoadingHistory ? 'animate-spin' : ''}`} />
@@ -155,8 +155,8 @@ export function DatabaseBackupTab() {
                 type="button"
                 onClick={handleTriggerBackup}
                 disabled={isBackingUp}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-teal-800 text-white font-bold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all disabled:opacity-60"
-              >
+                className="zms-action w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-teal-800 text-white font-bold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all disabled:opacity-60"
+               aria-label="กำลังสำรองฐานข้อมูล..." title="กำลังสำรองฐานข้อมูล...">
                 {isBackingUp ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -231,7 +231,7 @@ export function DatabaseBackupTab() {
                 <button
                   type="button"
                   onClick={() => copyToClipboard(latestBackup.checksum)}
-                  className="p-1 rounded text-emerald-700 hover:bg-emerald-100 transition-colors shrink-0"
+                  className="zms-action p-1 rounded text-emerald-700 hover:bg-emerald-100 transition-colors shrink-0"
                   title="คัดลอก Checksum"
                 >
                   {copiedChecksum === latestBackup.checksum ? (

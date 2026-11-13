@@ -104,7 +104,7 @@ export function AuditAndLedgerTab() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleExportCsv}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors"
+              className="zms-action flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors"
             >
               <Download className="w-4 h-4 text-emerald-700" />
               ส่งออกสมุดรายวัน (CSV)
@@ -260,7 +260,7 @@ export function AuditAndLedgerTab() {
                           {/* Print Voucher */}
                           <button
                             onClick={() => setSelectedTxnForVoucher(t)}
-                            className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors"
+                            className="zms-action p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors"
                             title="พิมพ์ใบสำคัญ (Voucher)"
                           >
                             <Printer className="w-3.5 h-3.5" />
@@ -273,7 +273,7 @@ export function AuditAndLedgerTab() {
                                 setSelectedTxnForReversal(t);
                                 setReversalReason('');
                               }}
-                              className="p-1.5 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors"
+                              className="zms-action p-1.5 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors"
                               title="กลับรายการบัญชี (Reversal Entry)"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
@@ -283,7 +283,7 @@ export function AuditAndLedgerTab() {
                           {/* Test Non-Deletion Rule */}
                           <button
                             onClick={() => handleTestDirectDelete(t)}
-                            className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
+                            className="zms-action p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
                             title="ทดสอบนโยบายห้ามลบรายการบัญชี (Audit Trail Integrity)"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -469,7 +469,7 @@ export function AuditAndLedgerTab() {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold hover:bg-emerald-800"
+                  className="zms-action flex items-center gap-1.5 px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold hover:bg-emerald-800"
                 >
                   <Printer className="w-4 h-4" /> สั่งพิมพ์ใบสำคัญ (Print)
                 </button>

@@ -61,7 +61,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 selection:bg-emerald-200">
+    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-slate-50 text-slate-800 selection:bg-emerald-200">
       {/* Top Navbar */}
       <Navbar
         currentView="users"
@@ -76,7 +76,7 @@ export default function AdminUsersPage() {
       />
 
       {/* Main Layout Area */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left Sidebar */}
         <Sidebar
           currentView="users"
@@ -90,10 +90,14 @@ export default function AdminUsersPage() {
         />
 
         {/* User Management Stage */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+        <main className={`min-h-0 min-w-0 flex-1 touch-scroll overscroll-y-contain p-4 sm:p-6 lg:p-8 ${
+          isMobileSidebarOpen ? 'max-md:overflow-hidden md:overflow-x-hidden md:overflow-y-auto' : 'overflow-x-hidden overflow-y-auto'
+        }`}>
+          <div className="mx-auto w-full max-w-7xl">
           <UserManagementView
             onNavigate={(view) => router.push(`/#${view}`)}
           />
+          </div>
         </main>
       </div>
     </div>

@@ -198,8 +198,8 @@ export default function MyAccountPage() {
 
                 <button
                   onClick={handleLogout}
-                  className="px-4 py-2 rounded-xl border border-red-200 hover:bg-red-50 text-red-700 font-bold text-xs transition-colors flex items-center gap-1.5"
-                >
+                  className="zms-action px-4 py-2 rounded-xl border border-red-200 hover:bg-red-50 text-red-700 font-bold text-xs transition-colors flex items-center gap-1.5"
+                 aria-label="ออกจากระบบ" title="ออกจากระบบ">
                   <LogOut className="w-3.5 h-3.5" />
                   <span>ออกจากระบบ</span>
                 </button>
@@ -246,7 +246,7 @@ export default function MyAccountPage() {
             <div className="flex border-b border-slate-200 text-xs font-bold gap-2">
               <button
                 onClick={() => setActiveTab('payments')}
-                className={`pb-3 px-3 transition-colors border-b-2 flex items-center gap-2 ${
+                className={`zms-action pb-3 px-3 transition-colors border-b-2 flex items-center gap-2 ${
                   activeTab === 'payments'
                     ? 'border-emerald-700 text-emerald-900'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -258,7 +258,7 @@ export default function MyAccountPage() {
 
               <button
                 onClick={() => setActiveTab('assistance')}
-                className={`pb-3 px-3 transition-colors border-b-2 flex items-center gap-2 ${
+                className={`zms-action pb-3 px-3 transition-colors border-b-2 flex items-center gap-2 ${
                   activeTab === 'assistance'
                     ? 'border-emerald-700 text-emerald-900'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -270,12 +270,12 @@ export default function MyAccountPage() {
 
               <button
                 onClick={() => setActiveTab('tax-summary')}
-                className={`pb-3 px-3 transition-colors border-b-2 flex items-center gap-2 ${
+                className={`zms-action pb-3 px-3 transition-colors border-b-2 flex items-center gap-2 ${
                   activeTab === 'tax-summary'
                     ? 'border-emerald-700 text-emerald-900'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
-              >
+               aria-label="หนังสือรับรองการบริจาคประจำปี" title="หนังสือรับรองการบริจาคประจำปี">
                 <Printer className="w-4 h-4" />
                 <span>หนังสือรับรองการบริจาคประจำปี</span>
               </button>
@@ -461,7 +461,7 @@ export default function MyAccountPage() {
                                 <button
                                   type="button"
                                   onClick={() => setSelectedApp(a)}
-                                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] inline-flex items-center gap-1.5 border border-emerald-200 transition-colors cursor-pointer"
+                                  className="zms-action px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] inline-flex items-center gap-1.5 border border-emerald-200 transition-colors cursor-pointer"
                                 >
                                   <FileText className="w-3.5 h-3.5" />
                                   <span>เปิดดูเอกสาร ({a.documents?.length || 0})</span>
@@ -495,7 +495,7 @@ export default function MyAccountPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedApp(a)}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs"
+                              className="zms-action px-3 py-1.5 rounded-xl bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs"
                             >
                               <FileText className="w-3.5 h-3.5" />
                               <span>เปิดดูเอกสาร ({a.documents?.length || 0})</span>
@@ -523,8 +523,8 @@ export default function MyAccountPage() {
                   </div>
                   <button
                     onClick={() => window.print()}
-                    className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 hover:bg-slate-800 transition-colors"
-                  >
+                    className="zms-action px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 hover:bg-slate-800 transition-colors"
+                   aria-label="พิมพ์เอกสาร" title="พิมพ์เอกสาร">
                     <Printer className="w-3.5 h-3.5" />
                     <span>พิมพ์เอกสาร</span>
                   </button>
@@ -626,8 +626,8 @@ export default function MyAccountPage() {
               <div className="pt-4 flex gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
-                >
+                  className="zms-action flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+                 aria-label="พิมพ์ใบสำคัญรับเงิน" title="พิมพ์ใบสำคัญรับเงิน">
                   <Printer className="w-3.5 h-3.5" />
                   <span>พิมพ์ใบสำคัญรับเงิน</span>
                 </button>
@@ -663,7 +663,7 @@ export default function MyAccountPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedApp(null)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                  className="zms-action w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>

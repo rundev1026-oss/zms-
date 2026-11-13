@@ -215,7 +215,7 @@ export function BankAccountsTab({ currentUser, showToast }: BankAccountsTabProps
         <div className="flex items-center gap-3">
           <button
             onClick={fetchBankData}
-            className="p-2 text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-xl transition-colors"
+            className="zms-action p-2 text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-xl transition-colors"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -223,7 +223,7 @@ export function BankAccountsTab({ currentUser, showToast }: BankAccountsTabProps
           {['super_admin', 'finance'].includes(currentUser.role) && (
             <button
               onClick={() => setShowAddAccountModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all"
+              className="zms-action inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" />
               เพิ่มบัญชีธนาคาร
@@ -376,7 +376,7 @@ export function BankAccountsTab({ currentUser, showToast }: BankAccountsTabProps
                 <button
                   onClick={() => handleOpenReconcile(acc)}
                   disabled={acc.status === 'closed'}
-                  className="flex-1 py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium text-xs rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+                  className="zms-action flex-1 py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium text-xs rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   กระทบยอดธนาคาร

@@ -306,21 +306,21 @@ export function UserDetailModal({
               <div className="flex items-center gap-2 flex-wrap sm:self-start">
                 <button
                   onClick={() => onEditUser(user)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-[#F8FAFC] text-[#0B2545] rounded-[8px] text-xs font-medium border border-[#E2E8F0] transition-colors"
+                  className="zms-action flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-[#F8FAFC] text-[#0B2545] rounded-[8px] text-xs font-medium border border-[#E2E8F0] transition-colors"
                 >
                   <Edit className="w-3.5 h-3.5" />
                   แก้ไข
                 </button>
                 <button
                   onClick={() => onManagePermissions(user)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0D9488] hover:bg-[#0F766E] text-white rounded-[8px] text-xs font-medium transition-colors shadow-xs"
+                  className="zms-action flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0D9488] hover:bg-[#0F766E] text-white rounded-[8px] text-xs font-medium transition-colors shadow-xs"
                 >
                   <Key className="w-3.5 h-3.5" />
                   กำหนดสิทธิ์ (Manual)
                 </button>
                 <button
                   onClick={onClose}
-                  className="p-1.5 rounded-[8px] hover:bg-[#E2E8F0] text-[#94A3B8] hover:text-[#0B2545] transition-colors"
+                  className="zms-action p-1.5 rounded-[8px] hover:bg-[#E2E8F0] text-[#94A3B8] hover:text-[#0B2545] transition-colors"
                   title="ปิดหน้าต่าง"
                 >
                   <X className="w-5 h-5" />
@@ -388,7 +388,7 @@ export function UserDetailModal({
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as DetailTabType)}
-                  className={`flex items-center gap-1.5 py-3 px-3.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
+                  className={`zms-action flex items-center gap-1.5 py-3 px-3.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
                     isActiveTab
                       ? 'border-[#0D9488] text-[#0D9488] bg-[#F0FDFA]'
                       : 'border-transparent text-[#64748B] hover:text-[#0B2545] hover:bg-[#F8FAFC]'
@@ -450,7 +450,7 @@ export function UserDetailModal({
                         <span>{targetUser.email}</span>
                         <button
                           onClick={() => copyText(targetUser.email)}
-                          className="text-[#94A3B8] hover:text-[#0B2545]"
+                          className="zms-action text-[#94A3B8] hover:text-[#0B2545]"
                           title="คัดลอกอีเมล"
                         >
                           {isCopied ? <Check className="w-3.5 h-3.5 text-[#16A34A]" /> : <Copy className="w-3.5 h-3.5" />}
@@ -640,7 +640,7 @@ export function UserDetailModal({
 
                   <button
                     onClick={() => onManagePermissions(user)}
-                    className="flex items-center gap-2 px-3.5 py-2 bg-[#0D9488] hover:bg-[#0F766E] text-white rounded-[8px] text-xs font-medium transition-colors shadow-xs shrink-0"
+                    className="zms-action flex items-center gap-2 px-3.5 py-2 bg-[#0D9488] hover:bg-[#0F766E] text-white rounded-[8px] text-xs font-medium transition-colors shadow-xs shrink-0"
                   >
                     <Sliders className="w-3.5 h-3.5" />
                     กำหนดสิทธิ์เฉพาะบุคคล (Manual Matrix)
@@ -945,7 +945,7 @@ export function UserDetailModal({
                     <button
                       onClick={fetchDeepUserData}
                       disabled={isLoadingAudit}
-                      className="p-1.5 text-[#94A3B8] hover:text-[#0B2545] rounded-[6px] hover:bg-[#F8FAFC]"
+                      className="zms-action p-1.5 text-[#94A3B8] hover:text-[#0B2545] rounded-[6px] hover:bg-[#F8FAFC]"
                       title="รีเฟรชประวัติ"
                     >
                       <RefreshCw className={`w-4 h-4 ${isLoadingAudit ? 'animate-spin' : ''}`} />
@@ -1098,7 +1098,7 @@ export function UserDetailModal({
                     </h3>
                     <button
                       onClick={() => onRevokeSession(user)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#DC2626] hover:bg-rose-50 border border-rose-200 rounded-[8px] text-xs font-medium transition-colors"
+                      className="zms-action flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#DC2626] hover:bg-rose-50 border border-rose-200 rounded-[8px] text-xs font-medium transition-colors"
                     >
                       <LogOut className="w-3.5 h-3.5" />
                       บังคับออกจากระบบทุกเครื่อง

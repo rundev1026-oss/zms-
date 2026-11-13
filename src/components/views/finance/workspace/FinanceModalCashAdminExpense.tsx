@@ -105,7 +105,7 @@ export function FinanceModalCashAdminExpense({ isOpen, onClose, actor, onSuccess
               <p className="text-xs text-blue-100/90">ตัดยอดเงินสดยืมทดรองเจ้าหน้าที่ตาม 12 หมวดหมู่มาตรฐาน</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white">
+          <button type="button" onClick={onClose} className="zms-action rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -185,7 +185,7 @@ export function FinanceModalCashAdminExpense({ isOpen, onClose, actor, onSuccess
               <button
                 type="button"
                 onClick={() => setReceiptUrl('https://placehold.co/600x800.png?text=Tax+Invoice+Receipt')}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                className="zms-action inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100"
               >
                 <UploadCloud className="h-3.5 w-3.5" /> แนบตัวอย่าง
               </button>
@@ -221,7 +221,7 @@ export function FinanceModalCashAdminExpense({ isOpen, onClose, actor, onSuccess
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-700/20 hover:bg-blue-700 disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-700/20 hover:bg-blue-700 disabled:opacity-50"
             >
               {submitting ? (
                 <>

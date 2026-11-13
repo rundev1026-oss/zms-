@@ -372,8 +372,8 @@ export function ReceivingBankAccountsTab({
         {isSuperAdmin ? (
           <button
             onClick={handleOpenAddModal}
-            className="px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
-          >
+            className="zms-action px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
+           aria-label="เพิ่มบัญชีรับเงินใหม่" title="เพิ่มบัญชีรับเงินใหม่">
             <Plus className="w-4 h-4" />
             <span>เพิ่มบัญชีรับเงินใหม่</span>
           </button>
@@ -423,7 +423,7 @@ export function ReceivingBankAccountsTab({
                 </code>
                 <button
                   onClick={() => copyToClipboard(gatewayStatus.webhookUrl)}
-                  className="p-1 rounded bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  className="zms-action p-1 rounded bg-white/10 hover:bg-white/20 text-white transition-colors"
                   title="คัดลอก URL"
                 >
                   <Copy className="w-3.5 h-3.5" />
@@ -508,7 +508,7 @@ export function ReceivingBankAccountsTab({
                     <button
                       type="button"
                       onClick={() => toggleMask(acc.id)}
-                      className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                      className="zms-action p-1 text-slate-400 hover:text-slate-600 transition-colors"
                       title={isRevealed ? 'ซ่อนเลขบัญชี' : 'แสดงเลขบัญชีเต็ม'}
                     >
                       {isRevealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -591,9 +591,9 @@ export function ReceivingBankAccountsTab({
                   )}
                   <button
                     onClick={() => fetchLogsForAccount(acc)}
-                    className="px-2 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-[11px] font-medium flex items-center gap-1 transition-colors"
+                    className="zms-action px-2 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-[11px] font-medium flex items-center gap-1 transition-colors"
                     title="ดูประวัติการเปลี่ยนแปลงบัญชีนี้"
-                  >
+                   aria-label="ประวัติ">
                     <History className="w-3 h-3" />
                     <span>ประวัติ</span>
                   </button>
@@ -604,7 +604,7 @@ export function ReceivingBankAccountsTab({
                     <>
                       <button
                         onClick={() => handleOpenEditModal(acc)}
-                        className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
+                        className="zms-action p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
                         title="แก้ไขข้อมูลบัญชี"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -612,7 +612,7 @@ export function ReceivingBankAccountsTab({
                       {!acc.isDefault && (
                         <button
                           onClick={() => handleDeleteAccount(acc)}
-                          className="p-1.5 text-rose-400 hover:text-rose-700 rounded-lg hover:bg-rose-50 transition-colors"
+                          className="zms-action p-1.5 text-rose-400 hover:text-rose-700 rounded-lg hover:bg-rose-50 transition-colors"
                           title="ลบบัญชีธนาคาร (เฉพาะบัญชีที่ไม่มีประวัติธุรกรรม)"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -646,7 +646,7 @@ export function ReceivingBankAccountsTab({
                     setShowAddModal(false);
                     setEditingAccount(null);
                   }}
-                  className="p-1 text-emerald-200 hover:text-white rounded-lg transition-colors"
+                  className="zms-action p-1 text-emerald-200 hover:text-white rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -945,7 +945,7 @@ export function ReceivingBankAccountsTab({
                     setShowLogsModal(false);
                     setSelectedAccountForLogs(null);
                   }}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg transition-colors"
+                  className="zms-action p-1 text-slate-400 hover:text-white rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>

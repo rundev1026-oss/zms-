@@ -397,13 +397,13 @@ export function RoleManagementModal({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white text-indigo-900 text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+                className="zms-action flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white text-indigo-900 text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
               >
                 <Plus className="w-4 h-4" /> สร้างบทบาทใหม่
               </button>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl text-indigo-200 hover:text-white hover:bg-white/10 transition-colors"
+                className="zms-action p-2 rounded-xl text-indigo-200 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -447,7 +447,7 @@ export function RoleManagementModal({
                     <button
                       onClick={handleSaveRolePermissions}
                       disabled={isSubmitting}
-                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
+                      className="zms-action flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
                     >
                       <Check className="w-4 h-4" /> บันทึกสิทธิ์บทบาท
                     </button>
@@ -699,7 +699,7 @@ export function RoleManagementModal({
                               {/* Edit Permissions Matrix Button */}
                               <button
                                 onClick={() => openPermissionEditor(role)}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors"
+                                className="zms-action flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors"
                                 title="กำหนดสิทธิ์การใช้งานสำหรับบทบาทนี้"
                               >
                                 <Key className="w-3.5 h-3.5" /> สิทธิ์
@@ -714,7 +714,7 @@ export function RoleManagementModal({
                                   setCloneRoleDesc(role.description || '');
                                   setShowCloneModal(true);
                                 }}
-                                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+                                className="zms-action p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
                                 title="คัดลอกบทบาท (Clone Role)"
                               >
                                 <Copy className="w-3.5 h-3.5" />
@@ -729,7 +729,7 @@ export function RoleManagementModal({
                                   setEditRoleStatus(role.status);
                                   setShowEditModal(true);
                                 }}
-                                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+                                className="zms-action p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
                                 title="แก้ไขชื่อ/คำอธิบายบทบาท"
                               >
                                 <Edit className="w-3.5 h-3.5" />
@@ -769,7 +769,7 @@ export function RoleManagementModal({
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Plus className="w-4 h-4 text-indigo-600" /> สร้างบทบาทใหม่ (Create Custom Role)
                 </h3>
-                <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setShowCreateModal(false)} className="zms-action text-slate-400 hover:text-slate-600">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -848,7 +848,7 @@ export function RoleManagementModal({
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Copy className="w-4 h-4 text-indigo-600" /> คัดลอกบทบาท (Clone Role)
                 </h3>
-                <button onClick={() => setShowCloneModal(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setShowCloneModal(false)} className="zms-action text-slate-400 hover:text-slate-600">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -928,7 +928,7 @@ export function RoleManagementModal({
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Edit className="w-4 h-4 text-indigo-600" /> แก้ไขข้อมูลบทบาท ({editingRole.code})
                 </h3>
-                <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setShowEditModal(false)} className="zms-action text-slate-400 hover:text-slate-600">
                   <X className="w-4 h-4" />
                 </button>
               </div>

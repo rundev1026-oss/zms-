@@ -25,11 +25,13 @@ export const beneficiaryInclude = {
     },
   },
   applications: {
+    orderBy: { createdAt: 'desc' as const },
     select: {
       id: true,
       status: true,
       disbursedAmount: true,
       actualAssistanceValue: true,
+      branchName: true,
     },
   },
   _count: {
@@ -98,6 +100,13 @@ export interface BeneficiaryView {
   assessmentCount: number;
   createdByName: string | null;
   requestCount: number;
+  requestBreakdown: {
+    total: number;
+    pending: number;
+    approved: number;
+    disbursed: number;
+  };
+  branchName: string | null;
   aidTotal?: string;
   addresses?: any[];
   household?: any;
@@ -128,6 +137,8 @@ export function presentBeneficiary(
 
   const apps = Array.isArray((row as any).applications) ? (row as any).applications : [];
   const requestCount = (row as any)._count?.applications ?? apps.length;
+  const requestBreakdown = classifyMemberRequests(apps);
+  const branchName = apps.find((app: { branchName?: string | null }) => app.branchName)?.branchName ?? null;
   const assessmentCount = (row as any)._count?.assessments ?? assessments.length;
 
   const dateOfBirth = row.dateOfBirth === null ? null : row.dateOfBirth.toISOString().slice(0, 10);
@@ -192,6 +203,8 @@ export function presentBeneficiary(
     assessmentCount,
     createdByName: row.createdBy?.displayName || row.createdBy?.email || null,
     requestCount,
+    requestBreakdown,
+    branchName,
     addresses,
     household: row.household
       ? {
@@ -250,4 +263,41 @@ export function presentBeneficiary(
     view.aidTotal = totalAid.toFixed(2);
   }
   return view;
+}
+
+const PENDING_REQUEST_STATUSES = new Set([
+  'draft',
+  'submitted',
+  'doc_review',
+  'field_inspection',
+  'pending_approval',
+  'assessment',
+  'assessing',
+  'need_info',
+  'under_review',
+]);
+const APPROVED_REQUEST_STATUSES = new Set([
+  'approved',
+  'wait_disbursement',
+  'pending_disbursement',
+]);
+
+function classifyMemberRequests(
+  apps: Array<{ status?: string | null; disbursedAmount?: unknown; actualAssistanceValue?: unknown }>,
+) {
+  let pending = 0;
+  let approved = 0;
+  let disbursed = 0;
+  for (const app of apps) {
+    const status = String(app.status || '').toLowerCase();
+    const paid = Number(app.disbursedAmount || 0) > 0 || Number(app.actualAssistanceValue || 0) > 0;
+    const actuallyPaid =
+      status === 'disbursed' ||
+      status === 'completed' ||
+      (paid && ['disbursed', 'completed', 'closed', 'followup'].includes(status));
+    if (actuallyPaid) disbursed += 1;
+    else if (APPROVED_REQUEST_STATUSES.has(status)) approved += 1;
+    else if (PENDING_REQUEST_STATUSES.has(status)) pending += 1;
+  }
+  return { total: apps.length, pending, approved, disbursed };
 }

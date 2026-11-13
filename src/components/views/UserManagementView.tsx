@@ -683,16 +683,16 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0b2545] hover:bg-[#133e6f] text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-          >
+            className="zms-action min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0b2545] hover:bg-[#133e6f] text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+           aria-label="เพิ่มผู้ใช้งาน" title="เพิ่มผู้ใช้งาน">
             <Plus className="w-4 h-4 text-amber-300" />
             <span>เพิ่มผู้ใช้งาน</span>
           </button>
           <button
             type="button"
             onClick={() => setShowRoleModal(true)}
-            className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-600 text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-          >
+            className="zms-action min-h-[44px] px-5 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-600 text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+           aria-label="เพิ่มบทบาท (Role)" title="เพิ่มบทบาท (Role)">
             <Plus className="w-4 h-4 text-teal-200" />
             <span>เพิ่มบทบาท (Role)</span>
           </button>
@@ -891,8 +891,8 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
               <button
                 type="button"
                 onClick={handleClearFilters}
-                className="min-h-[40px] px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
+                className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+               aria-label="ล้างตัวกรอง" title="ล้างตัวกรอง">
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>ล้างตัวกรอง</span>
               </button>
@@ -900,9 +900,9 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
             <button
               type="button"
               onClick={fetchUsers}
-              className="min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
               title="รีเฟรชข้อมูลจากฐานข้อมูล"
-            >
+             aria-label="รีเฟรชข้อมูล">
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-teal-600' : ''}`} />
               <span>รีเฟรชข้อมูล</span>
             </button>
@@ -1006,8 +1006,8 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
             <button
               type="button"
               onClick={handleClearFilters}
-              className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#0b2545] text-white text-sm font-bold hover:bg-[#133e6f] inline-flex items-center gap-2 cursor-pointer"
-            >
+              className="zms-action min-h-[42px] px-5 py-2.5 rounded-xl bg-[#0b2545] text-white text-sm font-bold hover:bg-[#133e6f] inline-flex items-center gap-2 cursor-pointer"
+             aria-label="ล้างตัวกรองทั้งหมด" title="ล้างตัวกรองทั้งหมด">
               <RotateCcw className="w-4 h-4" />
               <span>ล้างตัวกรองทั้งหมด</span>
             </button>
@@ -1188,8 +1188,8 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                       <button
                         type="button"
                         onClick={() => openDetailModal(user)}
-                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                      >
+                        className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                       aria-label="ดูรายละเอียด" title="ดูรายละเอียด">
                         <Eye className="w-4 h-4" />
                         <span>ดูรายละเอียด</span>
                       </button>
@@ -1199,8 +1199,8 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                           setSelectedUserForPerm(user);
                           setShowManualPermissionModal(true);
                         }}
-                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
+                        className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                       aria-label="จัดการสิทธิ์" title="จัดการสิทธิ์">
                         <Key className="w-4 h-4 text-teal-700" />
                         <span>จัดการสิทธิ์</span>
                       </button>
@@ -1210,8 +1210,8 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                       <button
                         type="button"
                         onClick={() => openEditModal(user)}
-                        className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
+                        className="zms-action min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                       aria-label="แก้ไข" title="แก้ไข">
                         <Edit className="w-3.5 h-3.5 text-teal-700" />
                         <span>แก้ไข</span>
                       </button>
@@ -1221,7 +1221,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                           type="button"
                           onClick={() => handleUpdateStatus(user, isActive ? 'suspended' : 'active')}
                           disabled={isSubmitting}
-                          className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                          className={`zms-action min-h-[40px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
                             isActive
                               ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
                               : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
@@ -1240,7 +1240,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                             e.stopPropagation();
                             setActiveDropdownUserId(isDropdownOpen ? null : user.id);
                           }}
-                          className="min-h-[40px] px-2.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
+                          className="zms-action min-h-[40px] px-2.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
                         >
                           <MoreVertical className="w-4 h-4" />
                         </button>
@@ -1257,7 +1257,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                                   setActiveDropdownUserId(null);
                                   handleSendInvite(user);
                                 }}
-                                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-amber-800 font-bold"
+                                className="zms-action w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-amber-800 font-bold"
                               >
                                 <Send className="w-3.5 h-3.5 text-amber-600" />
                                 ส่งคำเชิญตั้งรหัสผ่าน
@@ -1269,7 +1269,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                                   setActiveDropdownUserId(null);
                                   openResetPasswordModal(user);
                                 }}
-                                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-purple-800 font-bold"
+                                className="zms-action w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-purple-800 font-bold"
                               >
                                 <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
                                 รีเซ็ตรหัสผ่าน
@@ -1282,7 +1282,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                                 setActiveDropdownUserId(null);
                                 handleRevokeSession(user);
                               }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                              className="zms-action w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
                             >
                               <LogOut className="w-3.5 h-3.5 text-slate-500" />
                               ยกเลิก Session
@@ -1294,7 +1294,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                                 setActiveDropdownUserId(null);
                                 handleViewAuditLogs(user);
                               }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                              className="zms-action w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
                             >
                               <History className="w-3.5 h-3.5 text-slate-500" />
                               ดูประวัติ (Audit Log)
@@ -1450,7 +1450,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                 </h2>
                 <button
                   onClick={() => setShowEditModal(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="zms-action text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1608,7 +1608,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                 </div>
                 <button
                   onClick={() => setShowResetConfirmModal(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="zms-action text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1685,7 +1685,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                 </div>
                 <button
                   onClick={() => setShowInviteModal(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="zms-action text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1707,7 +1707,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                     <span className="flex-1 overflow-x-auto">{inviteModalData.setupUrl}</span>
                     <button
                       onClick={() => copyToClipboard(inviteModalData.setupUrl || '')}
-                      className="px-3 py-1.5 bg-teal-700 text-white rounded-lg font-semibold shrink-0 hover:bg-teal-600 flex items-center gap-1 transition-colors"
+                      className="zms-action px-3 py-1.5 bg-teal-700 text-white rounded-lg font-semibold shrink-0 hover:bg-teal-600 flex items-center gap-1 transition-colors"
                     >
                       {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                       {isCopied ? 'คัดลอกแล้ว' : 'คัดลอก'}
@@ -1779,7 +1779,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                 </div>
                 <button
                   onClick={() => setShowAuditModal(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="zms-action text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1849,7 +1849,7 @@ export function UserManagementView({ onNavigate }: UserManagementViewProps = {})
                 </h2>
                 <button
                   onClick={() => setShowAddModal(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="zms-action text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-5 h-5" />
                 </button>

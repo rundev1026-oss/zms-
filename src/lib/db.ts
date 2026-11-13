@@ -14,7 +14,7 @@ if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 
-const dbPath = path.join(dbDir, 'zms.db');
+const dbPath = process.env.ZMS_DB_PATH ? path.resolve(process.env.ZMS_DB_PATH) : path.join(dbDir, 'zms.db');
 const dbUrl = `file:${dbPath.replace(/\\/g, '/')}`;
 
 let client: Client | null = null;

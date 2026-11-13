@@ -183,8 +183,8 @@ export function PaymentReconciliationTab({
             <button
               onClick={handleRunReconciliation}
               disabled={isRunning || !isSuperAdminOrFinance}
-              className="w-full px-4 py-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 h-[36px]"
-            >
+              className="zms-action w-full px-4 py-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 h-[36px]"
+             aria-label="กำลังกระทบยอด..." title="กำลังกระทบยอด...">
               {isRunning ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -355,7 +355,7 @@ export function PaymentReconciliationTab({
           </div>
           <button
             onClick={loadPastBatches}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            className="zms-action p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
             title="รีเฟรชประวัติ"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingPast ? 'animate-spin' : ''}`} />

@@ -287,7 +287,7 @@ export function ThaiAddressFields({
             <button
               type="button"
               onClick={() => performZipcodeLookup(postcode)}
-              className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs shrink-0 min-h-[44px]"
+              className="zms-action px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs shrink-0 min-h-[44px]"
             >
               <Search className="w-3.5 h-3.5" />
               ค้นหาซ้ำ
@@ -298,7 +298,7 @@ export function ThaiAddressFields({
             <button
               type="button"
               onClick={() => setShowMultiMatchModal(true)}
-              className="px-3.5 py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shrink-0 min-h-[44px]"
+              className="zms-action px-3.5 py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shrink-0 min-h-[44px]"
             >
               <Layers className="w-3.5 h-3.5 text-amber-800" />
               เลือกตำบล/แขวง ({multiMatchOptions.length})
@@ -432,7 +432,7 @@ export function ThaiAddressFields({
               <button
                 type="button"
                 onClick={() => onChangePostcode(validationResult.suggestedZipCode!)}
-                className="mt-1.5 px-2.5 py-1 rounded-lg bg-rose-200/80 hover:bg-rose-200 font-bold text-rose-900 transition-colors inline-flex items-center gap-1"
+                className="zms-action mt-1.5 px-2.5 py-1 rounded-lg bg-rose-200/80 hover:bg-rose-200 font-bold text-rose-900 transition-colors inline-flex items-center gap-1"
               >
                 <Sparkles className="w-3 h-3 text-rose-700" />
                 คลิกเพื่อแก้ไขเป็นรหัส {validationResult.suggestedZipCode}
@@ -498,7 +498,7 @@ export function ThaiAddressFields({
               <button
                 type="button"
                 onClick={() => setShowMultiMatchModal(false)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                className="zms-action w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>

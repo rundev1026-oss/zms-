@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import { FINANCE_MENU } from '@/lib/financeMenu';
 import { 
   LayoutDashboard, 
   Users, 
@@ -18,6 +19,10 @@ import {
   ChevronDown,
   ClipboardCheck, 
   Landmark, 
+  ArrowDownLeft,
+  ArrowLeftRight,
+  PieChart,
+  FileSpreadsheet,
   Database,
   Building2,
   HeartHandshake,
@@ -106,6 +111,19 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
 
   const isAdminView = adminViewsList.includes(currentView);
   const [isAdminExpanded, setIsAdminExpanded] = useState<boolean>(true);
+  const financeRoute = currentView.startsWith('finance');
+  const [financeOpen, setFinanceOpen] = useState(true);
+  const financeItems = FINANCE_MENU.filter((item) => item.roles.includes(currentUser.role));
+  const financeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+    dashboard: LayoutDashboard,
+    income: ArrowDownLeft,
+    'bank-accounts': Building2,
+    'asnaf-allocation': PieChart,
+    transfers: ArrowLeftRight,
+    'disbursement-approval': ShieldCheck,
+    expenses: Wallet,
+    reports: FileSpreadsheet,
+  };
 
   // Auto-expand admin menu when currently viewing any admin section
   useEffect(() => {
@@ -113,6 +131,16 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
       setIsAdminExpanded(true);
     }
   }, [isAdminView]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('zms_finance_menu_open');
+    if (saved === '0') setFinanceOpen(false);
+    if (saved === '1') setFinanceOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (financeRoute) setFinanceOpen(true);
+  }, [financeRoute]);
 
   // CANONICAL MENU STRUCTURE (Strict Specification)
   // กลุ่มที่ 1: ระบบงานหลัก (Main Operations) - 9 รายการ
@@ -176,14 +204,6 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
       label: 'การเงินและบัญชี',
       icon: Landmark,
       allowedRoles: ['super_admin', 'executive', 'finance', 'officer'],
-    },
-    {
-      id: 'treasurer-workbench',
-      label: 'อนุมัติรอบเบิก (เหรัญญิก)',
-      icon: ShieldCheck,
-      badge: pendingTreasurerApprovals > 0 ? pendingTreasurerApprovals.toString() : undefined,
-      badgeColor: 'bg-amber-100 text-amber-800',
-      allowedRoles: ['super_admin', 'executive', 'finance'],
     },
     {
       id: 'officer-reports',
@@ -301,12 +321,12 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
 
       <aside
         id="admin-sidebar-drawer"
-        className={`fixed md:static inset-y-0 left-0 z-40 md:z-auto w-72 sm:w-80 max-w-[85vw] bg-white border-r border-slate-200 flex flex-col shrink-0 h-full md:min-h-0 transition-transform duration-300 ease-in-out pt-safe pb-safe ${
+        className={`fixed md:static inset-y-0 left-0 z-40 md:z-auto w-72 sm:w-80 max-w-[85vw] bg-white border-r border-slate-200 flex h-full min-h-0 shrink-0 flex-col overflow-hidden transition-transform duration-300 ease-in-out pt-safe pb-safe ${
           isMobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
         }`}
       >
         {/* Mobile Drawer Header with Close Button */}
-        <div className="md:hidden p-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 p-3.5 md:hidden">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-[#0b2545] text-amber-300 font-bold flex items-center justify-center text-xs">
               ZMS
@@ -326,7 +346,7 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
         </div>
 
         {/* Sidebar Content (Scrollable) */}
-        <div className="flex-1 px-3 py-4 space-y-6 overflow-y-auto touch-scroll">
+        <div className="min-h-0 flex-1 space-y-6 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-4 touch-scroll">
           {/* ============================================================ */}
           {/* กลุ่มที่ 1: ระบบงานหลัก (Main Operations) - 9 รายการ */}
           {/* ============================================================ */}
@@ -339,6 +359,75 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
               {visibleMainItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentView === item.id;
+                if (item.id === 'finance') {
+                  const parentActive = financeRoute;
+                  return (
+                    <div key={item.id} className="space-y-1">
+                      <div className={`flex min-h-[42px] items-center justify-between rounded-xl px-3 py-2 text-xs font-medium ${
+                        parentActive ? 'bg-[#0b2545] text-white font-bold shadow-xs' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      }`}>
+                        <button
+                          type="button"
+                          onClick={() => handleNavigate('finance/dashboard')}
+                          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                          title="การเงินและบัญชี (Financial & Accounting)"
+                        >
+                          <Landmark className={`h-4 w-4 shrink-0 ${parentActive ? 'text-amber-300' : 'text-slate-400'}`} />
+                          <span className="truncate">การเงินและบัญชี</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFinanceOpen((open) => {
+                              const next = !open;
+                              window.localStorage.setItem('zms_finance_menu_open', next ? '1' : '0');
+                              return next;
+                            });
+                          }}
+                          className="ml-1 shrink-0 rounded-lg p-1 hover:bg-white/20"
+                          aria-label={financeOpen ? 'ยุบเมนูการเงินและบัญชี' : 'ขยายเมนูการเงินและบัญชี'}
+                          title={financeOpen ? 'ยุบเมนูย่อย' : 'ขยายเมนูย่อย'}
+                        >
+                          {financeOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      {financeOpen && (
+                        <div className="ml-4 space-y-0.5 border-l-2 border-slate-200 py-1 pl-2">
+                          {financeItems.map((subItem, index) => {
+                            const SubIcon = financeIcons[subItem.slug] || Landmark;
+                            const routeSlug = currentView.startsWith('finance/') ? currentView.slice('finance/'.length) : '';
+                            const visibleSlug = routeSlug === 'reconciliation' ? 'bank-accounts' : routeSlug === 'transactions' ? 'reports' : routeSlug;
+                            const subActive = subItem.slug === visibleSlug;
+                            const showTreasurerGroup = subItem.group === 'treasurer' && financeItems[index - 1]?.group !== 'treasurer';
+                            return (
+                              <React.Fragment key={subItem.slug}>
+                                {showTreasurerGroup ? (
+                                  <div className="px-2.5 pb-1 pt-3 text-[10px] font-bold tracking-wide text-[#0B2545]">
+                                    กลุ่มงานเหรัญญิก
+                                  </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => handleNavigate(`finance/${subItem.slug}`)}
+                                  className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs ${
+                                    subActive ? 'border border-teal-200/80 bg-teal-50 font-bold text-teal-900' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                  }`}
+                                  title={`${subItem.label} (${subItem.english})`}
+                                >
+                                  <SubIcon className={`h-3.5 w-3.5 shrink-0 ${subActive ? 'text-teal-700' : 'text-slate-400'}`} />
+                                  <span className="min-w-0 flex-1 truncate">{subItem.label}</span>
+                                  {subItem.slug === 'disbursement-approval' && pendingTreasurerApprovals > 0 && (
+                                    <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">{pendingTreasurerApprovals}</span>
+                                  )}
+                                </button>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 return (
                   <button
@@ -561,7 +650,7 @@ export function Sidebar({ currentView, onNavigate, isMobileOpen, onCloseMobile }
         </div>
 
         {/* Footer Info Box */}
-        <div className="p-3 border-t border-slate-200 bg-slate-50 space-y-2">
+        <div className="shrink-0 space-y-2 border-t border-slate-200 bg-slate-50 p-3">
           <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
             <div className="font-bold text-slate-800 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />

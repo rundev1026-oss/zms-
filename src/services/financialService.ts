@@ -11684,7 +11684,6 @@ export class FinancialService {
       handoverPipeline === 'handed_over' ? 'ส่งมอบเงินแล้ว' :
       handoverPipeline === 'partial_handover' ? 'ส่งมอบเงินบางส่วน' :
       handoverPipeline === 'awaiting_handover' ? 'รอส่งมอบเงิน' :
-      handoverPipeline === 'approved' ? 'อนุมัติแล้ว' :
       handoverPipeline === 'pending_approval' ? 'รออนุมัติเบิก' : 'ยังไม่ส่งคำขอเบิก';
 
     // 8. Dual Independent Statuses Calculation (Real Data Driven)

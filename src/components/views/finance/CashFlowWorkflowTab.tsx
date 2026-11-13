@@ -2055,7 +2055,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
             </button>
             <button
               onClick={() => setViewMode('handovers')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5 ${viewMode === 'handovers'
+              className={`zms-action px-3 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5 ${viewMode === 'handovers'
                   ? 'bg-white text-emerald-800 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -2065,7 +2065,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
             </button>
             <button
               onClick={() => setViewMode('history')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5 ${viewMode === 'history'
+              className={`zms-action px-3 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5 ${viewMode === 'history'
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -2078,7 +2078,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
           {canManageCategories && (
             <button
               onClick={() => setShowCategoryModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer transition-all border border-slate-200 shadow-2xs"
+              className="zms-action inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer transition-all border border-slate-200 shadow-2xs"
             >
               <Tag className="w-3.5 h-3.5 text-emerald-700" />
               จัดการหมวดค่าใช้จ่าย
@@ -2087,7 +2087,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
 
           <button
             onClick={() => setShowStep1Modal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs cursor-pointer transition-all"
+            className="zms-action inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs cursor-pointer transition-all"
           >
             <Plus className="w-4 h-4" />
             + เริ่มคำขอถอนเงินสด (ขั้นตอนที่ 1)
@@ -2249,7 +2249,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                       </div>
                       <button
                         onClick={() => setExpandedWorkflows((prev) => ({ ...prev, [wf.id]: !isExpanded }))}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+                        className="zms-action p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 cursor-pointer"
                       >
                         {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                       </button>
@@ -2319,7 +2319,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                   fileUrl: wf.step1ProofUrl!,
                                   mimeType: wf.step1ProofType || 'application/pdf',
                                 })}
-                                className="text-[10px] text-emerald-700 hover:text-emerald-800 underline font-semibold flex items-center gap-1 cursor-pointer"
+                                className="zms-action text-[10px] text-emerald-700 hover:text-emerald-800 underline font-semibold flex items-center gap-1 cursor-pointer"
                               >
                                 <Paperclip className="w-3 h-3" /> ดูสลิปถอนเงิน
                               </button>
@@ -2494,7 +2494,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                   fileUrl: wf.step2ProofUrl!,
                                   mimeType: wf.step2ProofType || 'application/pdf',
                                 })}
-                                className="text-[10px] text-emerald-700 hover:text-emerald-900 underline font-semibold flex items-center gap-1 cursor-pointer"
+                                className="zms-action text-[10px] text-emerald-700 hover:text-emerald-900 underline font-semibold flex items-center gap-1 cursor-pointer"
                               >
                                 <Paperclip className="w-3 h-3" /> หลักฐาน
                               </button>
@@ -2601,7 +2601,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                             <button
                               onClick={() => handleOpenWithdrawalModal(wf)}
                               disabled={treasurerAvailable <= 0}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white text-xs font-bold cursor-pointer disabled:cursor-not-allowed transition-colors"
+                              className="zms-action inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white text-xs font-bold cursor-pointer disabled:cursor-not-allowed transition-colors"
                             >
                               <Plus className="w-3.5 h-3.5" /> + ออกใบสำคัญเบิกเงินสด
                             </button>
@@ -2663,7 +2663,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                             <button
                               onClick={() => handleOpenWithdrawalModal(wf)}
                               disabled={treasurerAvailable <= 0}
-                              className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer disabled:text-slate-400 disabled:cursor-not-allowed"
+                              className="zms-action inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer disabled:text-slate-400 disabled:cursor-not-allowed"
                             >
                               <Plus className="w-3.5 h-3.5" /> ออกใบสำคัญเบิกเงินสดใหม่
                             </button>
@@ -2848,7 +2848,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                             fileUrl: w.proofUrl!,
                                             mimeType: w.proofType || 'application/pdf',
                                           })}
-                                          className="text-emerald-700 font-semibold underline flex items-center gap-1 text-[11px] cursor-pointer"
+                                          className="zms-action text-emerald-700 font-semibold underline flex items-center gap-1 text-[11px] cursor-pointer"
                                         >
                                           <Paperclip className="w-3 h-3" /> แนบหลักฐานแล้ว ({w.proofName || 'เปิดดู'})
                                         </button>
@@ -2894,7 +2894,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                         <button
                                           type="button"
                                           onClick={() => handleOpenHandoverModalByWithdrawal(wf, w)}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer shadow-2xs transition-all"
+                                          className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer shadow-2xs transition-all"
                                         >
                                           <UserCheck className="w-3 h-3" />
                                           ส่งมอบเงิน
@@ -2903,7 +2903,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                       <button
                                         type="button"
                                         onClick={() => handleOpenHandoverHistoryByWithdrawal(wf, w)}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold cursor-pointer shadow-2xs transition-all"
+                                        className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold cursor-pointer shadow-2xs transition-all"
                                       >
                                         <Clock className="w-3 h-3 text-slate-500" />
                                         ประวัติส่งมอบ
@@ -3010,7 +3010,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                                         fileUrl: cItem.receiptUrl!,
                                                         mimeType: cItem.receiptType || 'application/pdf',
                                                       })}
-                                                      className="text-emerald-700 underline flex items-center gap-1 text-[11px] cursor-pointer"
+                                                      className="zms-action text-emerald-700 underline flex items-center gap-1 text-[11px] cursor-pointer"
                                                     >
                                                       <Paperclip className="w-3 h-3" /> {cItem.receiptName || 'ดูใบเสร็จ'}
                                                     </button>
@@ -3140,7 +3140,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
               <button
                 onClick={() => fetchHandovers()}
                 disabled={isLoadingHandovers}
-                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer transition-all"
+                className="zms-action p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer transition-all"
                 title="รีเฟรชข้อมูล"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHandovers ? 'animate-spin' : ''}`} />
@@ -3286,7 +3286,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                 <button
                                   type="button"
                                   onClick={() => handleOpenHandoverModal(item)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer shadow-2xs transition-all"
+                                  className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer shadow-2xs transition-all"
                                   title="บันทึกส่งมอบเงินให้ผู้ดูแลเคส"
                                 >
                                   <UserCheck className="w-3 h-3" />
@@ -3296,7 +3296,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                               <button
                                 type="button"
                                 onClick={() => handleOpenHandoverHistoryModal(item)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold cursor-pointer shadow-2xs transition-all"
+                                className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold cursor-pointer shadow-2xs transition-all"
                                 title="ดูประวัติการส่งมอบ"
                               >
                                 <Clock className="w-3 h-3 text-slate-500" />
@@ -3386,14 +3386,14 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleExportCSV}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs cursor-pointer transition-all"
+                    className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs cursor-pointer transition-all"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
                     ส่งออก Excel (CSV)
                   </button>
                   <button
                     onClick={fetchHistory}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer transition-all"
+                    className="zms-action inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer transition-all"
                     title="รีเฟรชข้อมูล"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -3881,9 +3881,9 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                         mimeType: 'application/pdf',
                                       })
                                     }
-                                    className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline cursor-pointer"
+                                    className="zms-action inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline cursor-pointer"
                                     title="ดูเอกสารหลักฐาน"
-                                  >
+                                   aria-label="เอกสาร">
                                     <Paperclip className="w-3.5 h-3.5" />
                                     <span className="text-[11px]">เอกสาร</span>
                                   </button>
@@ -3897,7 +3897,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                 <button
                                   type="button"
                                   onClick={() => setSelectedHistoryDetail(h)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs cursor-pointer shadow-2xs transition-all"
+                                  className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs cursor-pointer shadow-2xs transition-all"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                   ดูรายละเอียด
@@ -4012,7 +4012,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                     mimeType: 'application/pdf',
                                   })
                                 }
-                                className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
+                                className="zms-action inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
                               >
                                 <Paperclip className="w-3.5 h-3.5" />
                                 มีเอกสารแนบ
@@ -4027,7 +4027,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                             <button
                               type="button"
                               onClick={() => setSelectedHistoryDetail(h)}
-                              className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-xs cursor-pointer transition-colors"
+                              className="zms-action w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-xs cursor-pointer transition-colors"
                             >
                               <Eye className="w-4 h-4" />
                               ดูรายละเอียดและหลักฐาน
@@ -4070,7 +4070,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                           type="button"
                           disabled={currentPageSafe <= 1}
                           onClick={() => setHistoryCurrentPage((p) => Math.max(1, p - 1))}
-                          className="p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                          className="zms-action p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
                           title="หน้าก่อนหน้า"
                         >
                           <ChevronLeft className="w-4 h-4" />
@@ -4082,7 +4082,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                           type="button"
                           disabled={currentPageSafe >= totalPages}
                           onClick={() => setHistoryCurrentPage((p) => Math.min(totalPages, p + 1))}
-                          className="p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                          className="zms-action p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
                           title="หน้าถัดไป"
                         >
                           <ChevronRight className="w-4 h-4" />
@@ -4662,7 +4662,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                         setVoucherType('aid_disbursement');
                         setWithdrawalPurpose('เบิกเงินสดเพื่อจัดสรรช่วยเหลือผู้รับซะกาตตามคำร้องอนุมัติ');
                       }}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${voucherType === 'aid_disbursement'
+                      className={`zms-action p-3 rounded-xl border text-left cursor-pointer transition-all ${voucherType === 'aid_disbursement'
                           ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
                           : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                         }`}
@@ -4682,7 +4682,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                         setVoucherType('office_expense');
                         setWithdrawalPurpose('เบิกเงินสำรองจ่ายสำนักงาน (Petty Cash)');
                       }}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${voucherType === 'office_expense'
+                      className={`zms-action p-3 rounded-xl border text-left cursor-pointer transition-all ${voucherType === 'office_expense'
                           ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
                           : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                         }`}
@@ -4702,7 +4702,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                         setVoucherType('other_approved');
                         setWithdrawalPurpose('เบิกเงินสดเพื่อวัตถุประสงค์อื่นที่ได้รับอนุมัติ');
                       }}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${voucherType === 'other_approved'
+                      className={`zms-action p-3 rounded-xl border text-left cursor-pointer transition-all ${voucherType === 'other_approved'
                           ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
                           : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                         }`}
@@ -4764,9 +4764,9 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                       <button
                         type="button"
                         onClick={() => handleRegenerateNextVoucherNo()}
-                        className="text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1 cursor-pointer hover:underline"
+                        className="zms-action text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1 cursor-pointer hover:underline"
                         title="คำนวณและดึงเลขที่ถัดไปอัตโนมัติ"
-                      >
+                       aria-label="สร้างเลขถัดไป">
                         <RefreshCw className="w-3 h-3" />
                         <span>สร้างเลขถัดไป</span>
                       </button>
@@ -4916,7 +4916,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                       <button
                         type="button"
                         onClick={() => setShowApprovedPicker(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer"
+                        className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" /> + เลือกจากรายการอนุมัติ
                       </button>
@@ -5008,7 +5008,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                     <button
                                       type="button"
                                       onClick={() => handleRemoveAidItem(idx)}
-                                      className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 cursor-pointer transition-colors"
+                                      className="zms-action text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 cursor-pointer transition-colors"
                                       title="ลบรายการ"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
@@ -5423,12 +5423,12 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                   <button
                     type="button"
                     onClick={() => setPickerActiveGroup('ready')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                    className={`zms-action flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
                       pickerActiveGroup === 'ready'
                         ? 'bg-white text-emerald-800 shadow-xs border border-emerald-200'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                     }`}
-                  >
+                   aria-label="กลุ่ม A: พร้อมเบิกจ่าย" title="กลุ่ม A: พร้อมเบิกจ่าย">
                     <CheckCircle2 className="w-4 h-4 text-emerald-700" />
                     <span>กลุ่ม A: พร้อมเบิกจ่าย</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-mono font-bold">
@@ -5439,12 +5439,12 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                   <button
                     type="button"
                     onClick={() => setPickerActiveGroup('in_progress')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                    className={`zms-action flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
                       pickerActiveGroup === 'in_progress'
                         ? 'bg-white text-amber-800 shadow-xs border border-amber-200'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                     }`}
-                  >
+                   aria-label="กลุ่ม B: อยู่ระหว่างดำเนินการ (ไม่สามารถเบิกได้)" title="กลุ่ม B: อยู่ระหว่างดำเนินการ (ไม่สามารถเบิกได้)">
                     <Clock className="w-4 h-4 text-amber-600" />
                     <span>กลุ่ม B: อยู่ระหว่างดำเนินการ (ไม่สามารถเบิกได้)</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 font-mono font-bold">
@@ -5483,7 +5483,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                   showToast('กรุณาไปที่เมนู "ยื่นคำร้องขอความช่วยเหลือ" เพื่อสร้างคำร้องใหม่', 'info');
                                 }
                               }}
-                              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                              className="zms-action inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-sm cursor-pointer"
                             >
                               <ArrowRight className="w-4 h-4" />
                               ไปหน้ายื่นคำร้องขอความช่วยเหลือ
@@ -5555,7 +5555,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                   <button
                                     type="button"
                                     onClick={() => setSelectedAppDetailModal(app)}
-                                    className="px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold cursor-pointer flex items-center gap-1 transition-colors"
+                                    className="zms-action px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold cursor-pointer flex items-center gap-1 transition-colors"
                                   >
                                     <Eye className="w-3.5 h-3.5 text-slate-500" />
                                     ดูรายละเอียด
@@ -5632,7 +5632,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                   <button
                                     type="button"
                                     onClick={() => setSelectedAppDetailModal(app)}
-                                    className="px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold cursor-pointer flex items-center gap-1"
+                                    className="zms-action px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold cursor-pointer flex items-center gap-1"
                                   >
                                     <Eye className="w-3.5 h-3.5 text-slate-500" />
                                     ดูรายละเอียด
@@ -5641,7 +5641,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                   <button
                                     type="button"
                                     disabled
-                                    className="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-400 text-xs font-bold cursor-not-allowed flex items-center gap-1"
+                                    className="zms-action px-3 py-1.5 rounded-xl bg-slate-200 text-slate-400 text-xs font-bold cursor-not-allowed flex items-center gap-1"
                                     title={`ไม่สามารถเบิกได้: ${app.blockReason || 'อยู่ระหว่างดำเนินการ'}`}
                                   >
                                     <Lock className="w-3.5 h-3.5 text-slate-400" />
@@ -5914,7 +5914,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                       <button
                         type="button"
                         onClick={handleAddClearanceItem}
-                        className="inline-flex items-center gap-1 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs"
+                        className="zms-action inline-flex items-center gap-1 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs"
                       >
                         <Plus className="w-3.5 h-3.5" /> + เพิ่มรายการค่าใช้จ่าย
                       </button>
@@ -6007,7 +6007,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveClearanceItem(idx)}
-                                    className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 cursor-pointer"
+                                    className="zms-action text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 cursor-pointer"
                                     title="ลบรายการนี้"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -6277,7 +6277,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                         setEditCatName(cat.name);
                                         setEditCatLimit(cat.budgetLimit || 0);
                                       }}
-                                      className="p-1 text-slate-500 hover:text-emerald-700 rounded hover:bg-slate-100 cursor-pointer"
+                                      className="zms-action p-1 text-slate-500 hover:text-emerald-700 rounded hover:bg-slate-100 cursor-pointer"
                                       title="แก้ไขชื่อหมวด"
                                     >
                                       <Edit2 className="w-3.5 h-3.5" />
@@ -6617,7 +6617,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                 fileUrl: (auditSummary?.closureProofUrl || showStep5Modal.step5ProofUrl)!,
                                 mimeType: showStep5Modal.step5ProofType || 'application/pdf',
                               })}
-                              className="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                              className="zms-action text-emerald-700 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Paperclip className="w-3.5 h-3.5" />
                               ดูเอกสารปิดรอบ
@@ -6714,7 +6714,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                           <button
                             type="submit"
                             disabled={isSubmitting || (auditSummary !== null && !auditSummary.canClose)}
-                            className="min-h-[44px] px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold cursor-pointer inline-flex items-center gap-2 shadow-xs transition-colors"
+                            className="zms-action min-h-[44px] px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold cursor-pointer inline-flex items-center gap-2 shadow-xs transition-colors"
                           >
                             <Lock className="w-4 h-4" />
                             {isSubmitting
@@ -6938,7 +6938,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                       <button
                         type="button"
                         onClick={() => setPreviewFile(handoverProof)}
-                        className="text-emerald-700 font-bold hover:underline text-xs cursor-pointer inline-flex items-center gap-1"
+                        className="zms-action text-emerald-700 font-bold hover:underline text-xs cursor-pointer inline-flex items-center gap-1"
                       >
                         <Eye className="w-3.5 h-3.5" /> ดูตัวอย่าง
                       </button>
@@ -7019,7 +7019,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                       !receivedByName.trim() ||
                       !canOperateHandover
                     }
-                    className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm transition-all"
+                    className="zms-action px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm transition-all"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     {isSubmitting ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันการส่งมอบเงิน'}
@@ -7174,7 +7174,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                 fileUrl: h.proofUrl,
                                 mimeType: h.proofType || 'application/pdf',
                               })}
-                              className="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer text-[11px]"
+                              className="zms-action text-emerald-700 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer text-[11px]"
                             >
                               <Paperclip className="w-3.5 h-3.5" />
                               {h.proofName || 'เปิดดูหลักฐาน'}
@@ -7284,7 +7284,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                 <button
                   type="button"
                   onClick={() => setSelectedHistoryDetail(null)}
-                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                  className="zms-action text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -7585,7 +7585,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                                         mimeType: c.receiptType || 'image/jpeg',
                                       })
                                     }
-                                    className="text-emerald-700 hover:underline font-bold text-[11px] cursor-pointer inline-flex items-center gap-1"
+                                    className="zms-action text-emerald-700 hover:underline font-bold text-[11px] cursor-pointer inline-flex items-center gap-1"
                                   >
                                     <Paperclip className="w-3 h-3" /> ดูใบเสร็จ
                                   </button>
@@ -7636,7 +7636,7 @@ export function CashFlowWorkflowTab({ currentUser, showToast, onNavigate, initia
                               mimeType: selectedHistoryDetail.proofType || 'application/pdf',
                             })
                           }
-                          className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5"
+                          className="zms-action px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5"
                         >
                           <Eye className="w-3.5 h-3.5" /> ดูตัวอย่าง
                         </button>

@@ -105,6 +105,9 @@ interface BatchDetailData {
     assistanceType: string;
     approvedAmount: number;
     thisDisbursementAmount: number;
+    paidAmount?: number;
+    remainingAmount?: number;
+    installmentCount?: number;
     status: string;
     notes?: string;
   }>;
@@ -174,6 +177,20 @@ interface BatchDetailData {
     notes: string;
   }>;
   transferEvidence?: TransferEvidenceSummary;
+  internalTransfer?: {
+    id: string;
+    transactionNo: string;
+    journalNo: string;
+    date: string;
+    category: string;
+    amount: number;
+    status: string;
+    referenceNo: string;
+    payee: string;
+    notes: string;
+    recordedByName: string;
+    lines: Array<{ accountCode: string; accountName: string; entryType: string; amount: number; description: string }>;
+  } | null;
   totalWithdrawAmount: number;
   totalActualAidDisbursed: number;
   totalActualAdminDisbursed: number;
@@ -246,10 +263,22 @@ export interface BankAccountOption {
 
 interface Counts {
   all: number;
+  incoming: number;
+  reviewing: number;
   pending_approval: number;
   approved: number;
   revision: number;
   rejected: number;
+}
+
+interface Amounts {
+  incoming: number;
+  reviewing: number;
+  pending_approval: number;
+  approved: number;
+  revision: number;
+  rejected: number;
+  all: number;
 }
 
 export function TreasurerApprovalWorkbench({
@@ -258,7 +287,7 @@ export function TreasurerApprovalWorkbench({
   onRefreshParent,
 }: TreasurerApprovalWorkbenchProps) {
   // Tabs for Filtering
-  const [activeTab, setActiveTab] = useState<'pending_approval' | 'approved' | 'revision' | 'rejected' | 'all'>('pending_approval');
+  const [activeTab, setActiveTab] = useState<'incoming' | 'reviewing' | 'pending_approval' | 'approved' | 'revision' | 'rejected' | 'all'>('pending_approval');
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -268,11 +297,23 @@ export function TreasurerApprovalWorkbench({
   const [batches, setBatches] = useState<BatchSummaryItem[]>([]);
   const [counts, setCounts] = useState<Counts>({
     all: 0,
+    incoming: 0,
+    reviewing: 0,
     pending_approval: 0,
     approved: 0,
     revision: 0,
     rejected: 0,
   });
+  const [amounts, setAmounts] = useState<Amounts>({
+    incoming: 0,
+    reviewing: 0,
+    pending_approval: 0,
+    approved: 0,
+    revision: 0,
+    rejected: 0,
+    all: 0,
+  });
+  const [showTransfer, setShowTransfer] = useState(false);
 
   // Selected Detail Modal
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
@@ -367,10 +408,24 @@ export function TreasurerApprovalWorkbench({
           const bc = json.data.badgeCounts || json.data.counts;
           setCounts({
             all: Number(bc.all || 0),
+            incoming: Number(bc.incoming || 0),
+            reviewing: Number(bc.reviewing || 0),
             pending_approval: Number(bc.pending_approval || 0),
             approved: Number(bc.approved || 0),
             revision: Number(bc.revision || 0),
             rejected: Number(bc.rejected || 0),
+          });
+        }
+        if (json.data.amounts) {
+          const money = json.data.amounts;
+          setAmounts({
+            incoming: Number(money.incoming || 0),
+            reviewing: Number(money.reviewing || 0),
+            pending_approval: Number(money.pending_approval || 0),
+            approved: Number(money.approved || 0),
+            revision: Number(money.revision || 0),
+            rejected: Number(money.rejected || 0),
+            all: Number(money.all || 0),
           });
         }
       }
@@ -892,7 +947,7 @@ export function TreasurerApprovalWorkbench({
 
       const msg =
         actionType === 'approve'
-          ? 'อนุมัติรอบการเบิกเงินเรียบร้อยแล้ว (สถานะ: รอส่งมอบเงินสด)'
+          ? 'อนุมัติรอบเบิกแล้ว โอนเงินจากบัญชีเหรัญญิกไปเงินสดเจ้าหน้าที่ และสถานะเป็นเบิกเงินสำเร็จ รายการช่วยเหลือยังรอจ่าย'
           : actionType === 'return_for_revision'
           ? 'ส่งกลับรอบการเบิกเงินให้เจ้าหน้าที่แก้ไขเรียบร้อยแล้ว'
           : 'ปฏิเสธ/ไม่อนุมัติรอบการเบิกเงินเรียบร้อยแล้ว';
@@ -937,6 +992,14 @@ export function TreasurerApprovalWorkbench({
       );
     }
     if (step1Status === 'approved') {
+      if (overallStatus === 'cash_disbursed_to_staff') {
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-800 border border-teal-300">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            เบิกเงินสำเร็จ
+          </span>
+        );
+      }
       if (overallStatus === 'completed') {
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
@@ -1052,10 +1115,10 @@ export function TreasurerApprovalWorkbench({
               </div>
               <div>
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                  ระบบอนุมัติรอบการเบิกเงินโดยฝ่ายเหรัญญิก
+                  กลุ่มงานเหรัญญิก · อนุมัติรอบเบิก
                 </h1>
                 <p className="text-sm font-medium text-slate-500">
-                  Treasurer Approval Workbench — ตรวจสอบความถูกต้องของรายการช่วยเหลือและค่าใช้จ่ายบริหาร พร้อมควบคุมวงเงินคลังเหรัญญิก
+                  ตรวจรอบเบิก อนุมัติแล้วโอนภายในจากบัญชี B ไปบัญชี C รายการช่วยเหลือยังไม่ถือว่าจ่ายจริง
                 </p>
               </div>
             </div>
@@ -1070,7 +1133,7 @@ export function TreasurerApprovalWorkbench({
             <button
               onClick={fetchBatches}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-xs disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-xs disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               รีเฟรชข้อมูล
@@ -1082,94 +1145,35 @@ export function TreasurerApprovalWorkbench({
       {/* ========================================================================= */}
       {/* 2. PHASE 3.1: 4 SUMMARY KPI CARDS                                         */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: รออนุมัติ (Amber) */}
-        <div
-          onClick={() => setActiveTab('pending_approval')}
-          className={`cursor-pointer rounded-3xl p-5 border transition-all ${
-            activeTab === 'pending_approval'
-              ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400/30 shadow-md'
-              : 'bg-white border-slate-200/80 hover:border-amber-300 hover:bg-amber-50/30'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-700">รอบเบิกรออนุมัติ</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {([
+          ['incoming', 'ส่งมาใหม่', counts.incoming, amounts.incoming, 'ยังไม่แนบหลักฐานการโอน'],
+          ['reviewing', 'รอตรวจสอบ', counts.reviewing, amounts.reviewing, 'มีหลักฐานแล้ว รอเหรัญญิกตรวจ'],
+          ['revision', 'ส่งกลับแก้ไข', counts.revision, amounts.revision, 'รอเจ้าหน้าที่ยื่นใหม่'],
+          ['approved', 'อนุมัติแล้ว', counts.approved, amounts.approved, 'โอน B ไป C แล้ว เคสยังรอจ่าย'],
+          ['rejected', 'ไม่อนุมัติ', counts.rejected, amounts.rejected, 'ไม่มีการโอนเงิน'],
+        ] as const).map(([key, label, count, amount, note]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className={`rounded-3xl border p-5 text-left transition ${
+              activeTab === key
+                ? 'border-teal-500 bg-teal-50 shadow-md ring-2 ring-teal-500/20'
+                : 'border-slate-200 bg-white hover:border-teal-200'
+            }`}
+          >
+            <div className="text-xs font-bold text-[#0B2545]">{label}</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-3xl font-black text-slate-950">{count}</span>
+              <span className="text-xs text-slate-500">รอบ</span>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-amber-950">{counts.pending_approval}</span>
-            <span className="text-xs font-medium text-amber-700">รอบเบิก</span>
-          </div>
-          <p className="mt-2 text-xs text-amber-600/90 font-medium">รอการตรวจสอบและพิจารณาจากเหรัญญิก</p>
-        </div>
-
-        {/* Card 2: อนุมัติแล้ว (Emerald) */}
-        <div
-          onClick={() => setActiveTab('approved')}
-          className={`cursor-pointer rounded-3xl p-5 border transition-all ${
-            activeTab === 'approved'
-              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-400/30 shadow-md'
-              : 'bg-white border-slate-200/80 hover:border-emerald-300 hover:bg-emerald-50/30'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">รอบเบิกอนุมัติแล้ว</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
+            <div className="mt-1 text-sm font-bold text-[#0D9488]">
+              ฿{amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-emerald-950">{counts.approved}</span>
-            <span className="text-xs font-medium text-emerald-700">รอบเบิก</span>
-          </div>
-          <p className="mt-2 text-xs text-emerald-600/90 font-medium">ผ่านการอนุมัติแล้ว รอขั้นตอนส่งมอบเงินสด</p>
-        </div>
-
-        {/* Card 3: ส่งกลับแก้ไข (Blue) */}
-        <div
-          onClick={() => setActiveTab('revision')}
-          className={`cursor-pointer rounded-3xl p-5 border transition-all ${
-            activeTab === 'revision'
-              ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-400/30 shadow-md'
-              : 'bg-white border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/30'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-700">ส่งกลับแก้ไข</span>
-            <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-              <RotateCcw className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-blue-950">{counts.revision}</span>
-            <span className="text-xs font-medium text-blue-700">รอบเบิก</span>
-          </div>
-          <p className="mt-2 text-xs text-blue-600/90 font-medium">รอเจ้าหน้าที่สำนักงานแก้ไขข้อมูลและยื่นใหม่</p>
-        </div>
-
-        {/* Card 4: ไม่อนุมัติ (Rose) */}
-        <div
-          onClick={() => setActiveTab('rejected')}
-          className={`cursor-pointer rounded-3xl p-5 border transition-all ${
-            activeTab === 'rejected'
-              ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-400/30 shadow-md'
-              : 'bg-white border-slate-200/80 hover:border-rose-300 hover:bg-rose-50/30'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-rose-700">รอบเบิกไม่อนุมัติ</span>
-            <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
-              <Ban className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-rose-950">{counts.rejected}</span>
-            <span className="text-xs font-medium text-rose-700">รอบเบิก</span>
-          </div>
-          <p className="mt-2 text-xs text-rose-600/90 font-medium">คำขอถูกยกเลิก/ยุติรายการ ไม่มีการตัดเงิน</p>
-        </div>
+            <p className="mt-2 text-[11px] text-slate-500">{note}</p>
+          </button>
+        ))}
       </div>
 
       {/* ========================================================================= */}
@@ -1181,6 +1185,38 @@ export function TreasurerApprovalWorkbench({
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {/* Status Tabs */}
             <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-200/70 rounded-2xl">
+              <button
+                onClick={() => setActiveTab('incoming')}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                  activeTab === 'incoming'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>ส่งมาใหม่</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  activeTab === 'incoming' ? 'bg-amber-100 text-amber-800' : 'bg-slate-300 text-slate-700'
+                }`}>
+                  {counts.incoming}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('reviewing')}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                  activeTab === 'reviewing'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>รอตรวจสอบ</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  activeTab === 'reviewing' ? 'bg-orange-100 text-orange-800' : 'bg-slate-300 text-slate-700'
+                }`}>
+                  {counts.reviewing}
+                </span>
+              </button>
+
               <button
                 onClick={() => setActiveTab('pending_approval')}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
@@ -1378,7 +1414,7 @@ export function TreasurerApprovalWorkbench({
                           e.stopPropagation();
                           loadDetail(batch.id);
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs"
+                        className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         {batch.step1Status === 'pending_approval' ? 'ตรวจสอบและพิจารณา' : 'ดูรายละเอียด'}
@@ -1417,6 +1453,11 @@ export function TreasurerApprovalWorkbench({
                   <h2 className="text-lg font-black text-slate-900 mt-0.5">
                     {detail?.workflow.title || 'กำลังโหลดรายละเอียด...'}
                   </h2>
+                  {detail ? (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      ผู้สร้าง {detail.workflow.operatorName || '-'} · ผู้อนุมัติ {detail.workflow.approverName || '-'} · ต้นทาง บัญชี B เงินสดเหรัญญิก · ปลายทาง บัญชี C เงินสดเจ้าหน้าที่ · อนุมัติ ฿{Number(detail.workflow.withdrawAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -1427,7 +1468,7 @@ export function TreasurerApprovalWorkbench({
                   setActionError('');
                   setActionSuccessMessage('');
                 }}
-                className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition"
+                className="zms-action w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1554,7 +1595,7 @@ export function TreasurerApprovalWorkbench({
                                 </td>
                                 <td className="py-2.5 px-3 text-center">
                                   <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                                    {item.status}
+                                    {item.status === 'awaiting_payment' ? 'รอจ่าย' : item.status === 'partial' ? 'จ่ายบางส่วน' : item.status === 'paid' || item.status === 'completed' ? 'จ่ายแล้ว' : item.status === 'pending' || item.status === 'approved' ? 'รอเบิกจ่าย' : item.status}
                                   </span>
                                 </td>
                               </tr>
@@ -1622,7 +1663,7 @@ export function TreasurerApprovalWorkbench({
                                           status: 'verified',
                                         })
                                       }
-                                      className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
+                                      className="zms-action inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
                                     >
                                       <Eye className="w-3 h-3" />
                                       ดูเอกสาร
@@ -1633,7 +1674,7 @@ export function TreasurerApprovalWorkbench({
                                 </td>
                                 <td className="py-2.5 px-3 text-center">
                                   <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                                    {item.status}
+                                    {item.status === 'awaiting_payment' ? 'รอจ่าย' : item.status === 'partial' ? 'จ่ายบางส่วน' : item.status === 'paid' || item.status === 'completed' ? 'จ่ายแล้ว' : item.status === 'pending' || item.status === 'approved' ? 'รอเบิกจ่าย' : item.status}
                                   </span>
                                 </td>
                               </tr>
@@ -1907,7 +1948,7 @@ export function TreasurerApprovalWorkbench({
                                 <button
                                   type="button"
                                   onClick={() => handleRemovePendingFile(pf.tempId)}
-                                  className="p-1 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition shrink-0"
+                                  className="zms-action p-1 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition shrink-0"
                                   title="ลบไฟล์นี้"
                                 >
                                   <X className="w-4 h-4" />
@@ -1975,7 +2016,7 @@ export function TreasurerApprovalWorkbench({
                                           status: 'verified',
                                         })
                                       }
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-[11px] transition"
+                                      className="zms-action inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-[11px] transition"
                                     >
                                       <Eye className="w-3 h-3" />
                                       ดูสลิป
@@ -1996,7 +2037,7 @@ export function TreasurerApprovalWorkbench({
                                     <td className="py-2.5 px-3 text-right">
                                       <button
                                         onClick={() => handleDeleteEvidence(ev.id)}
-                                        className="p-1 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition"
+                                        className="zms-action p-1 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition"
                                         title="ลบหลักฐานนี้"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -2150,7 +2191,7 @@ export function TreasurerApprovalWorkbench({
                               <button
                                 onClick={() => handleStaffConfirmReceipt('fully_received')}
                                 disabled={staffConfirmBusy}
-                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition shadow-sm"
+                                className="zms-action inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition shadow-sm"
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 ยืนยันรับเงินสดครบถ้วน
@@ -2164,7 +2205,7 @@ export function TreasurerApprovalWorkbench({
                                   })
                                 }
                                 disabled={staffConfirmBusy}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition shadow-sm"
+                                className="zms-action inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition shadow-sm"
                               >
                                 <AlertTriangle className="w-3.5 h-3.5" />
                                 แจ้งยอดรับไม่ครบ
@@ -2178,7 +2219,7 @@ export function TreasurerApprovalWorkbench({
                                   })
                                 }
                                 disabled={staffConfirmBusy}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold transition shadow-2xs"
+                                className="zms-action inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold transition shadow-2xs"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
                                 ส่งกลับตรวจสอบ
@@ -2235,7 +2276,7 @@ export function TreasurerApprovalWorkbench({
                             ยอดเงินคงเหลือปัจจุบันในคลัง: <strong className="text-slate-900">฿{detail.treasurerAccount.currentBalance.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong>
                           </p>
                           <p className="text-xs font-semibold">
-                            ยอดคงเหลือจำลองหลังอนุมัติรอบนี้:{' '}
+                            {detail.internalTransfer ? 'ยอดเงินสดเหรัญญิกหลังโอนภายในแล้ว:' : 'ยอดคงเหลือจำลองหลังอนุมัติรอบนี้:'}{' '}
                             <strong className={detail.treasurerAccount.isSufficient ? 'text-emerald-700 text-sm' : 'text-rose-700 text-sm'}>
                               ฿{detail.treasurerAccount.simulatedBalanceAfter.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                             </strong>
@@ -2262,8 +2303,8 @@ export function TreasurerApprovalWorkbench({
                     <div className="mt-4 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/90 text-amber-900 text-xs flex items-start gap-2.5">
                       <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <strong className="font-bold">หลักเกณฑ์การควบคุมทางการเงิน:</strong> การอนุมัติในขั้นตอนนี้เป็นการยืนยันความถูกต้องของรายการและจองยอดเงิน{' '}
-                        <strong>โดยยังไม่มีการตัดเงินสดจริงหรือบันทึกบัญชีแยกประเภท (GL)</strong> ระบบจะตัดเงินสดและบันทึกบัญชีแยกประเภทเมื่อเหรัญญิกส่งมอบเงินสดจริง (Cash Handover) ให้แก่เจ้าหน้าที่เท่านั้น
+                        <strong className="font-bold">หลักเกณฑ์การควบคุมทางการเงิน:</strong> การอนุมัติรอบเบิกเป็นการโอนภายในจากบัญชี B เงินสดเหรัญญิก ไปบัญชี C เงินสดเจ้าหน้าที่
+                        รายการนี้ไม่ใช่รายจ่ายช่วยเหลือ และเคสยังไม่ถือว่าจ่ายเงินจริงจนกว่าจะบันทึกการช่วยเหลือ
                       </div>
                     </div>
                   </div>
@@ -2315,7 +2356,17 @@ export function TreasurerApprovalWorkbench({
             {/* =================================================================== */}
             {detail && (
               <div className="p-4 sm:p-6 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-slate-500">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  {detail.internalTransfer ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowTransfer(true)}
+                      className="zms-action inline-flex items-center gap-1.5 rounded-2xl border border-teal-300 bg-white px-3 py-2 text-xs font-bold text-teal-900"
+                    >
+                      <Receipt className="h-3.5 w-3.5" />
+                      ดูรายการโอนภายใน
+                    </button>
+                  ) : null}
                   {detail.workflow.step1Status === 'pending_approval' ? (
                     <span className="text-amber-700 font-bold flex items-center gap-1.5">
                       <Clock className="w-4 h-4" />
@@ -2341,7 +2392,7 @@ export function TreasurerApprovalWorkbench({
                           setReasonInput('');
                           setActionError('');
                         }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl border border-blue-300 bg-white hover:bg-blue-50 text-blue-800 text-xs font-bold transition shadow-2xs"
+                        className="zms-action inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl border border-blue-300 bg-white hover:bg-blue-50 text-blue-800 text-xs font-bold transition shadow-2xs"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         ส่งกลับแก้ไข
@@ -2354,7 +2405,7 @@ export function TreasurerApprovalWorkbench({
                           setReasonInput('');
                           setActionError('');
                         }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl border border-rose-300 bg-white hover:bg-rose-50 text-rose-800 text-xs font-bold transition shadow-2xs"
+                        className="zms-action inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl border border-rose-300 bg-white hover:bg-rose-50 text-rose-800 text-xs font-bold transition shadow-2xs"
                       >
                         <Ban className="w-3.5 h-3.5" />
                         ไม่อนุมัติ
@@ -2386,7 +2437,7 @@ export function TreasurerApprovalWorkbench({
                               ? 'ไม่สามารถอนุมัติได้: ต้องแนบหลักฐานการโอนเงินและตรวจสอบความถูกต้องให้ตรงกับยอดขอเบิกครบถ้วนก่อน'
                               : 'อนุมัติรอบการเบิกเงิน'
                           }
-                          className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-2xl text-white text-xs font-black transition shadow-xs ${
+                          className={`zms-action inline-flex items-center gap-1.5 px-5 py-2 rounded-2xl text-white text-xs font-black transition shadow-xs ${
                             detail.transferEvidence?.isApprovalReady
                               ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
                               : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
@@ -2444,7 +2495,7 @@ export function TreasurerApprovalWorkbench({
               </h3>
               <button
                 onClick={() => setActionType(null)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+                className="zms-action w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2484,7 +2535,7 @@ export function TreasurerApprovalWorkbench({
               <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-[11px] text-emerald-900 flex items-start gap-2">
                 <CheckCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
-                  หลักฐานการโอนเงินได้รับการตรวจสอบความถูกต้องครบถ้วนแล้ว เมื่ออนุมัติรอบเบิก ระบบจะเปลี่ยนสถานะเป็น <strong>&quot;อนุมัติแล้ว (รอส่งมอบเงินสด)&quot;</strong> โดยจะบันทึกบัญชีแยกประเภท (GL) ในขั้นตอนส่งมอบเงินสดจริง
+                  เมื่ออนุมัติรอบเบิก ระบบโอนเงินภายในจากบัญชีเงินสดเหรัญญิกไปบัญชีเงินสดเจ้าหน้าที่ทันที สถานะรอบเบิกเป็น <strong>&quot;เบิกเงินสำเร็จ&quot;</strong> รายการช่วยเหลือแต่ละเคสยังเป็นรอจ่าย และยังไม่บันทึกรายจ่ายช่วยเหลือ
                 </div>
               </div>
             )}
@@ -2563,7 +2614,7 @@ export function TreasurerApprovalWorkbench({
               </div>
               <button
                 onClick={() => setShowUploadEvidenceModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+                className="zms-action w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2747,7 +2798,7 @@ export function TreasurerApprovalWorkbench({
                   setEvidenceDecisionModal(null);
                   setEvidenceDecisionReason('');
                 }}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+                className="zms-action w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2848,7 +2899,7 @@ export function TreasurerApprovalWorkbench({
                   setStaffReceivedAmount('');
                   setStaffDiscrepancyReason('');
                 }}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+                className="zms-action w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2962,6 +3013,48 @@ export function TreasurerApprovalWorkbench({
           onClose={() => setPreviewDoc(null)}
         />
       )}
+
+      {showTransfer && detail?.internalTransfer ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wide text-[#0D9488]">Internal Transfer</div>
+                <h3 className="text-lg font-black text-[#0B2545]">รายการโอนภายใน บัญชี B ไปบัญชี C</h3>
+                <p className="mt-1 text-xs text-slate-500">รายการนี้ไม่ใช่รายจ่ายช่วยเหลือ และไม่เปลี่ยนสถานะเคสเป็นจ่ายแล้ว</p>
+              </div>
+              <button type="button" onClick={() => setShowTransfer(false)} className="zms-action rounded-full bg-slate-100 p-2 text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <div><dt className="text-xs text-slate-500">เลขที่ธุรกรรม</dt><dd className="font-mono font-bold">{detail.internalTransfer.transactionNo}</dd></div>
+              <div><dt className="text-xs text-slate-500">เลขที่สมุดรายวัน</dt><dd className="font-mono font-bold">{detail.internalTransfer.journalNo}</dd></div>
+              <div><dt className="text-xs text-slate-500">วันที่</dt><dd>{detail.internalTransfer.date}</dd></div>
+              <div><dt className="text-xs text-slate-500">จำนวนเงิน</dt><dd className="font-bold text-[#0D9488]">฿{detail.internalTransfer.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</dd></div>
+              <div><dt className="text-xs text-slate-500">อ้างอิงรอบเบิก</dt><dd>{detail.internalTransfer.referenceNo || detail.workflow.workflowNo}</dd></div>
+              <div><dt className="text-xs text-slate-500">ผู้บันทึก</dt><dd>{detail.internalTransfer.recordedByName || '-'}</dd></div>
+            </dl>
+            <p className="mt-3 text-xs text-slate-600">{detail.internalTransfer.notes}</p>
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr><th className="px-3 py-2">บัญชี</th><th className="px-3 py-2">ด้าน</th><th className="px-3 py-2 text-right">จำนวน</th></tr>
+                </thead>
+                <tbody>
+                  {detail.internalTransfer.lines.map((line) => (
+                    <tr key={`${line.accountCode}-${line.entryType}`} className="border-t border-slate-100">
+                      <td className="px-3 py-2">{line.accountCode} {line.accountName}</td>
+                      <td className="px-3 py-2">{line.entryType === 'debit' ? 'เดบิต' : 'เครดิต'}</td>
+                      <td className="px-3 py-2 text-right font-bold">{line.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

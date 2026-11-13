@@ -324,7 +324,7 @@ export function PaymentAndMemberView({
                   <button
                     onClick={handleSimulateBankConfirmation}
                     disabled={isSubmitting}
-                    className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-400 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                    className="zms-action w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-400 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <CheckCircle2 className="w-4 h-4" /> {isSubmitting ? 'กำลังบันทึกยืนยันยอด...' : 'จำลองธนาคารยืนยันยอดสำเร็จ (Simulate Success)'}
                   </button>
@@ -372,7 +372,7 @@ export function PaymentAndMemberView({
                 <div className="flex items-center justify-center gap-2 pt-2">
                   <button
                     onClick={() => showToast(`ดาวน์โหลดใบสำคัญรับเงินดิจิทัล (${receiptNo}) เรียบร้อย`, 'success')}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                    className="zms-action flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" /> ดาวน์โหลดใบเสร็จ (PDF)
                   </button>

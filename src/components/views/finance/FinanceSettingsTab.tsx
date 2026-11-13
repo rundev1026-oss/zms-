@@ -196,7 +196,7 @@ export function FinanceSettingsTab({ onNavigateTab }: FinanceSettingsTabProps) {
               <div className="flex items-center justify-end gap-3">
                 <button
                   type="submit"
-                  className="flex items-center gap-2 px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                  className="zms-action flex items-center gap-2 px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
                 >
                   <Save className="w-4 h-4" />
                   บันทึกการตั้งค่านโยบาย

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatPersonName } from '@zms/shared';
 import { useApp } from '@/context/AppContext';
 import { FollowUpPlan, FollowUpSummaryStats, FollowUpStatus } from '@/types';
 import { 
@@ -15,7 +16,9 @@ import {
   Eye, 
   PlusCircle, 
   RefreshCw, 
-  ChevronRight, 
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Building2, 
   UserCheck, 
   TrendingUp, 
@@ -33,22 +36,310 @@ import {
   MoreVertical,
   ExternalLink,
   SlidersHorizontal,
-  Settings
+  Settings,
+  List,
+  LayoutGrid,
+  History,
 } from 'lucide-react';
 import { FollowUpDetailModal } from './FollowUpDetailModal';
 import { ManageFollowUpModal } from './ManageFollowUpModal';
+import { CardViewGrid } from '@/components/common/CardViewGrid';
+import { useCardViewSettings } from '@/hooks/useCardViewSettings';
+import { CardViewLayout, SIZE_PRESETS, resolveCardPageSize } from '@/lib/cardViewSettings';
 
 interface FollowUpMonitoringViewProps {
   onNavigate?: (view: string, extra?: any) => void;
   initialPlanId?: string;
 }
 
+const FOLLOW_UP_VIEW_STORAGE_KEY = 'zms_followup_view_mode';
+
+const ASNAF_LABELS: Record<string, string> = {
+  faqir: 'ฟะกีร (ผู้ยากจนข้นแค้น)',
+  fakir: 'ฟะกีร (ผู้ยากจนข้นแค้น)',
+  miskin: 'มิสกีน (ผู้มีรายได้ไม่พอใช้)',
+  faqir_miskin: 'ฟากีร–มิสกิน',
+  amil: 'อามิล (เจ้าหน้าที่ซะกาต)',
+  muallaf: 'มุอัลลัฟ (ผู้มีใจผูกพัน)',
+  riqab: 'ริกอบ',
+  gharimin: 'ฆอริมีน (ผู้มีหนี้สินล้นพ้น)',
+  fisabilillah: 'ฟีสะบีลิลลาฮ์',
+  ibnsabil: 'อิบนุสสะบีล',
+  humanitarian: 'มนุษยธรรม',
+};
+
+function formatAsnaf(value?: string) {
+  if (!value) return 'ไม่ระบุ';
+  return ASNAF_LABELS[value.trim().toLowerCase()] || value;
+}
+
+function formatBaht(amount: number) {
+  return amount.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+}
+
+const GENERIC_MEMBER_NAMES = new Set(['ผู้ขอรับความช่วยเหลือ', 'ผู้รับความช่วยเหลือ', 'ผู้รับประโยชน์']);
+
+function beneficiaryDisplayName(name?: string) {
+  const text = (name || '').trim();
+  if (!text || text === 'null' || text === 'undefined') return '';
+  return text;
+}
+
+function linkedMemberName(plan: FollowUpPlan, registries: { id: string; fullName?: string; titlePrefix?: string; firstName?: string; lastName?: string }[]) {
+  const stored = beneficiaryDisplayName(plan.beneficiaryName);
+  const linked = registries.find((item) => item.id === plan.beneficiaryId);
+  const linkedName = linked ? beneficiaryDisplayName(formatPersonName(linked) || linked.fullName) : '';
+  if (linkedName && (!stored || GENERIC_MEMBER_NAMES.has(stored))) return linkedName;
+  return stored;
+}
+
+function financeStatusLabel(plan: FollowUpPlan) {
+  const approved = typeof plan.approvedAmount === 'number' ? plan.approvedAmount : 0;
+  const paid = typeof plan.disbursedAmount === 'number' ? plan.disbursedAmount : 0;
+  if (paid > 0 && approved > paid) return 'จ่ายบางส่วน';
+  if (paid > 0) return 'เบิกจ่ายแล้ว';
+  if (approved > 0 || plan.approvedDate) return 'รอเบิกจ่าย';
+  return 'รออนุมัติ';
+}
+
+function followUpProgressPercent(plan: FollowUpPlan) {
+  if (plan.minVisits <= 0) return 100;
+  return Math.min(100, Math.round((plan.completedVisits / plan.minVisits) * 100));
+}
+
+function FollowUpListMessage({
+  icon,
+  title,
+  detail,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="py-12 px-4 text-center text-xs text-slate-400">
+      <div className="flex justify-center mb-2">{icon}</div>
+      <p className="font-bold text-slate-700">{title}</p>
+      <p className="text-[11px] text-slate-400 mt-1">{detail}</p>
+      {action}
+    </div>
+  );
+}
+
+function FollowUpPlanCards({
+  plans,
+  isLoading,
+  loadError,
+  canViewAmount,
+  onRetry,
+  onViewDetail,
+  onManage,
+  onViewHistory,
+  statusBadge,
+  layout,
+  registries,
+}: {
+  plans: FollowUpPlan[];
+  isLoading: boolean;
+  loadError: string | null;
+  canViewAmount: boolean;
+  onRetry: () => void;
+  onViewDetail: (planId: string) => void;
+  onManage: (planId: string) => void;
+  onViewHistory: (planId: string) => void;
+  statusBadge: (status: FollowUpPlan['status']) => React.ReactNode;
+  layout: CardViewLayout;
+  registries: { id: string; fullName?: string; titlePrefix?: string; firstName?: string; lastName?: string }[];
+}) {
+  if (isLoading) {
+    return (
+      <FollowUpListMessage
+        icon={<div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />}
+        title="กำลังโหลดข้อมูลการติดตามผล..."
+        detail="กำลังดึงรายการจากฐานข้อมูล"
+      />
+    );
+  }
+
+  if (loadError && plans.length === 0) {
+    return (
+      <FollowUpListMessage
+        icon={<AlertCircle className="w-8 h-8 text-rose-400" />}
+        title="โหลดรายการติดตามผลไม่สำเร็จ"
+        detail={loadError}
+        action={
+          <button
+            type="button"
+            onClick={onRetry}
+            className="zms-action mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            ลองอีกครั้ง
+          </button>
+        }
+      />
+    );
+  }
+
+  if (plans.length === 0) {
+    return (
+      <FollowUpListMessage
+        icon={<ClipboardCheck className="w-8 h-8 text-slate-300" />}
+        title="ไม่พบรายการติดตามผลที่ตรงกับเงื่อนไข"
+        detail='ลองเปลี่ยนคำค้นหาหรือกดปุ่ม "ล้างตัวกรอง"'
+      />
+    );
+  }
+
+  const preset = SIZE_PRESETS[layout.size];
+
+  return (
+    <CardViewGrid layout={layout} className="px-0 py-3 sm:p-4">
+      {plans.map((plan) => {
+        const progressPct = plan.minVisits > 0 ? followUpProgressPercent(plan) : 0;
+        const followUpComplete = plan.minVisits > 0 && plan.completedVisits >= plan.minVisits;
+        const approvedAmount = typeof plan.approvedAmount === 'number' ? plan.approvedAmount : null;
+        const showAmount = canViewAmount && approvedAmount !== null;
+        const memberName = linkedMemberName(plan, registries);
+        const moneyStatus = financeStatusLabel(plan);
+
+        return (
+          <article
+            key={plan.id}
+            className="flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-2xs"
+            style={{ minHeight: layout.minHeightPx, fontSize: preset.bodyPx }}
+          >
+            <div className="border-b border-slate-100 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">APP {plan.applicationNo}</span>
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">REG {plan.registrationNo}</span>
+                <div className="ml-auto shrink-0">{statusBadge(plan.status)}</div>
+              </div>
+              <p className="mt-1 text-[12px] leading-5 text-slate-500">วันที่อนุมัติ {plan.approvedDate || '—'}</p>
+            </div>
+
+            <div className="px-3 pt-3">
+              <h3 className="break-words text-[18px] font-black leading-6 text-[#0B2545]" style={{ fontSize: Math.max(preset.titlePx, 18) }}>{memberName || 'ยังไม่มีชื่อในทะเบียนที่เชื่อมโยง'}</h3>
+              <p className="mt-1 text-[13px] leading-5 text-slate-600">
+                {formatAsnaf(plan.asnafCategory)}
+                <span className="px-1 text-slate-300">·</span>
+                {plan.branchName || 'ส่วนกลาง'}
+              </p>
+            </div>
+
+            <dl className="mx-3 mt-3 space-y-1.5 rounded-xl bg-[#F4F7FB] p-3 text-[13px]">
+              <div className="flex items-start justify-between gap-3">
+                <dt className="shrink-0 text-slate-500">ประเภท</dt>
+                <dd className="min-w-0 break-words text-right font-bold text-slate-800">{plan.assistanceTypeName}</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="shrink-0 text-slate-500">รูปแบบ</dt>
+                <dd className="min-w-0 break-words text-right font-semibold text-slate-800">{plan.assistanceFormatName || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">รายละเอียดหรือวัตถุประสงค์</dt>
+                <dd className="mt-0.5 line-clamp-3 leading-5 text-slate-700">{plan.assistancePurpose || plan.notes || '—'}</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="shrink-0 text-slate-500">สถานะการเงิน</dt>
+                <dd className="text-right font-bold text-[#0B2545]">{moneyStatus}</dd>
+              </div>
+              {showAmount && (
+                <div className="flex items-start justify-between gap-3">
+                  <dt className="shrink-0 text-slate-500">วงเงินที่อนุมัติ</dt>
+                  <dd className="text-right font-black tabular-nums text-[#0D9488]">{formatBaht(approvedAmount)} บาท</dd>
+                </div>
+              )}
+            </dl>
+
+            <div className="px-3 py-3 text-[13px]">
+              <div className="grid grid-cols-3 gap-1 text-center">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500">ต้องติดตาม</p>
+                  <p className="font-black tabular-nums text-[#0B2545]">{plan.minVisits}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500">ติดตามแล้ว</p>
+                  <p className="font-black tabular-nums text-[#0D9488]">{plan.completedVisits}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500">เหลือ</p>
+                  <p className="font-black tabular-nums text-slate-800">{plan.remainingVisits}</p>
+                </div>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full rounded-full bg-[#0D9488]" style={{ width: `${progressPct}%` }} />
+              </div>
+              <p className="mt-1 text-[12px] font-bold text-teal-800">
+                {followUpComplete ? `ติดตามครบ ${plan.completedVisits}/${plan.minVisits} ครั้ง` : `ติดตามแล้ว ${plan.completedVisits}/${plan.minVisits} ครั้ง`}
+              </p>
+              <dl className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <div>
+                  <dt className="text-[11px] font-bold text-slate-500">วันที่ติดตามล่าสุด</dt>
+                  <dd className="font-semibold text-slate-800">{plan.lastFollowupDate || 'ยังไม่มีการติดตาม'}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-bold text-slate-500">วันนัดครั้งถัดไป</dt>
+                  <dd className="font-semibold text-slate-800">{plan.nextFollowupDate || 'ยังไม่ได้กำหนด'}</dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-[11px] font-bold text-slate-500">เจ้าหน้าที่ผู้รับผิดชอบ</dt>
+                  <dd className="break-words font-semibold text-slate-800">{plan.assignedOfficerName?.trim() || 'ยังไม่ได้มอบหมาย'}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="mt-auto grid grid-cols-3 justify-items-center gap-2 border-t border-slate-100 px-3 py-2.5 lg:flex lg:flex-wrap lg:justify-end">
+              <button
+                type="button"
+                onClick={() => onViewDetail(plan.id)}
+                className="zms-action inline-flex h-11 w-11 items-center justify-center gap-1.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-800 hover:bg-slate-200 lg:h-auto lg:w-auto lg:px-2.5 lg:py-2"
+                aria-label="ดูรายละเอียด"
+                title="ดูรายละเอียด"
+              >
+                <Eye className="h-4 w-4" />
+                <span className="hidden lg:inline">ดูรายละเอียด</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onManage(plan.id)}
+                className="zms-action inline-flex h-11 w-11 items-center justify-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 text-xs font-bold text-teal-800 hover:bg-teal-100 lg:h-auto lg:w-auto lg:px-2.5 lg:py-2"
+                aria-label="จัดการติดตาม"
+                title="จัดการติดตาม"
+              >
+                <PlusCircle className="h-4 w-4" />
+                <span className="hidden lg:inline">จัดการติดตาม</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onViewHistory(plan.id)}
+                className="zms-action inline-flex h-11 w-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 lg:h-auto lg:w-auto lg:px-2.5 lg:py-2"
+                aria-label="ประวัติการติดตาม"
+                title="ประวัติการติดตาม"
+              >
+                <History className="h-4 w-4" />
+                <span className="hidden lg:inline">ประวัติการติดตาม</span>
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </CardViewGrid>
+  );
+}
+
 export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMonitoringViewProps) {
-  const { currentUser, showToast } = useApp();
+  const { currentUser, showToast, registries } = useApp();
+  const { layout: cardLayout } = useCardViewSettings('followup');
 
   const [plans, setPlans] = useState<FollowUpPlan[]>([]);
   const [stats, setStats] = useState<FollowUpSummaryStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
 
   // SECTION 3: Filters & Search States
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -68,13 +359,34 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
 
   // Popups & Modals States
   const [selectedPlanIdForDetail, setSelectedPlanIdForDetail] = useState<string | null>(initialPlanId || null);
+  const [detailInitialTab, setDetailInitialTab] = useState<'overview' | 'history'>('overview');
   const [selectedPlanIdForManage, setSelectedPlanIdForManage] = useState<string | null>(null);
   const [manageInitialTab, setManageInitialTab] = useState<'record' | 'schedule' | 'assign' | 'settings' | 'history'>('record');
 
   // Fetch real data from database via API
+  const canViewAssistanceAmount = ['super_admin', 'executive', 'finance'].includes(currentUser.role);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(FOLLOW_UP_VIEW_STORAGE_KEY);
+    if (stored === 'card' || stored === 'table') {
+      setViewMode(stored);
+    }
+  }, []);
+
+  const handleViewModeChange = (mode: 'table' | 'card') => {
+    setViewMode(mode);
+    window.localStorage.setItem(FOLLOW_UP_VIEW_STORAGE_KEY, mode);
+  };
+
+  const openPlanDetail = (planId: string, tab: 'overview' | 'history' = 'overview') => {
+    setDetailInitialTab(tab);
+    setSelectedPlanIdForDetail(planId);
+  };
+
   const fetchFollowUps = useCallback(async () => {
     try {
       setIsLoading(true);
+      setLoadError(null);
       const params = new URLSearchParams();
       if (searchTerm.trim()) params.append('search', searchTerm.trim());
       if (filterRegistryNo.trim()) params.append('registrationNo', filterRegistryNo.trim());
@@ -93,11 +405,15 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
         setPlans(json.data || []);
         setStats(json.stats || null);
       } else {
-        showToast(json.error || 'ดึงข้อมูลไม่สำเร็จ', 'error');
+        const message = json.error || 'ดึงข้อมูลไม่สำเร็จ';
+        setLoadError(message);
+        showToast(message, 'error');
       }
     } catch (err) {
       console.error(err);
-      showToast('ไม่สามารถดึงข้อมูลการติดตามผลได้', 'error');
+      const message = 'ไม่สามารถดึงข้อมูลการติดตามผลได้';
+      setLoadError(message);
+      showToast(message, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -244,7 +560,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
       idx + 1,
       p.id,
       p.registrationNo,
-      `"${p.beneficiaryName.replace(/"/g, '""')}"`,
+      `"${(linkedMemberName(p, registries) || p.beneficiaryName).replace(/"/g, '""')}"`,
       p.applicationNo,
       p.disbursementRef || '-',
       `"${p.assistanceTypeName}"`,
@@ -272,41 +588,46 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
 
   // Pagination calculation
   const totalItems = plans.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const listPageSize = viewMode === 'card' ? resolveCardPageSize(cardLayout, totalItems) : pageSize;
+  const totalPages = Math.max(1, Math.ceil(totalItems / listPageSize) || 1);
   const paginatedPlans = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return plans.slice(start, start + pageSize);
-  }, [plans, currentPage, pageSize]);
+    const start = (currentPage - 1) * listPageSize;
+    return plans.slice(start, start + listPageSize);
+  }, [plans, currentPage, listPageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-12">
+    <div className="animate-fadeIn space-y-3 pb-8 sm:space-y-6 sm:pb-12">
       {/* =========================================================================
           SECTION 1: หัวข้อและการดำเนินการ (Header & Actions)
           ========================================================================= */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-700 via-teal-800 to-emerald-900 text-white flex items-center justify-center shadow-md shrink-0">
-              <ClipboardCheck className="w-6 h-6 text-amber-300" />
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xs sm:rounded-3xl sm:p-6">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-700 via-teal-800 to-emerald-900 text-white shadow-md sm:h-12 sm:w-12 sm:rounded-2xl">
+              <ClipboardCheck className="h-5 w-5 text-amber-300 sm:h-6 sm:w-6" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-[17px] font-black leading-6 tracking-tight text-slate-900 sm:text-2xl">
                   ตรวจสอบและติดตามผล
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                <span className="hidden rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-bold text-teal-800 sm:inline">
                   Follow-up & Monitoring
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              <p className="mt-0.5 hidden text-sm text-slate-500 sm:block">
                 ติดตามผลการช่วยเหลือและบันทึกหลักฐาน ตรวจสอบการลงพื้นที่และควบคุมเกณฑ์ความช่วยเหลือ
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2">
             {/* Quick search input in Section 1 */}
-            <div className="relative w-full sm:w-56 md:w-64">
+            <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none md:w-64">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
@@ -321,9 +642,9 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
             <button
               onClick={() => fetchFollowUps()}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors min-h-[36px]"
+              className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors min-h-[36px]"
               title="รีเฟรชข้อมูล"
-            >
+             aria-label="รีเฟรช">
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-teal-700' : ''}`} />
               <span className="hidden sm:inline">รีเฟรช</span>
             </button>
@@ -332,9 +653,9 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
             <button
               onClick={handleExportCsv}
               disabled={isLoading || plans.length === 0}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition-colors min-h-[36px] shadow-2xs disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition-colors min-h-[36px] shadow-2xs disabled:opacity-50"
               title="ส่งออกข้อมูลเป็น CSV รองรับ Excel ภาษาไทย"
-            >
+             aria-label="ส่งออกข้อมูล">
               <Download className="w-3.5 h-3.5" />
               <span>ส่งออกข้อมูล</span>
             </button>
@@ -344,14 +665,14 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
         {/* =========================================================================
             SECTION 2: DASHBOARD CARDS (5 รายการตามข้อกำหนด)
             ========================================================================= */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mt-6 pt-6 border-t border-slate-100">
+        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:mt-6 sm:grid-cols-3 sm:gap-4 sm:pt-6 lg:grid-cols-5">
           {/* Card 1: งานติดตามทั้งหมด */}
           <div 
             onClick={() => {
               setActiveTabCard('all');
               setSelectedStatus('all');
             }}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer select-none ${
+            className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none ${
               activeTabCard === 'all' && selectedStatus === 'all'
                 ? 'bg-teal-50/80 border-teal-400 ring-2 ring-teal-500/20 shadow-xs' 
                 : 'bg-slate-50/70 border-slate-200/80 hover:bg-slate-100/70'
@@ -376,7 +697,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
               setActiveTabCard('due');
               setSelectedStatus('all');
             }}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer select-none ${
+            className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none ${
               activeTabCard === 'due' 
                 ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-500/20 shadow-xs' 
                 : 'bg-amber-50/40 border-amber-200/80 hover:bg-amber-50/80'
@@ -401,7 +722,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
               setActiveTabCard('overdue');
               setSelectedStatus('all');
             }}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer select-none ${
+            className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none ${
               activeTabCard === 'overdue' 
                 ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-500/20 shadow-xs' 
                 : 'bg-rose-50/40 border-rose-200/80 hover:bg-rose-50/80'
@@ -426,7 +747,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
               setActiveTabCard('in_progress');
               setSelectedStatus('all');
             }}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer select-none ${
+            className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none ${
               activeTabCard === 'in_progress' 
                 ? 'bg-sky-50 border-sky-400 ring-2 ring-sky-500/20 shadow-xs' 
                 : 'bg-sky-50/40 border-sky-200/80 hover:bg-sky-50/80'
@@ -451,7 +772,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
               setActiveTabCard('completed');
               setSelectedStatus('all');
             }}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer select-none ${
+            className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none ${
               activeTabCard === 'completed' 
                 ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-500/20 shadow-xs' 
                 : 'bg-emerald-50/40 border-emerald-200/80 hover:bg-emerald-50/80'
@@ -476,11 +797,10 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
           SECTION 3: ตัวกรองและค้นหา (Filters Toolbar & Pagination Settings)
           แถวเดียวบน Desktop, เรียงแนวตั้งบน Mobile
           ========================================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3">
-        {/* Toolbar Header with Clear Filter Button */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-teal-700" />
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <SlidersHorizontal className="w-4 h-4 text-teal-700 shrink-0" />
             <span className="text-xs font-bold text-slate-800">
               ตัวกรองข้อมูลและค้นหาขั้นสูง
             </span>
@@ -491,35 +811,47 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
             )}
           </div>
 
-          <button
-            onClick={handleClearFilters}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold text-slate-600 hover:text-rose-700 hover:bg-rose-50 transition-colors self-end sm:self-auto"
-            title="ล้างการตั้งค่าตัวกรองทั้งหมด"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>ล้างตัวกรอง</span>
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              {filtersOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              <span>{filtersOpen ? 'ซ่อนตัวกรอง' : 'แสดงตัวกรอง'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+              title="ล้างการตั้งค่าตัวกรองทั้งหมด"
+             aria-label="ล้างตัวกรอง">
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>ล้างตัวกรอง</span>
+            </button>
+          </div>
         </div>
 
-        {/* Desktop Single-Bar Grid Layout (Wraps cleanly, stacked on mobile) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5 text-xs">
-          {/* 1. ค้นหาชื่อผู้รับความช่วยเหลือ */}
-          <div className="sm:col-span-2">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-              ค้นหาชื่อผู้รับความช่วยเหลือ
-            </label>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="ระบุชื่อหรือนามสกุล..."
-                className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 bg-white"
-              />
-            </div>
+        <div className="mt-3 max-w-xl">
+          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+            ค้นหาชื่อผู้รับความช่วยเหลือ
+          </label>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ระบุชื่อหรือนามสกุล..."
+              className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 bg-white"
+            />
           </div>
+        </div>
 
+        {filtersOpen && (
+        <div className="mt-3 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
           {/* 2. รหัสทะเบียน */}
           <div>
             <label className="block text-[11px] font-bold text-slate-600 mb-1">
@@ -621,53 +953,95 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
           </div>
         </div>
 
-        {/* Date Range Sub-Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-slate-600">ช่วงวันที่ติดตาม:</span>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-2.5 py-1 text-xs rounded-xl border border-slate-300 bg-white"
-                placeholder="ตั้งแต่วันที่"
-              />
-              <span className="text-slate-400">ถึง</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-2.5 py-1 text-xs rounded-xl border border-slate-300 bg-white"
-                placeholder="ถึงวันที่"
-              />
-            </div>
-          </div>
-
-          {/* Rows per page selector in Toolbar */}
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <span className="text-[11px] text-slate-500">แสดงแถวต่อหน้า:</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="px-2 py-1 text-xs rounded-lg border border-slate-300 bg-white font-bold"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2 border-t border-slate-100 text-xs">
+          <span className="text-[11px] font-bold text-slate-600">ช่วงวันที่ติดตาม:</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-2.5 py-1 text-xs rounded-xl border border-slate-300 bg-white"
+            />
+            <span className="text-slate-400">ถึง</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-2.5 py-1 text-xs rounded-xl border border-slate-300 bg-white"
+            />
           </div>
         </div>
+        </div>
+        )}
       </div>
 
       {/* =========================================================================
           SECTION 4: รายการติดตามผล (Data Table - Clean & Readable)
           ========================================================================= */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-black text-slate-900">รายการติดตามผล</h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              ทั้งหมด <strong className="text-teal-800">{totalItems}</strong> รายการ
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {viewMode === 'table' ? (
+            <label className="inline-flex items-center gap-2 text-[11px] text-slate-500">
+              แสดงต่อหน้า
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-bold text-slate-700"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </label>
+            ) : (
+              <span className="text-[11px] font-bold text-slate-500">
+                {cardLayout.cardsPerRow} การ์ด/แถว · {listPageSize} รายการต่อหน้า
+              </span>
+            )}
+            <div className="p-1 rounded-xl bg-slate-100 border border-slate-200 flex items-center gap-1" role="group" aria-label="สลับมุมมองรายการ">
+              <button
+                type="button"
+                onClick={() => handleViewModeChange('table')}
+                aria-pressed={viewMode === 'table'}
+                className={`zms-action px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  viewMode === 'table'
+                    ? 'bg-white text-teal-900 shadow-2xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="มุมมองตาราง"
+               aria-label="ตาราง">
+                <List className="w-4 h-4" />
+                <span>ตาราง</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleViewModeChange('card')}
+                aria-pressed={viewMode === 'card'}
+                className={`zms-action px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  viewMode === 'card'
+                    ? 'bg-white text-teal-900 shadow-2xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="มุมมองการ์ด"
+               aria-label="การ์ด">
+                <LayoutGrid className="w-4 h-4" />
+                <span>การ์ด</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        {viewMode === 'table' ? (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
@@ -688,6 +1062,26 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
                   <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
                     <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                     <span>กำลังโหลดข้อมูลการติดตามผล...</span>
+                  </td>
+                </tr>
+              ) : loadError && paginatedPlans.length === 0 ? (
+                <tr>
+                  <td colSpan={8}>
+                    <FollowUpListMessage
+                      icon={<AlertCircle className="w-8 h-8 text-rose-400" />}
+                      title="โหลดรายการติดตามผลไม่สำเร็จ"
+                      detail={loadError}
+                      action={
+                        <button
+                          type="button"
+                          onClick={() => fetchFollowUps()}
+                          className="zms-action mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          ลองอีกครั้ง
+                        </button>
+                      }
+                    />
                   </td>
                 </tr>
               ) : paginatedPlans.length === 0 ? (
@@ -724,7 +1118,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
                       {/* 2. ผู้รับความช่วยเหลือ (ชื่อ + รหัสทะเบียน) */}
                       <td className="py-3 px-3.5">
                         <div className="font-bold text-slate-900 text-xs">
-                          {p.beneficiaryName}
+                          {linkedMemberName(p, registries) || p.beneficiaryName}
                         </div>
                         <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-slate-100 font-mono text-[10px] text-slate-600 border border-slate-200">
                           {p.registrationNo}
@@ -739,7 +1133,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
                           {p.assistanceTypeName}
                         </span>
                         <span className="block text-[10px] text-slate-400">
-                          {isCareer ? '(เกณฑ์ >= 6 ครั้ง)' : isHousing ? '(เกณฑ์ >= 1 ครั้ง)' : '(ทั่วไป)'}
+                          {`เกณฑ์ ${p.minVisits} ครั้ง`}
                         </span>
                       </td>
 
@@ -795,10 +1189,10 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
                         <div className="flex items-center justify-end gap-1.5">
                           {/* ปุ่ม ดูรายละเอียด */}
                           <button
-                            onClick={() => setSelectedPlanIdForDetail(p.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors"
+                            onClick={() => openPlanDetail(p.id, 'overview')}
+                            className="zms-action inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors"
                             title="เปิดดูรายละเอียด 4 แท็บ: ภาพรวม, ประวัติ, รูปหลักฐาน, แผนงาน"
-                          >
+                           aria-label="ดูรายละเอียด">
                             <Eye className="w-3.5 h-3.5 text-slate-600" />
                             <span>ดูรายละเอียด</span>
                           </button>
@@ -809,9 +1203,9 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
                               setSelectedPlanIdForManage(p.id);
                               setManageInitialTab('record');
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-colors shadow-2xs"
+                            className="zms-action inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-colors shadow-2xs"
                             title="บันทึกผล, กำหนดนัดหมาย, มอบหมายงาน หรือปรับแผน"
-                          >
+                           aria-label="จัดการติดตาม">
                             <PlusCircle className="w-3.5 h-3.5 text-teal-700" />
                             <span>จัดการติดตาม</span>
                           </button>
@@ -824,65 +1218,75 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
             </tbody>
           </table>
         </div>
+        ) : (
+          <FollowUpPlanCards
+            plans={paginatedPlans}
+            isLoading={isLoading}
+            loadError={loadError}
+            canViewAmount={canViewAssistanceAmount}
+            onRetry={() => fetchFollowUps()}
+            onViewDetail={(planId) => openPlanDetail(planId, 'overview')}
+            onManage={(planId) => {
+              setSelectedPlanIdForManage(planId);
+              setManageInitialTab('record');
+            }}
+            onViewHistory={(planId) => openPlanDetail(planId, 'history')}
+            statusBadge={getStatusBadge}
+            layout={cardLayout}
+            registries={registries}
+          />
+        )}
 
         {/* Pagination Controls Bar */}
         {totalItems > 0 && (
-          <div className="p-3 sm:p-4 bg-slate-50/80 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="text-slate-500 text-[11px]">
-              แสดงรายการที่{' '}
-              <strong className="text-slate-800">
-                {(currentPage - 1) * pageSize + 1}
-              </strong>{' '}
-              ถึง{' '}
-              <strong className="text-slate-800">
-                {Math.min(totalItems, currentPage * pageSize)}
-              </strong>{' '}
-              จากทั้งหมด <strong className="text-teal-800">{totalItems}</strong> รายการ
-            </div>
+          <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/80 px-2.5 py-2 text-xs sm:p-4">
+            <p className="min-w-0 truncate text-[12px] leading-5 text-slate-500">
+              <span className="sm:hidden">{(currentPage - 1) * listPageSize + 1}–{Math.min(totalItems, currentPage * listPageSize)} / {totalItems}</span>
+              <span className="hidden sm:inline">
+                แสดงรายการที่ <strong className="text-slate-800">{(currentPage - 1) * listPageSize + 1}</strong> ถึง <strong className="text-slate-800">{Math.min(totalItems, currentPage * listPageSize)}</strong> จากทั้งหมด <strong className="text-teal-800">{totalItems}</strong> รายการ
+              </span>
+            </p>
 
-            <div className="flex items-center gap-1.5 self-center sm:self-auto">
-              {/* First Page */}
+            <div className="flex shrink-0 items-center gap-1">
               <button
                 onClick={() => setCurrentPage(1)}
                 disabled={currentPage === 1}
-                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                className="zms-action rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:bg-slate-100 disabled:opacity-40"
                 title="หน้าแรก"
+                aria-label="หน้าแรก"
               >
-                <ChevronsLeft className="w-4 h-4 text-slate-600" />
+                <ChevronsLeft className="h-4 w-4 text-slate-600" />
               </button>
-
-              {/* Prev Page */}
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                className="zms-action rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:bg-slate-100 disabled:opacity-40"
                 title="หน้าก่อนหน้า"
+                aria-label="หน้าก่อนหน้า"
               >
-                <ChevronLeft className="w-4 h-4 text-slate-600" />
+                <ChevronLeft className="h-4 w-4 text-slate-600" />
               </button>
-
-              <span className="px-2 text-xs font-bold text-slate-700">
-                หน้า {currentPage} / {totalPages}
+              <span className="px-1 text-[12px] font-bold whitespace-nowrap text-slate-700">
+                <span className="sm:hidden">{currentPage}/{totalPages}</span>
+                <span className="hidden sm:inline">หน้า {currentPage} / {totalPages}</span>
               </span>
-
-              {/* Next Page */}
               <button
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
-                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                className="zms-action rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:bg-slate-100 disabled:opacity-40"
                 title="หน้าถัดไป"
+                aria-label="หน้าถัดไป"
               >
-                <ChevronRight className="w-4 h-4 text-slate-600" />
+                <ChevronRight className="h-4 w-4 text-slate-600" />
               </button>
-
-              {/* Last Page */}
               <button
                 onClick={() => setCurrentPage(totalPages)}
                 disabled={currentPage >= totalPages}
-                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                className="zms-action rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:bg-slate-100 disabled:opacity-40"
                 title="หน้าสุดท้าย"
+                aria-label="หน้าสุดท้าย"
               >
-                <ChevronsRight className="w-4 h-4 text-slate-600" />
+                <ChevronsRight className="h-4 w-4 text-slate-600" />
               </button>
             </div>
           </div>
@@ -899,6 +1303,7 @@ export function FollowUpMonitoringView({ onNavigate, initialPlanId }: FollowUpMo
           isOpen={Boolean(selectedPlanIdForDetail)}
           onClose={() => setSelectedPlanIdForDetail(null)}
           planId={selectedPlanIdForDetail}
+          initialTab={detailInitialTab}
           onRefreshList={fetchFollowUps}
           onOpenBeneficiaryRegistry={(beneficiaryId) => {
             setSelectedPlanIdForDetail(null);

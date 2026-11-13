@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
@@ -15,6 +15,11 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
 
   // Map route pathname to currentView for Sidebar active styling
   const getViewFromPath = (path: string): string => {
@@ -26,7 +31,10 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
     if (clean.startsWith('approval')) return 'approvals';
     if (clean.startsWith('disbursement') || clean.startsWith('assistance')) return 'disbursements';
     if (clean.startsWith('follow-up')) return 'follow-up';
-    if (clean.startsWith('finance')) return 'finance';
+    if (clean === 'finance' || clean.startsWith('finance/')) {
+      const slug = clean.split('/')[1] || 'dashboard';
+      return `finance/${slug}`;
+    }
     if (clean.startsWith('report') || clean.startsWith('officer-report')) return 'officer-reports';
     if (clean.startsWith('user')) return 'users';
     if (clean.startsWith('branch')) return 'branches-depts';
@@ -39,6 +47,7 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
   };
 
   const currentView = getViewFromPath(pathname || '');
+  const financeLayout = currentView.startsWith('finance');
 
   const handleNavigate = (view: string) => {
     setIsMobileSidebarOpen(false);
@@ -69,7 +78,7 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
         router.push('/follow-up');
         break;
       case 'finance':
-        router.push('/finance');
+        router.push('/finance/dashboard');
         break;
       case 'officer-reports':
       case 'reports':
@@ -104,7 +113,7 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F7FB] flex flex-col font-sarabun text-slate-800 antialiased selection:bg-teal-100 selection:text-teal-900">
+    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-[#F4F7FB] font-sarabun text-slate-800 antialiased selection:bg-teal-100 selection:text-teal-900">
       {/* Top Navbar */}
       <Navbar
         currentView={currentView}
@@ -116,7 +125,7 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
       />
 
       {/* Main Workbench Body with Sidebar & Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         <Sidebar
           currentView={currentView}
@@ -126,13 +135,19 @@ export function AppLayout({ children, breadcrumbTitle }: AppLayoutProps) {
         />
 
         {/* Content View Area */}
-        <main className={`flex-1 overflow-y-auto touch-scroll ${
-          currentView === 'finance'
+        <main
+          ref={mainRef}
+          className={`min-h-0 min-w-0 flex-1 touch-scroll overscroll-y-contain ${
+          isMobileSidebarOpen ? 'max-md:overflow-hidden md:overflow-x-hidden md:overflow-y-auto' : 'overflow-x-hidden overflow-y-auto'
+        } ${
+          financeLayout
             ? 'p-3 sm:p-5 lg:px-6 lg:py-5'
-            : 'p-4 sm:p-6 lg:p-8'
+            : currentView === 'follow-up'
+              ? 'px-2.5 py-3 sm:p-6 lg:p-8'
+              : 'p-4 sm:p-6 lg:p-8'
         }`}>
           <div className={`${
-            currentView === 'finance'
+            financeLayout
               ? 'w-full max-w-none space-y-6 animate-fadeIn m-0'
               : 'max-w-7xl mx-auto space-y-6 animate-fadeIn'
           }`}>

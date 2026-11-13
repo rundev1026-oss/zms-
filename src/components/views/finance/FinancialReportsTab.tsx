@@ -98,14 +98,14 @@ export function FinancialReportsTab() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleDownloadCsv}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              className="zms-action flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
             >
               <Download className="w-4 h-4" />
               ส่งออก Excel (CSV)
             </button>
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              className="zms-action flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
             >
               <Printer className="w-4 h-4 text-slate-600" />
               พิมพ์รายงาน (Print)

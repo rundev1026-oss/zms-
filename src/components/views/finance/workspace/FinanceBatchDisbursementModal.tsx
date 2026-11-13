@@ -435,7 +435,7 @@ export function FinanceBatchDisbursementModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-1.5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="zms-action rounded-xl p-1.5 text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -987,7 +987,7 @@ export function FinanceBatchDisbursementModal({
                             parseFloat(aidDisbAmount) > selectedApp.remainingAmount ||
                             items.some((it) => it.applicationId === selectedApp.id)
                           }
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Plus className="h-4 w-4" /> เพิ่มรายการช่วยเหลือนี้เข้าสู่รอบเบิก
                         </button>
@@ -1065,7 +1065,7 @@ export function FinanceBatchDisbursementModal({
                   <button
                     type="button"
                     onClick={handleAddAdminItem}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-700 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-blue-800"
+                    className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-blue-700 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-blue-800"
                   >
                     <Plus className="h-4 w-4" /> เพิ่มรายการค่าบริหารนี้เข้าสู่รอบเบิก
                   </button>
@@ -1105,7 +1105,7 @@ export function FinanceBatchDisbursementModal({
                             <button
                               type="button"
                               onClick={() => setRemoveIndex(idx)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              className="zms-action rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                               title="นำรายการออกจากรอบเบิก"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -1185,7 +1185,7 @@ export function FinanceBatchDisbursementModal({
                                 <button
                                   type="button"
                                   onClick={() => setRemoveIndex(idx)}
-                                  className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                  className="zms-action rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                                   title="นำรายการออกจากรอบเบิก"
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -1321,7 +1321,7 @@ export function FinanceBatchDisbursementModal({
                   }
                   setStep((s) => (s + 1) as any);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-teal-800"
+                className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-teal-800"
               >
                 ขั้นตอนถัดไป <ChevronRight className="h-4 w-4" />
               </button>
@@ -1331,7 +1331,7 @@ export function FinanceBatchDisbursementModal({
                   type="button"
                   disabled={busy || isBalanceInsufficient || !sourceAccountId || treasurerAccounts.length === 0}
                   onClick={() => handleSave(false)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 disabled:opacity-50"
+                  className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 disabled:opacity-50"
                 >
                   <Save className="h-4 w-4" /> บันทึกเป็นแบบร่าง
                 </button>
@@ -1339,7 +1339,7 @@ export function FinanceBatchDisbursementModal({
                   type="button"
                   disabled={busy || isBalanceInsufficient || !sourceAccountId || treasurerAccounts.length === 0}
                   onClick={() => handleSave(true)}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-teal-700/20 hover:bg-teal-800 disabled:opacity-50"
+                  className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-teal-700/20 hover:bg-teal-800 disabled:opacity-50"
                 >
                   <Send className="h-4 w-4" /> ยื่นขออนุมัติเหรัญญิก
                 </button>

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, Plus, Search, Building2, Banknote, ArrowLeftRight, RefreshCw, TableProperties, Scale, History, Inbox, Layers, FileText } from 'lucide-react';
+import Link from 'next/link';
+import { Download, Plus, Search, Building2, Banknote, ArrowLeftRight, RefreshCw, TableProperties, Scale, History, Layers, FileText } from 'lucide-react';
 import type { AsnafAllocation, BankAccount, CashFlowWorkflow, FinancialTransaction, FundAccount } from '@/types';
 import { AdminExpenseModal, AssistancePaymentModal, CashPosition, MovementDocuments } from './FinanceDocuments';
 import { CashCycle } from './CashCycleDialogs';
@@ -13,8 +14,6 @@ import { FinanceCashControlRegister, type RegisterItem } from './FinanceCashCont
 import { FinanceThreeWayReconciliation, type ReconciliationData } from './FinanceThreeWayReconciliation';
 import { FinanceModalCashAidDisburse } from './FinanceModalCashAidDisburse';
 import { FinanceModalCashAdminExpense } from './FinanceModalCashAdminExpense';
-import { FinanceTreasurerInbox } from './FinanceTreasurerInbox';
-import { TreasurerApprovalWorkbench } from './TreasurerApprovalWorkbench';
 import { FinanceBatchDisbursementModal } from './FinanceBatchDisbursementModal';
 import { FinanceStaffBatchSettlementModal } from './FinanceStaffBatchSettlementModal';
 
@@ -50,12 +49,26 @@ function inRange(value: string, from: string, to: string) {
 }
 
 function kindLabel(tx: FinancialTransaction) {
-  if (tx.type === 'income') return 'รับเงิน';
-  if (tx.type === 'expense') return 'ค่าบริหาร';
-  if (tx.type === 'disbursement') return 'ช่วยเหลือ';
-  if (tx.type === 'reversal') return 'กลับรายการ';
-  if ((tx.type as string) === 'transfer') return 'โอนภายใน';
+  const type = tx.type as string;
+  if (type === 'income') return 'รับเงิน';
+  if (type === 'expense') return 'ค่าบริหาร';
+  if (type === 'disbursement') return 'ช่วยเหลือ';
+  if (type === 'reversal') return 'กลับรายการ';
+  if (type === 'bank_deposit' || type === 'deposit') return 'ฝากเงิน';
+  if (type === 'bank_withdrawal' || type === 'withdrawal') return 'ถอนเงิน';
+  if (type === 'bank_transfer_in' || type === 'bank_transfer_out' || type === 'transfer') return 'โอนระหว่างบัญชี';
   return tx.type;
+}
+
+function moneyLabel(value?: string) {
+  if (value === 'zakat') return 'ซะกาต';
+  if (value === 'sadaqah') return 'ศอดะเกาะห์';
+  if (value === 'operational_admin' || value === 'operational') return 'เงินบริหาร';
+  return value || 'ไม่ระบุ';
+}
+
+function accountLabel(tx: FinancialTransaction) {
+  return tx.bankAccountName || tx.bankName || tx.fundName || '—';
 }
 
 function statusText(tx: FinancialTransaction) {
@@ -72,7 +85,7 @@ function statusClass(tx: FinancialTransaction) {
 }
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-slate-200 bg-white shadow-xs ${className}`}>{children}</section>;
+  return <section className={`min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white shadow-xs ${className}`}>{children}</section>;
 }
 
 function Navy({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -138,7 +151,7 @@ function downloadCsv(name: string, header: string[], rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-export function AuditScreen({ rows }: { rows: FinancialTransaction[] }) {
+export function AuditScreen({ rows, compactFilters = false }: { rows: FinancialTransaction[]; compactFilters?: boolean }) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
   const [status, setStatus] = useState('all');
@@ -170,10 +183,10 @@ export function AuditScreen({ rows }: { rows: FinancialTransaction[] }) {
   ].filter((item): item is { title: string; who: string; when: string; note: string } => Boolean(item)) : [];
 
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <Dates from={from} to={to} onFrom={(value) => { setFrom(value); setPage(1); }} onTo={(value) => { setTo(value); setPage(1); }} />
+          {compactFilters ? null : <Dates from={from} to={to} onFrom={(value) => { setFrom(value); setPage(1); }} onTo={(value) => { setTo(value); setPage(1); }} />}
           <select value={kind} onChange={(event) => { setKind(event.target.value); setPage(1); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
             <option value="all">ทุกประเภท</option>
             <option value="income">รับเงิน</option>
@@ -181,14 +194,16 @@ export function AuditScreen({ rows }: { rows: FinancialTransaction[] }) {
             <option value="expense">ค่าบริหาร</option>
             <option value="reversal">กลับรายการ</option>
           </select>
-          <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-            <option value="all">ทุกสถานะ</option>
-            <option value="completed">ลงบัญชีแล้ว</option>
-            <option value="pending">รอยืนยัน</option>
-            <option value="reversed">กลับรายการ</option>
-            <option value="cancelled">ยกเลิก</option>
-          </select>
-          <button type="button" onClick={() => downloadCsv('audit.csv', ['เลขที่', 'ประเภท', 'จำนวน', 'สถานะ', 'ผู้บันทึก', 'วันที่'], listed.map((tx) => [tx.transactionNo, kindLabel(tx), String(tx.amount), statusText(tx), tx.recordedBy || '', tx.date]))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">ส่งออกประวัติ</button>
+          {compactFilters ? null : (
+            <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <option value="all">ทุกสถานะ</option>
+              <option value="completed">ลงบัญชีแล้ว</option>
+              <option value="pending">รอยืนยัน</option>
+              <option value="reversed">กลับรายการ</option>
+              <option value="cancelled">ยกเลิก</option>
+            </select>
+          )}
+          <button type="button" onClick={() => downloadCsv('audit.csv', ['เลขที่', 'วันที่', 'ประเภท', 'บัญชี', 'ประเภทเงิน', 'จำนวน', 'ผู้บันทึก', 'ผู้อนุมัติ', 'สถานะ'], listed.map((tx) => [tx.transactionNo, tx.date, kindLabel(tx), accountLabel(tx), moneyLabel(tx.moneyType), String(tx.amount), tx.recordedBy || '', tx.verifiedBy || '', statusText(tx)]))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">ส่งออก Excel</button>
         </div>
         <div className="grid gap-2 sm:grid-cols-4">
           <Light label="ธุรกรรมทั้งหมด" value={String(rows.length)} />
@@ -202,27 +217,39 @@ export function AuditScreen({ rows }: { rows: FinancialTransaction[] }) {
         </div>
         <Card>
           <div className="px-4 py-3 text-sm font-bold">ประวัติธุรกรรม {listed.length} รายการ</div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
+          <div className="max-w-full overflow-x-auto">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="text-xs text-slate-400">
                 <tr>
                   <th className="px-4 py-2 font-medium">เลขที่</th>
-                  <th className="px-4 py-2 font-medium">ประเภท</th>
-                  <th className="px-4 py-2 text-right font-medium">จำนวน</th>
-                  <th className="px-4 py-2 font-medium">สถานะ</th>
-                  <th className="px-4 py-2 font-medium">ผู้บันทึก</th>
                   <th className="px-4 py-2 font-medium">วันที่</th>
+                  <th className="px-4 py-2 font-medium">ประเภท</th>
+                  <th className="px-4 py-2 font-medium">บัญชี</th>
+                  <th className="px-4 py-2 font-medium">ประเภทเงิน</th>
+                  <th className="px-4 py-2 text-right font-medium">จำนวน</th>
+                  <th className="px-4 py-2 font-medium">ผู้บันทึก</th>
+                  <th className="px-4 py-2 font-medium">ผู้อนุมัติ</th>
+                  <th className="px-4 py-2 font-medium">สถานะ</th>
+                  <th className="px-4 py-2 font-medium">หลักฐาน</th>
                 </tr>
               </thead>
               <tbody>
                 {slice.map((tx) => (
                   <tr key={tx.id} onClick={() => setSelectedId(tx.id)} className={`cursor-pointer border-t border-slate-100 ${selected?.id === tx.id ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}`}>
                     <td className="px-4 py-3 text-xs">{tx.transactionNo}</td>
-                    <td className="px-4 py-3">{kindLabel(tx)}<div className="text-[11px] text-slate-400">{tx.category}</div></td>
-                    <td className="px-4 py-3 text-right font-bold">{baht(tx.amount)}</td>
-                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusClass(tx)}`}>{statusText(tx)}</span></td>
-                    <td className="px-4 py-3 text-xs">{tx.recordedBy || '—'}</td>
                     <td className="px-4 py-3 text-xs">{thaiDate(tx.date)}</td>
+                    <td className="px-4 py-3">{kindLabel(tx)}<div className="text-[11px] text-slate-400">{tx.category}</div></td>
+                    <td className="px-4 py-3 text-xs">{accountLabel(tx)}</td>
+                    <td className="px-4 py-3 text-xs">{moneyLabel(tx.moneyType)}</td>
+                    <td className="px-4 py-3 text-right font-bold">{baht(tx.amount)}</td>
+                    <td className="px-4 py-3 text-xs">{tx.recordedBy || '—'}</td>
+                    <td className="px-4 py-3 text-xs">{tx.verifiedBy || '—'}</td>
+                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusClass(tx)}`}>{statusText(tx)}</span></td>
+                    <td className="px-4 py-3 text-xs">
+                      {tx.receiptUrl || tx.slipUrl ? (
+                        <a href={tx.receiptUrl || tx.slipUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#0D9488]" onClick={(event) => event.stopPropagation()}>ดูหลักฐาน</a>
+                      ) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -237,9 +264,11 @@ export function AuditScreen({ rows }: { rows: FinancialTransaction[] }) {
         {selected ? (
           <div className="mt-3 space-y-3 text-sm">
             <div className="font-semibold">{selected.transactionNo}</div>
-            <div className="text-xs text-slate-500">{selected.payerOrPayee} · {selected.fundName}</div>
+            <div className="text-xs text-slate-500">{selected.payerOrPayee} · {accountLabel(selected)} · {moneyLabel(selected.moneyType)}</div>
             <div className="text-lg font-bold">{baht(selected.amount)}</div>
             <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusClass(selected)}`}>{statusText(selected)}</span>
+            <div className="text-xs text-slate-500">ผู้บันทึก {selected.recordedBy || '—'} · ผู้อนุมัติ {selected.verifiedBy || '—'}</div>
+            {selected.receiptUrl || selected.slipUrl ? <a href={selected.receiptUrl || selected.slipUrl} target="_blank" rel="noreferrer" className="inline-block text-xs font-semibold text-[#0D9488]">เปิดหลักฐานประกอบ</a> : <div className="text-xs text-slate-400">ไม่มีหลักฐานประกอบ</div>}
             <div className="space-y-3 border-t border-slate-100 pt-3">
               {events.map((event) => (
                 <div key={event.title} className="text-xs">
@@ -334,9 +363,7 @@ export function MovementScreen({
   onChanged?: () => void;
 }) {
   // Views & Modals state
-  const [activeView, setActiveView] = useState<'treasurer_inbox' | 'register' | 'reconciliation' | 'movements'>(
-    actor.role === 'finance' ? 'treasurer_inbox' : 'register'
-  );
+  const [activeView, setActiveView] = useState<'register' | 'reconciliation' | 'movements'>('register');
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
@@ -344,7 +371,6 @@ export function MovementScreen({
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isBatchCreateOpen, setIsBatchCreateOpen] = useState(false);
   const [settlementWorkflowId, setSettlementWorkflowId] = useState<string | null>(null);
-  const [inboxPendingCount, setInboxPendingCount] = useState<number>(0);
 
   // Data State
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
@@ -435,25 +461,11 @@ export function MovementScreen({
     }
   }
 
-  // Fetch Inbox counts for Treasurer tab badge
-  async function loadInboxCounts() {
-    try {
-      const res = await fetch('/api/finance/workflow-actions?view=batch_list');
-      const body = await res.json();
-      if (body.success && body.data?.counts) {
-        setInboxPendingCount((body.data.counts.pending_approval || 0) + (body.data.counts.pending_closing || 0));
-      }
-    } catch (e) {
-      // silently ignore
-    }
-  }
-
   function refreshAll() {
     loadKpi();
     loadReconciliation();
     loadRegister();
     loadWorkflows();
-    loadInboxCounts();
     onChanged?.();
   }
 
@@ -461,7 +473,6 @@ export function MovementScreen({
     loadKpi();
     loadReconciliation();
     loadWorkflows();
-    loadInboxCounts();
   }, []);
 
   useEffect(() => {
@@ -564,13 +575,16 @@ export function MovementScreen({
       {/* ================================================== */}
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-xs lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="text-xs font-bold uppercase tracking-wider text-teal-700">ZMS Financial Management</div>
+          <div className="text-xs font-bold uppercase tracking-wider text-teal-700">กลุ่มงานเหรัญญิก</div>
           <h1 className="text-xl font-extrabold text-slate-800">
-            ระบบฝาก ถอน โอน และควบคุมเงินสด (Cash Flow & Ledger Control)
+            ฝาก ถอน โอน (Deposit, Withdrawal & Transfer)
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            บริหารจัดการเชื่อมโยง 3 บัญชี: ธนาคาร · เหรัญญิก · เงินสดเจ้าหน้าที่ พร้อมลงสมุดบัญชีแยกประเภทอัตโนมัติ
+            บริหารเงินในบัญชี A ธนาคาร, บัญชี B เงินสดเหรัญญิก และบัญชี C เงินสดเจ้าหน้าที่
           </p>
+          <Link href="/finance/disbursement-approval" className="mt-1 inline-flex text-xs font-semibold text-[#0D9488]">
+            งานอนุมัติรอบเบิกอยู่หน้าถัดไปในกลุ่มเดียวกัน
+          </Link>
         </div>
 
         {/* 3 Prominent Colored Buttons */}
@@ -579,7 +593,7 @@ export function MovementScreen({
           <button
             type="button"
             onClick={() => setIsDepositOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl bg-[#0D9488] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-700/20 transition hover:bg-[#0f766e] active:scale-[0.98]"
+            className="zms-action inline-flex items-center gap-2 rounded-2xl bg-[#0D9488] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-700/20 transition hover:bg-[#0f766e] active:scale-[0.98]"
           >
             <Building2 className="h-4 w-4" />
             ฝากเงิน
@@ -589,7 +603,7 @@ export function MovementScreen({
           <button
             type="button"
             onClick={() => setIsWithdrawOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl bg-[#D97706] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-amber-700/20 transition hover:bg-[#b45309] active:scale-[0.98]"
+            className="zms-action inline-flex items-center gap-2 rounded-2xl bg-[#D97706] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-amber-700/20 transition hover:bg-[#b45309] active:scale-[0.98]"
           >
             <Banknote className="h-4 w-4" />
             ถอนเงิน
@@ -599,7 +613,7 @@ export function MovementScreen({
           <button
             type="button"
             onClick={() => setIsTransferOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl bg-[#2563EB] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-700/20 transition hover:bg-blue-700 active:scale-[0.98]"
+            className="zms-action inline-flex items-center gap-2 rounded-2xl bg-[#2563EB] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-700/20 transition hover:bg-blue-700 active:scale-[0.98]"
           >
             <ArrowLeftRight className="h-4 w-4" />
             โอนเงิน
@@ -609,7 +623,7 @@ export function MovementScreen({
           <button
             type="button"
             onClick={() => setIsBatchCreateOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl bg-teal-800 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-900/20 transition hover:bg-teal-900 active:scale-[0.98]"
+            className="zms-action inline-flex items-center gap-2 rounded-2xl bg-teal-800 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-900/20 transition hover:bg-teal-900 active:scale-[0.98]"
           >
             <Layers className="h-4 w-4" />
             สร้างรอบเบิกเงิน (Batch)
@@ -618,7 +632,7 @@ export function MovementScreen({
           <button
             type="button"
             onClick={refreshAll}
-            className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            className="zms-action rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
             title="รีเฟรชข้อมูลทั้งหมด"
           >
             <RefreshCw className="h-4 w-4" />
@@ -638,26 +652,8 @@ export function MovementScreen({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setActiveView('treasurer_inbox')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
-              activeView === 'treasurer_inbox'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <Inbox className="h-4 w-4 shrink-0 text-teal-600" />
-            กล่องงานเหรัญญิก (Treasurer Inbox)
-            {inboxPendingCount > 0 && (
-              <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] font-black text-white">
-                {inboxPendingCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveView('register')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
+            className={`zms-action inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
               activeView === 'register'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
@@ -670,7 +666,7 @@ export function MovementScreen({
           <button
             type="button"
             onClick={() => setActiveView('reconciliation')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
+            className={`zms-action inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
               activeView === 'reconciliation'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
@@ -686,7 +682,7 @@ export function MovementScreen({
           <button
             type="button"
             onClick={() => setActiveView('movements')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
+            className={`zms-action inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition whitespace-nowrap ${
               activeView === 'movements'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
@@ -701,13 +697,6 @@ export function MovementScreen({
       {/* ================================================== */}
       {/* VIEW CONTENT                                       */}
       {/* ================================================== */}
-      {activeView === 'treasurer_inbox' && (
-        <TreasurerApprovalWorkbench
-          actor={actor}
-          onRefreshParent={refreshAll}
-        />
-      )}
-
       {activeView === 'register' && (
         <FinanceCashControlRegister
           items={registerItems}
@@ -737,7 +726,7 @@ export function MovementScreen({
             <button
               type="button"
               onClick={exportVisible}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+              className="zms-action inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
             >
               <Download className="h-4 w-4" />
               ส่งออก
@@ -1338,7 +1327,7 @@ export function ExpenseScreen({
             <div className="mt-1 text-[11px] text-teal-50">จ่ายตามคำร้องที่อนุมัติแล้วเท่านั้น</div>
           </button>
         </div>
-        <button type="button" onClick={exportVisible} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+        <button type="button" onClick={exportVisible} className="zms-action inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
           <Download className="h-4 w-4" />
           ส่งออก
         </button>
@@ -1820,12 +1809,12 @@ export function AllocationScreen({
   return (
     <div className="space-y-4">
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={exportRows} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+        <button type="button" onClick={exportRows} className="zms-action inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
           <Download className="h-4 w-4" />
           ส่งออก
         </button>
         {canEdit ? (
-          <button type="button" onClick={() => beginEdit('groups')} className="inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white">
+          <button type="button" onClick={() => beginEdit('groups')} className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white">
             <Plus className="h-4 w-4" />
             สร้างการจัดสรรใหม่
           </button>
@@ -2030,6 +2019,55 @@ export function AllocationScreen({
   );
 }
 
+function ReportLines({ rows }: { rows: FinancialTransaction[] }) {
+  if (rows.length === 0) return <div className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีรายการตามเงื่อนไข</div>;
+  return (
+    <table className="w-full min-w-[760px] text-left text-sm">
+      <thead className="text-xs text-slate-400">
+        <tr>
+          <th className="px-4 py-2">เลขที่</th>
+          <th className="px-4 py-2">วันที่</th>
+          <th className="px-4 py-2">ประเภท</th>
+          <th className="px-4 py-2">บัญชี</th>
+          <th className="px-4 py-2">ประเภทเงิน</th>
+          <th className="px-4 py-2 text-right">จำนวน</th>
+          <th className="px-4 py-2">สถานะ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((tx) => (
+          <tr key={tx.id} className="border-t border-slate-100">
+            <td className="px-4 py-3 text-xs">{tx.transactionNo}</td>
+            <td className="px-4 py-3 text-xs">{thaiDate(tx.date)}</td>
+            <td className="px-4 py-3">{kindLabel(tx)}</td>
+            <td className="px-4 py-3 text-xs">{accountLabel(tx)}</td>
+            <td className="px-4 py-3 text-xs">{moneyLabel(tx.moneyType)}</td>
+            <td className="px-4 py-3 text-right font-semibold">{baht(tx.amount)}</td>
+            <td className="px-4 py-3 text-xs">{statusText(tx)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const REPORT_VIEWS = [
+  { id: 'income', label: 'รายงานรายรับ' },
+  { id: 'expense', label: 'รายงานรายจ่าย' },
+  { id: 'money', label: 'รายงานตามประเภทเงิน' },
+  { id: 'banks', label: 'รายงานตามบัญชีธนาคาร' },
+  { id: 'asnaf', label: 'รายงานตามอัสนัฟ' },
+  { id: 'funds', label: 'รายงานตามกองทุน' },
+  { id: 'movements', label: 'รายงานการฝาก ถอน โอน' },
+  { id: 'disbursement', label: 'รายงานการเบิกจ่าย' },
+  { id: 'cash', label: 'รายงานเงินสดคงเหลือ' },
+  { id: 'budget', label: 'งบประมาณจัดสรรเทียบยอดจ่ายจริง' },
+] as const;
+
+type ReportView = (typeof REPORT_VIEWS)[number]['id'];
+
+const MOVEMENT_TYPES = ['bank_deposit', 'bank_withdrawal', 'bank_transfer_in', 'bank_transfer_out', 'transfer', 'deposit', 'withdrawal'];
+
 export function ReportScreen({
   year,
   income,
@@ -2040,6 +2078,7 @@ export function ReportScreen({
   cash,
   funds,
   asnaf,
+  rows = [],
 }: {
   year: string;
   income: number;
@@ -2050,21 +2089,41 @@ export function ReportScreen({
   cash: number;
   funds: FundAccount[];
   asnaf: { id: string; label: string; received: number; spent: number }[];
+  rows?: FinancialTransaction[];
 }) {
-  const [view, setView] = useState<'funds' | 'asnaf' | 'banks'>('funds');
-  const views = [
-    { id: 'funds' as const, label: 'งบประมาณเทียบการใช้จริง' },
-    { id: 'asnaf' as const, label: 'รายจ่ายตามอัสนัฟ' },
-    { id: 'banks' as const, label: 'ยอดคงเหลือบัญชี' },
-  ];
+  const [view, setView] = useState<ReportView>('income');
+  const incomeRows = rows.filter((tx) => tx.type === 'income');
+  const expenseRows = rows.filter((tx) => tx.type === 'expense');
+  const disbursementRows = rows.filter((tx) => tx.type === 'disbursement');
+  const movementRows = rows.filter((tx) => MOVEMENT_TYPES.includes(tx.type as string));
+  const cashRows = rows.filter((tx) => tx.paymentMethod === 'cash');
+  const moneyRows = (['zakat', 'sadaqah', 'operational_admin'] as const).map((id) => {
+    const matched = rows.filter((tx) => {
+      if (id === 'operational_admin') return tx.moneyType === 'operational_admin' || (tx.moneyType as string) === 'operational';
+      return (tx.moneyType || 'zakat') === id;
+    });
+    const received = matched.filter((tx) => tx.type === 'income' && tx.status !== 'cancelled' && tx.status !== 'reversed').reduce((sum, tx) => sum + tx.amount, 0);
+    const spent = matched.filter((tx) => (tx.type === 'expense' || tx.type === 'disbursement') && tx.status !== 'cancelled' && tx.status !== 'reversed').reduce((sum, tx) => sum + tx.amount, 0);
+    return { id, label: moneyLabel(id), received, spent };
+  });
+  const lineExport = (name: string, list: FinancialTransaction[]) => downloadCsv(name, ['เลขที่', 'วันที่', 'ประเภท', 'บัญชี', 'ประเภทเงิน', 'จำนวน', 'สถานะ'], list.map((tx) => [tx.transactionNo, tx.date, kindLabel(tx), accountLabel(tx), moneyLabel(tx.moneyType), String(tx.amount), statusText(tx)]));
   function exportView() {
-    if (view === 'funds') downloadCsv(`funds-${year}.csv`, ['กองทุน', 'รับเข้า', 'จ่ายจริง', 'คงเหลือ'], funds.map((fund) => [fund.name, String(fund.totalReceived), String(fund.disbursedAmount), String(fund.availableAmount)]));
-    if (view === 'asnaf') downloadCsv(`asnaf-${year}.csv`, ['อัสนัฟ', 'รับเข้า', 'จ่ายจริง'], asnaf.map((row) => [row.label, String(row.received), String(row.spent)]));
+    if (view === 'income') lineExport(`income-${year}.csv`, incomeRows);
+    if (view === 'expense') lineExport(`expense-${year}.csv`, expenseRows);
+    if (view === 'disbursement') lineExport(`disbursement-${year}.csv`, disbursementRows);
+    if (view === 'movements') lineExport(`movements-${year}.csv`, movementRows);
+    if (view === 'cash') lineExport(`cash-${year}.csv`, cashRows);
+    if (view === 'money') downloadCsv(`money-${year}.csv`, ['ประเภทเงิน', 'รับเข้า', 'จ่ายจริง', 'คงเหลือ'], moneyRows.map((row) => [row.label, String(row.received), String(row.spent), String(row.received - row.spent)]));
+    if (view === 'funds' || view === 'budget') downloadCsv(`funds-${year}.csv`, ['กองทุน', 'รับเข้า', 'จ่ายจริง', 'คงเหลือ'], funds.map((fund) => [fund.name, String(fund.totalReceived), String(fund.disbursedAmount), String(fund.availableAmount)]));
+    if (view === 'asnaf') downloadCsv(`asnaf-${year}.csv`, ['อัสนัฟ', 'รับเข้า', 'จ่ายจริง', 'คงเหลือ'], asnaf.map((row) => [row.label, String(row.received), String(row.spent), String(row.received - row.spent)]));
+    if (view === 'banks') downloadCsv(`banks-${year}.csv`, ['ธนาคาร', 'บัญชี', 'ยอดในระบบ', 'ยอดสเตตเมนต์'], accounts.map((account) => [account.bankName, account.accountName, String(account.currentBalance || 0), String(account.reconciledBalance || 0)]));
   }
+  const activeRows = view === 'income' ? incomeRows : view === 'expense' ? expenseRows : view === 'disbursement' ? disbursementRows : view === 'movements' ? movementRows : view === 'cash' ? cashRows : [];
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button type="button" onClick={exportView} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">ส่งออก</button>
+    <div id="finance-report-sheet" className="space-y-4">
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" onClick={exportView} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">ส่งออก Excel</button>
+        <button type="button" onClick={() => window.print()} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">พิมพ์ PDF</button>
       </div>
       <div className="grid gap-3 md:grid-cols-5">
         <Light label="รายรับทั้งหมด" value={baht(income)} />
@@ -2073,15 +2132,23 @@ export function ReportScreen({
         <Light label="ยอดในบัญชี" value={baht(bankTotal)} />
         <Light label="เงินสดคงเหลือ" value={baht(cash)} />
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <Card className="p-2">
-          {views.map((item) => (
-            <button key={item.id} type="button" onClick={() => setView(item.id)} className={`block w-full rounded-xl px-3 py-2 text-left text-sm ${view === item.id ? 'bg-emerald-50 font-semibold text-emerald-800' : 'text-slate-600'}`}>{item.label}</button>
-          ))}
-        </Card>
-        <Card className="overflow-x-auto">
-          <div className="px-4 py-3 text-sm font-bold">{views.find((item) => item.id === view)?.label} · ปี {year}</div>
-          {view === 'funds' ? (
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div>
+          <label className="block lg:hidden">
+            <span className="mb-1 block text-xs text-slate-500">เลือกรายงาน</span>
+            <select value={view} onChange={(event) => setView(event.target.value as ReportView)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              {REPORT_VIEWS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+          </label>
+          <Card className="hidden p-2 lg:block">
+            {REPORT_VIEWS.map((item) => (
+              <button key={item.id} type="button" onClick={() => setView(item.id)} className={`block w-full rounded-xl px-3 py-2 text-left text-sm ${view === item.id ? 'bg-emerald-50 font-semibold text-emerald-800' : 'text-slate-600'}`}>{item.label}</button>
+            ))}
+          </Card>
+        </div>
+        <Card className="max-w-full overflow-x-auto">
+          <div className="px-4 py-3 text-sm font-bold">{REPORT_VIEWS.find((item) => item.id === view)?.label} · ปี {year}</div>
+          {view === 'funds' || view === 'budget' ? (
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-xs text-slate-400"><tr><th className="px-4 py-2">กองทุน</th><th className="px-4 py-2 text-right">รับเข้า</th><th className="px-4 py-2 text-right">จ่ายจริง</th><th className="px-4 py-2 text-right">คงเหลือ</th></tr></thead>
               <tbody>
@@ -2124,6 +2191,29 @@ export function ReportScreen({
                 ))}
               </tbody>
             </table>
+          ) : null}
+          {view === 'money' ? (
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="text-xs text-slate-400"><tr><th className="px-4 py-2">ประเภทเงิน</th><th className="px-4 py-2 text-right">รับเข้า</th><th className="px-4 py-2 text-right">จ่ายจริง</th><th className="px-4 py-2 text-right">คงเหลือ</th></tr></thead>
+              <tbody>
+                {moneyRows.map((row) => (
+                  <tr key={row.id} className="border-t border-slate-100">
+                    <td className="px-4 py-3">{row.label}</td>
+                    <td className="px-4 py-3 text-right">{baht(row.received)}</td>
+                    <td className="px-4 py-3 text-right">{baht(row.spent)}</td>
+                    <td className="px-4 py-3 text-right font-semibold">{baht(row.received - row.spent)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+          {activeRows.length || view === 'income' || view === 'expense' || view === 'disbursement' || view === 'movements' || view === 'cash' ? (
+            view === 'cash' ? (
+              <div>
+                <div className="px-4 pb-2 text-xs text-slate-500">เงินสดคงเหลือตามระบบ {baht(cash)} · รายการเงินสดในช่วงที่เลือก {cashRows.length} รายการ</div>
+                <ReportLines rows={cashRows} />
+              </div>
+            ) : <ReportLines rows={activeRows} />
           ) : null}
         </Card>
       </div>

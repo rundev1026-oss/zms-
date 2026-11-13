@@ -121,9 +121,9 @@ export function DonationKPICards({ kpis, isLoading, onRefresh }: DonationKPICard
         <button
           onClick={onRefresh}
           disabled={isLoading}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
+          className="zms-action inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
           title="รีเฟรชข้อมูลจากฐานข้อมูลจริง"
-        >
+         aria-label="รีเฟรชยอด">
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
           <span>รีเฟรชยอด</span>
         </button>

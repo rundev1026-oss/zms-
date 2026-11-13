@@ -28,6 +28,11 @@ export interface RegisterItem {
   purposeType: 'ช่วยเหลือ' | 'บริหาร';
   purpose: string;
   withdrawnAmount: number;
+  approvedAmount?: number;
+  transferredAmount?: number;
+  remainingAmount?: number;
+  batchStatus?: string;
+  paymentStatus?: string;
   applicationNo: string;
   beneficiaryName: string;
   expenseCategory: string;
@@ -37,7 +42,7 @@ export interface RegisterItem {
   refundDate: string;
   proofStatus: 'ครบถ้วน' | 'รอตรวจสอบ' | 'ยังไม่แนบ';
   proofUrl: string;
-  itemStatus: 'รอจ่าย' | 'จ่ายแล้ว' | 'เคลียร์แล้ว' | 'เกินกำหนด';
+  itemStatus: 'รอจ่าย' | 'รอเบิกจ่าย' | 'เบิกเงินสำเร็จ' | 'จ่ายบางส่วน' | 'จ่ายแล้ว' | 'เคลียร์แล้ว' | 'เกินกำหนด' | 'ยกเลิก';
   approverName: string;
   voucherType: string;
 }
@@ -153,7 +158,7 @@ export function FinanceCashControlRegister({
             <button
               type="button"
               onClick={onOpenCreateBatch}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-teal-700 bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-2xs transition hover:bg-teal-800"
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-teal-700 bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-2xs transition hover:bg-teal-800"
             >
               <Plus className="h-3.5 w-3.5" /> สร้างรอบเบิกเงิน (Batch)
             </button>
@@ -162,7 +167,7 @@ export function FinanceCashControlRegister({
             <button
               type="button"
               onClick={onOpenAidModal}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-bold text-teal-800 transition hover:bg-teal-100"
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-bold text-teal-800 transition hover:bg-teal-100"
             >
               <Plus className="h-3.5 w-3.5" /> ตัดจ่ายช่วยเหลือ
             </button>
@@ -171,7 +176,7 @@ export function FinanceCashControlRegister({
             <button
               type="button"
               onClick={onOpenAdminModal}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800 transition hover:bg-blue-100"
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800 transition hover:bg-blue-100"
             >
               <Plus className="h-3.5 w-3.5" /> ตัดจ่ายบริหาร
             </button>
@@ -179,7 +184,7 @@ export function FinanceCashControlRegister({
           <button
             type="button"
             onClick={exportCsv}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+            className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
           >
             <Download className="h-3.5 w-3.5 text-slate-500" /> ส่งออก Excel/CSV
           </button>
@@ -238,7 +243,9 @@ export function FinanceCashControlRegister({
               <th className="px-2.5 py-3.5 whitespace-nowrap">เลขที่เอกสาร</th>
               <th className="px-2.5 py-3.5 whitespace-nowrap">เจ้าหน้าที่ผู้เบิก</th>
               <th className="px-2.5 py-3.5 whitespace-nowrap">ประเภท/วัตถุประสงค์</th>
-              <th className="px-2.5 py-3.5 text-right whitespace-nowrap">ยอดเบิกรับ (บาท)</th>
+              <th className="px-2.5 py-3.5 text-right whitespace-nowrap">ยอดที่ขอเบิก</th>
+              <th className="px-2.5 py-3.5 text-right whitespace-nowrap">ยอดอนุมัติ</th>
+              <th className="px-2.5 py-3.5 text-right whitespace-nowrap">โอนให้เจ้าหน้าที่</th>
               <th className="px-2.5 py-3.5 whitespace-nowrap">คำร้อง/ผู้รับ</th>
               <th className="px-2.5 py-3.5 whitespace-nowrap">หมวดหมู่รายจ่าย</th>
               <th className="px-2.5 py-3.5 whitespace-nowrap">วันที่จ่ายจริง</th>
@@ -254,7 +261,7 @@ export function FinanceCashControlRegister({
           <tbody className="divide-y divide-slate-100">
             {items.length === 0 ? (
               <tr>
-                <td colSpan={16} className="py-12 text-center text-slate-400">
+                <td colSpan={20} className="py-12 text-center text-slate-400">
                   ไม่พบรายการเบิกจ่ายเงินสดตามเงื่อนไข
                 </td>
               </tr>
@@ -282,6 +289,8 @@ export function FinanceCashControlRegister({
                   <td className="px-2.5 py-3.5 text-right font-bold text-slate-900 whitespace-nowrap tabular-nums">
                     ฿{fmt(it.withdrawnAmount)}
                   </td>
+                  <td className="px-2.5 py-3.5 text-right whitespace-nowrap tabular-nums">฿{fmt(it.approvedAmount || it.withdrawnAmount)}</td>
+                  <td className="px-2.5 py-3.5 text-right whitespace-nowrap tabular-nums">฿{fmt(it.transferredAmount || 0)}</td>
                   <td className="px-2.5 py-3.5 min-w-[160px]">
                     {it.applicationNo !== '-' ? (
                       <div>
@@ -302,6 +311,8 @@ export function FinanceCashControlRegister({
                   <td className="px-2.5 py-3.5 text-right font-bold text-emerald-700 whitespace-nowrap tabular-nums">
                     {it.refundAmount > 0 ? `฿${fmt(it.refundAmount)}` : '-'}
                   </td>
+                  <td className="px-2.5 py-3.5 text-right whitespace-nowrap tabular-nums">฿{fmt(it.remainingAmount || 0)}</td>
+                  <td className="px-2.5 py-3.5 whitespace-nowrap">{it.batchStatus || '-'}</td>
                   <td className="px-2.5 py-3.5 text-slate-600 whitespace-nowrap">{it.refundDate}</td>
                   <td className="px-2.5 py-3.5 text-center whitespace-nowrap">
                     <span
@@ -319,11 +330,11 @@ export function FinanceCashControlRegister({
                   <td className="px-2.5 py-3.5 text-center whitespace-nowrap">
                     <span
                       className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                        it.itemStatus === 'เคลียร์แล้ว'
+                        it.itemStatus === 'เคลียร์แล้ว' || it.itemStatus === 'จ่ายแล้ว'
                           ? 'bg-emerald-100 text-emerald-800'
-                          : it.itemStatus === 'จ่ายแล้ว'
-                          ? 'bg-blue-100 text-blue-800'
-                          : it.itemStatus === 'รอจ่าย'
+                          : it.itemStatus === 'จ่ายบางส่วน' || it.itemStatus === 'เบิกเงินสำเร็จ'
+                          ? 'bg-teal-100 text-teal-800'
+                          : it.itemStatus === 'รอจ่าย' || it.itemStatus === 'รอเบิกจ่าย'
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-rose-100 text-rose-800'
                       }`}
@@ -336,7 +347,7 @@ export function FinanceCashControlRegister({
                     <button
                       type="button"
                       onClick={() => setSelectedItem(it)}
-                      className="rounded-lg border border-slate-200 bg-white p-1 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                      className="zms-action rounded-lg border border-slate-200 bg-white p-1 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                       title="ดูรายละเอียด"
                     >
                       <Eye className="h-4 w-4" />
@@ -360,7 +371,7 @@ export function FinanceCashControlRegister({
               <button
                 type="button"
                 onClick={() => setSelectedItem(null)}
-                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="zms-action rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
                 <X className="h-5 w-5" />
               </button>

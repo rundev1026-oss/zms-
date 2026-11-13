@@ -101,7 +101,7 @@ export function FinanceMovementModalDeposit({ isOpen, onClose, banks, actor, onS
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            className="zms-action rounded-full p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -261,7 +261,7 @@ export function FinanceMovementModalDeposit({ isOpen, onClose, banks, actor, onS
               <button
                 type="button"
                 onClick={() => setSlipUrl('https://placehold.co/600x800.png?text=Bank+Deposit+Slip')}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+                className="zms-action inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
               >
                 <UploadCloud className="h-3.5 w-3.5" /> จำลองสลิป
               </button>
@@ -306,7 +306,7 @@ export function FinanceMovementModalDeposit({ isOpen, onClose, banks, actor, onS
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-700/20 transition hover:bg-[#0f766e] active:scale-[0.98] disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-700/20 transition hover:bg-[#0f766e] active:scale-[0.98] disabled:opacity-50"
             >
               {submitting ? (
                 <>

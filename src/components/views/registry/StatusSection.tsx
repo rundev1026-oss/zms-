@@ -105,9 +105,9 @@ export function StatusSection({
             <button
               type="button"
               onClick={onOpenHistoryModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
+              className="zms-action inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
               title="ดูประวัติการแก้ไขข้อมูลรายฟิลด์"
-            >
+             aria-label="ดูประวัติการแก้ไข">
               <History className="w-3.5 h-3.5 text-slate-600" />
               <span>ดูประวัติการแก้ไข</span>
             </button>
@@ -116,8 +116,8 @@ export function StatusSection({
               <button
                 type="button"
                 onClick={onOpenStatusDialog}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold rounded-xl text-xs transition-colors shadow-xs"
-              >
+                className="zms-action inline-flex items-center gap-1.5 px-4 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold rounded-xl text-xs transition-colors shadow-xs"
+               aria-label="ปรับสถานะทะเบียน" title="ปรับสถานะทะเบียน">
                 <FileCheck2 className="w-3.5 h-3.5" />
                 <span>ปรับสถานะทะเบียน</span>
               </button>
@@ -182,7 +182,7 @@ export function StatusSection({
               type="button"
               onClick={handleSaveChecklistForm}
               disabled={isSavingChecklist || !hasChecklistChanges}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs disabled:opacity-40 self-start sm:self-auto"
+              className="zms-action inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs disabled:opacity-40 self-start sm:self-auto"
             >
               <Save className="w-3.5 h-3.5" />
               <span>{isSavingChecklist ? 'กำลังบันทึก...' : 'บันทึกเกณฑ์ Checklist'}</span>
@@ -319,8 +319,23 @@ export function StatusSection({
           </span>
         </div>
 
-        <div className="p-5">
-          <div className="border border-slate-200 rounded-xl overflow-x-auto">
+        <div className="p-4 sm:p-5">
+          <div className="space-y-3 lg:hidden">
+            {historyList.length === 0 ? (
+              <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-[15px] text-slate-500">ยังไม่มีบันทึกประวัติการเปลี่ยนสถานะ</p>
+            ) : historyList.map((h, idx) => {
+              const meta = statusLabels[h.status] || statusLabels.draft;
+              return (
+                <article key={idx} className="border-l-4 border-[#0D9488] pl-3">
+                  <p className="text-[13px] text-slate-500">{new Date(h.timestamp).toLocaleString('th-TH')}</p>
+                  <p className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[13px] font-bold ${meta.bg} ${meta.color} ${meta.border}`}>{meta.label}</p>
+                  <p className="mt-1 text-[15px] font-semibold text-[#0B2545]">{h.changedBy || 'ไม่ระบุผู้ดำเนินการ'}</p>
+                  {h.notes && <p className="text-[14px] leading-6 text-slate-600">{h.notes}</p>}
+                </article>
+              );
+            })}
+          </div>
+          <div className="mt-0 hidden overflow-x-auto rounded-xl border border-slate-200 lg:block">
             <table className="w-full text-left text-xs min-w-[550px]">
               <thead>
                 <tr className="bg-slate-100/80 border-b border-slate-200 font-bold text-slate-700">

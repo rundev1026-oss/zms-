@@ -159,7 +159,7 @@ export function OfficerReportsAndAuditView({ onNavigate, defaultSubTab = 'office
 
           <button
             onClick={() => showToast('ส่งออกบันทึกรายงานเป็น Excel เรียบร้อย', 'success')}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50"
+            className="zms-action flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-700" /> ส่งออก Excel
           </button>

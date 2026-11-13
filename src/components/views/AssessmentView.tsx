@@ -443,7 +443,7 @@ export function AssessmentView({ onNavigate }: AssessmentViewProps) {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer ${
+                    className={`zms-action flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer ${
                       isSubmitting
                         ? 'bg-slate-400 cursor-not-allowed opacity-80'
                         : 'bg-emerald-700 hover:bg-emerald-800'

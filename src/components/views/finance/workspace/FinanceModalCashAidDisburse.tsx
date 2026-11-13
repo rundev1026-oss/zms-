@@ -113,7 +113,7 @@ export function FinanceModalCashAidDisburse({ isOpen, onClose, actor, onSuccess 
               <p className="text-xs text-teal-100/90">ตัดยอดจากเงินสดเจ้าหน้าที่ และล็อกสถานะคำร้องป้องกันจ่ายซ้ำ</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white">
+          <button type="button" onClick={onClose} className="zms-action rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -189,7 +189,7 @@ export function FinanceModalCashAidDisburse({ isOpen, onClose, actor, onSuccess 
               <button
                 type="button"
                 onClick={() => setHandoverProofUrl('https://placehold.co/600x400.png?text=Assistance+Handover+Proof')}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100"
+                className="zms-action inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100"
               >
                 <UploadCloud className="h-3.5 w-3.5" /> แนบตัวอย่าง
               </button>
@@ -236,7 +236,7 @@ export function FinanceModalCashAidDisburse({ isOpen, onClose, actor, onSuccess 
             <button
               type="submit"
               disabled={submitting || applications.length === 0}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-700/20 hover:bg-[#0f766e] disabled:opacity-50"
+              className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-700/20 hover:bg-[#0f766e] disabled:opacity-50"
             >
               {submitting ? (
                 <>

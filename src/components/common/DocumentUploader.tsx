@@ -617,7 +617,7 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
                     <button
                       type="button"
                       onClick={() => setPreviewDoc(toBeneficiaryDoc(doc))}
-                      className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                      className="zms-action p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                       title="เปิดดูเอกสาร"
                     >
                       <Eye className="w-4 h-4" />
@@ -627,7 +627,7 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
                       type="button"
                       onClick={() => handleDownload(doc)}
                       disabled={downloadingId === doc.id}
-                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                      className="zms-action p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                       title="ดาวน์โหลดเอกสาร"
                     >
                       {downloadingId === doc.id ? (
@@ -641,7 +641,7 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRemoveDocument(doc.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        className="zms-action p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="ลบเอกสาร"
                       >
                         <Trash2 className="w-4 h-4" />

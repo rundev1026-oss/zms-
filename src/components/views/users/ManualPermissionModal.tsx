@@ -353,7 +353,7 @@ export function ManualPermissionModal({
 
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-200/60 transition-colors"
+              className="zms-action p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-200/60 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -363,7 +363,7 @@ export function ManualPermissionModal({
           <div className="px-6 bg-white border-b border-slate-200 flex items-center gap-1 shrink-0 text-xs font-bold overflow-x-auto">
             <button
               onClick={() => setActiveTab('matrix')}
-              className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+              className={`zms-action py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
                 activeTab === 'matrix'
                   ? 'border-[#0b2545] text-[#0b2545] bg-blue-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -378,7 +378,7 @@ export function ManualPermissionModal({
 
             <button
               onClick={() => setActiveTab('scope')}
-              className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+              className={`zms-action py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
                 activeTab === 'scope'
                   ? 'border-[#0b2545] text-[#0b2545] bg-blue-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -390,7 +390,7 @@ export function ManualPermissionModal({
 
             <button
               onClick={() => setActiveTab('role')}
-              className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+              className={`zms-action py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
                 activeTab === 'role'
                   ? 'border-[#0b2545] text-[#0b2545] bg-blue-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -403,7 +403,7 @@ export function ManualPermissionModal({
 
             <button
               onClick={() => setActiveTab('info')}
-              className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+              className={`zms-action py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
                 activeTab === 'info'
                   ? 'border-[#0b2545] text-[#0b2545] bg-blue-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -415,7 +415,7 @@ export function ManualPermissionModal({
 
             <button
               onClick={() => setActiveTab('audit')}
-              className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+              className={`zms-action py-3 px-4 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
                 activeTab === 'audit'
                   ? 'border-[#0b2545] text-[#0b2545] bg-blue-50/40'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -488,7 +488,7 @@ export function ManualPermissionModal({
                         </div>
                         <button
                           onClick={handleResetAllToRoleDefaults}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors flex items-center gap-1"
+                          className="zms-action px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors flex items-center gap-1"
                           title="ล้างการ Override ทั้งหมดและใช้สิทธิ์ตาม Role"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
@@ -639,7 +639,7 @@ export function ManualPermissionModal({
                                         <button
                                           type="button"
                                           onClick={() => handleSetOverride(act.code, 'ALLOW')}
-                                          className={`py-1 rounded-lg text-center transition-colors flex items-center justify-center gap-0.5 ${
+                                          className={`zms-action py-1 rounded-lg text-center transition-colors flex items-center justify-center gap-0.5 ${
                                             overrideEffect === 'ALLOW'
                                               ? 'bg-emerald-600 text-white shadow-xs'
                                               : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
@@ -650,7 +650,7 @@ export function ManualPermissionModal({
                                         <button
                                           type="button"
                                           onClick={() => handleSetOverride(act.code, 'DENY')}
-                                          className={`py-1 rounded-lg text-center transition-colors flex items-center justify-center gap-0.5 ${
+                                          className={`zms-action py-1 rounded-lg text-center transition-colors flex items-center justify-center gap-0.5 ${
                                             overrideEffect === 'DENY'
                                               ? 'bg-rose-600 text-white shadow-xs'
                                               : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
@@ -1003,7 +1003,7 @@ export function ManualPermissionModal({
                 type="button"
                 onClick={handleInitiateSave}
                 disabled={isSaving || isLoading}
-                className="px-6 py-2 rounded-xl bg-[#0b2545] text-white text-xs font-bold hover:bg-[#133966] transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                className="zms-action px-6 py-2 rounded-xl bg-[#0b2545] text-white text-xs font-bold hover:bg-[#133966] transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-50"
               >
                 {isSaving ? (
                   <>

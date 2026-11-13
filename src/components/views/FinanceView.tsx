@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { financeSlugFromPath } from '@/lib/financeMenu';
 import { BankAccount } from '@/types';
 import { FinanceWorkspace } from './finance/workspace/FinanceWorkspace';
 
@@ -18,6 +20,13 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function FinanceView({ onNavigate }: FinanceViewProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const onFinanceRoute = pathname.startsWith('/finance');
+  const section = onFinanceRoute ? (financeSlugFromPath(pathname) || 'dashboard') : null;
+  const reportTab = searchParams.get('tab') === 'transactions' || section === 'transactions' ? 'transactions' : 'reports';
+  const bankReconcile = searchParams.get('view') === 'reconcile' || section === 'reconciliation';
   const { currentUser, funds, transactions, applications, recordIncome, showToast, refreshData } = useApp();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
@@ -55,6 +64,13 @@ export function FinanceView({ onNavigate }: FinanceViewProps) {
         return ok;
       }}
       onOpenApprovals={() => onNavigate('approvals')}
+      section={section}
+      reportTab={reportTab}
+      bankReconcile={bankReconcile}
+      onSectionChange={(target) => {
+        if (!onFinanceRoute) return;
+        router.push(target.startsWith('/') ? target : `/finance/${target}`);
+      }}
     />
   );
 }

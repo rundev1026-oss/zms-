@@ -751,16 +751,16 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
               <button
                 type="button"
                 onClick={openCreateBranchModal}
-                className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0b2545] hover:bg-[#133e6f] text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-              >
+                className="zms-action min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0b2545] hover:bg-[#133e6f] text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+               aria-label="เพิ่มสาขา" title="เพิ่มสาขา">
                 <Plus className="w-4 h-4 text-amber-300" />
                 <span>เพิ่มสาขา</span>
               </button>
               <button
                 type="button"
                 onClick={() => openCreateDeptModal()}
-                className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-600 text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-              >
+                className="zms-action min-h-[44px] px-5 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-600 text-white font-bold text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+               aria-label="เพิ่มแผนก" title="เพิ่มแผนก">
                 <Plus className="w-4 h-4 text-teal-200" />
                 <span>เพิ่มแผนก</span>
               </button>
@@ -945,12 +945,12 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                 setActiveTab('tree');
                 setOnlyInvalidPersonnel(false);
               }}
-              className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`zms-action min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'tree'
                   ? 'bg-[#0b2545] text-white shadow-xs'
                   : 'text-slate-700 hover:text-slate-900'
               }`}
-            >
+             aria-label="ผังลำดับชั้นองค์กร (Tree View)" title="ผังลำดับชั้นองค์กร (Tree View)">
               <GitBranch className="w-4 h-4" />
               <span>ผังลำดับชั้นองค์กร (Tree View)</span>
             </button>
@@ -962,8 +962,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
               <button
                 type="button"
                 onClick={handleClearFilters}
-                className="min-h-[40px] px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
+                className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+               aria-label="ล้างตัวกรอง" title="ล้างตัวกรอง">
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>ล้างตัวกรอง</span>
               </button>
@@ -971,9 +971,9 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
             <button
               type="button"
               onClick={fetchOrganizationData}
-              className="min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
               title="รีเฟรชข้อมูลจากฐานข้อมูล"
-            >
+             aria-label="รีเฟรชข้อมูล">
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-teal-600' : ''}`} />
               <span>รีเฟรชข้อมูล</span>
             </button>
@@ -1099,8 +1099,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
             <button
               type="button"
               onClick={handleClearFilters}
-              className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#0b2545] text-white text-sm font-bold hover:bg-[#133e6f] inline-flex items-center gap-2 cursor-pointer"
-            >
+              className="zms-action min-h-[42px] px-5 py-2.5 rounded-xl bg-[#0b2545] text-white text-sm font-bold hover:bg-[#133e6f] inline-flex items-center gap-2 cursor-pointer"
+             aria-label="ล้างตัวกรองทั้งหมด" title="ล้างตัวกรองทั้งหมด">
               <RotateCcw className="w-4 h-4" />
               <span>ล้างตัวกรองทั้งหมด</span>
             </button>
@@ -1239,8 +1239,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                             setDetailBranch(br);
                             setDetailBranchModalTab('info');
                           }}
-                          className="min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
+                          className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                         aria-label="ดูรายละเอียด" title="ดูรายละเอียด">
                           <Eye className="w-4 h-4 text-slate-600" />
                           <span>ดูรายละเอียด</span>
                         </button>
@@ -1250,7 +1250,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                             setDetailBranch(br);
                             setDetailBranchModalTab('staff');
                           }}
-                          className="min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <Users className="w-4 h-4 text-teal-700" />
                           <span>รายชื่อเจ้าหน้าที่ ({br.staffCount ?? 0})</span>
@@ -1262,8 +1262,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                           <button
                             type="button"
                             onClick={() => openEditBranchModal(br)}
-                            className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
+                            className="zms-action min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                           aria-label="แก้ไข" title="แก้ไข">
                             <Edit className="w-3.5 h-3.5 text-teal-700" />
                             <span>แก้ไข</span>
                           </button>
@@ -1278,7 +1278,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                   item: br,
                                 });
                               }}
-                              className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                              className={`zms-action min-h-[40px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
                                 isInactive
                                   ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                                   : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
@@ -1384,8 +1384,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                           setDetailDept(d);
                           setDetailDeptModalTab('info');
                         }}
-                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
+                        className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                       aria-label="ดูรายละเอียด" title="ดูรายละเอียด">
                         <Eye className="w-4 h-4 text-slate-600" />
                         <span>ดูรายละเอียด</span>
                       </button>
@@ -1395,8 +1395,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                           <button
                             type="button"
                             onClick={() => openEditDeptModal(d)}
-                            className="min-h-[40px] px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
+                            className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                           aria-label="จัดการแผนก" title="จัดการแผนก">
                             <Settings className="w-3.5 h-3.5 text-sky-700" />
                             <span>จัดการแผนก</span>
                           </button>
@@ -1410,7 +1410,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                 item: d,
                               });
                             }}
-                            className={`min-h-[40px] px-2.5 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                            className={`zms-action min-h-[40px] px-2.5 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
                               isInactive
                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                                 : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
@@ -1427,7 +1427,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                             setDetailDept(d);
                             setDetailDeptModalTab('staff');
                           }}
-                          className="min-h-[40px] px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          className="zms-action min-h-[40px] px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <Users className="w-3.5 h-3.5 text-sky-700" />
                           <span>รายชื่อบุคลากร ({d.memberCount ?? 0})</span>
@@ -1552,8 +1552,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                               <button
                                 type="button"
                                 onClick={() => openReassignModal(u)}
-                                className="px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                              >
+                                className="zms-action px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                               aria-label="ย้ายสังกัด" title="ย้ายสังกัด">
                                 <ArrowRightLeft className="w-3.5 h-3.5" />
                                 <span>ย้ายสังกัด</span>
                               </button>
@@ -1622,7 +1622,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                             <button
                               type="button"
                               onClick={() => toggleBranchExpanded(rootBranch.id)}
-                              className="mt-0.5 w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer"
+                              className="zms-action mt-0.5 w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer"
                               title={isBranchExpanded ? 'ย่อสาขานี้' : 'ขยายสาขานี้'}
                             >
                               {isBranchExpanded ? (
@@ -1666,8 +1666,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                 setDetailBranch(rootBranch);
                                 setDetailBranchModalTab('info');
                               }}
-                              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
-                            >
+                              className="zms-action px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                             aria-label="ดูสาขา" title="ดูสาขา">
                               <Eye className="w-3.5 h-3.5" />
                               <span>ดูสาขา</span>
                             </button>
@@ -1676,16 +1676,16 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                 <button
                                   type="button"
                                   onClick={() => openEditBranchModal(rootBranch)}
-                                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
-                                >
+                                  className="zms-action px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                                 aria-label="แก้ไข" title="แก้ไข">
                                   <Edit className="w-3.5 h-3.5" />
                                   <span>แก้ไข</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => openCreateDeptModal(rootBranch.id)}
-                                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
-                                >
+                                  className="zms-action px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                                 aria-label="เพิ่มแผนก" title="เพิ่มแผนก">
                                   <Plus className="w-3.5 h-3.5 text-teal-200" />
                                   <span>เพิ่มแผนก</span>
                                 </button>
@@ -1708,8 +1708,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                   <button
                                     type="button"
                                     onClick={() => openCreateDeptModal(rootBranch.id)}
-                                    className="text-xs font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1"
-                                  >
+                                    className="zms-action text-xs font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1"
+                                   aria-label="เพิ่มแผนกในสาขานี้" title="เพิ่มแผนกในสาขานี้">
                                     <Plus className="w-3.5 h-3.5" />
                                     <span>เพิ่มแผนกในสาขานี้</span>
                                   </button>
@@ -1733,7 +1733,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                             <button
                                               type="button"
                                               onClick={() => toggleDeptExpanded(dept.id)}
-                                              className="mt-0.5 w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                                              className="zms-action mt-0.5 w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
                                               title={isDeptExpanded ? 'ย่อบุคลากร' : 'ขยายดูบุคลากร'}
                                             >
                                               {isDeptExpanded ? (
@@ -1769,7 +1769,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                                 setDetailDept(dept);
                                                 setDetailDeptModalTab('info');
                                               }}
-                                              className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
+                                              className="zms-action p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
                                               title="ดูรายละเอียดแผนก"
                                             >
                                               <Eye className="w-4 h-4" />
@@ -1778,7 +1778,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                               <button
                                                 type="button"
                                                 onClick={() => openEditDeptModal(dept)}
-                                                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
+                                                className="zms-action p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
                                                 title="แก้ไขแผนก"
                                               >
                                                 <Edit className="w-4 h-4" />
@@ -1821,7 +1821,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                                       <button
                                                         type="button"
                                                         onClick={() => openReassignModal(staff)}
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors shrink-0"
+                                                        className="zms-action p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors shrink-0"
                                                         title="ย้ายสังกัดบุคลากร"
                                                       >
                                                         <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -1876,7 +1876,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                                 setDetailBranch(child);
                                                 setDetailBranchModalTab('info');
                                               }}
-                                              className="p-1 rounded-lg text-slate-500 hover:bg-slate-100"
+                                              className="zms-action p-1 rounded-lg text-slate-500 hover:bg-slate-100"
                                               title="ดูรายละเอียดสาขา"
                                             >
                                               <Eye className="w-4 h-4" />
@@ -1885,7 +1885,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                               <button
                                                 type="button"
                                                 onClick={() => openEditBranchModal(child)}
-                                                className="p-1 rounded-lg text-slate-500 hover:bg-slate-100"
+                                                className="zms-action p-1 rounded-lg text-slate-500 hover:bg-slate-100"
                                                 title="แก้ไขสาขา"
                                               >
                                                 <Edit className="w-4 h-4" />
@@ -1901,7 +1901,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                                             <button
                                               type="button"
                                               onClick={() => openCreateDeptModal(child.id)}
-                                              className="text-xs font-bold text-teal-700 hover:underline flex items-center gap-1"
+                                              className="zms-action text-xs font-bold text-teal-700 hover:underline flex items-center gap-1"
                                             >
                                               <Plus className="w-3 h-3" /> เพิ่มแผนก
                                             </button>
@@ -1935,8 +1935,8 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                         setActiveTab('personnel');
                         setOnlyInvalidPersonnel(true);
                       }}
-                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-                    >
+                      className="zms-action px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                     aria-label="ไปยังหน้ารายชื่อเพื่อระบุสังกัด" title="ไปยังหน้ารายชื่อเพื่อระบุสังกัด">
                       <span>ไปยังหน้ารายชื่อเพื่อระบุสังกัด</span>
                       <ArrowRightLeft className="w-3.5 h-3.5" />
                     </button>
@@ -1977,7 +1977,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                   type="button"
                   disabled={currentPage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
+                  className="zms-action px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" /> ก่อนหน้า
                 </button>
@@ -1988,7 +1988,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                   type="button"
                   disabled={currentPage >= totalPages}
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
+                  className="zms-action px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold flex items-center gap-1 cursor-pointer"
                 >
                   ถัดไป <ChevronRight className="w-4 h-4" />
                 </button>
@@ -2021,7 +2021,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
               type="submit"
               form="branch-crud-form"
               disabled={isSubmitting}
-              className="min-h-[42px] px-6 py-2 rounded-xl bg-[#0b2545] hover:bg-[#133e6f] text-white text-sm font-bold shadow-xs flex items-center gap-2 disabled:opacity-50 transition-colors cursor-pointer"
+              className="zms-action min-h-[42px] px-6 py-2 rounded-xl bg-[#0b2545] hover:bg-[#133e6f] text-white text-sm font-bold shadow-xs flex items-center gap-2 disabled:opacity-50 transition-colors cursor-pointer"
             >
               <Save className="w-4 h-4 text-amber-300" />
               <span>{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูลสาขา'}</span>
@@ -2272,7 +2272,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
               type="submit"
               form="dept-crud-form"
               disabled={isSubmitting}
-              className="min-h-[42px] px-6 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-sm font-bold shadow-xs flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+              className="zms-action min-h-[42px] px-6 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-sm font-bold shadow-xs flex items-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               <Save className="w-4 h-4" />
               <span>{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูลแผนก'}</span>
@@ -2494,7 +2494,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                       setDetailBranch(null);
                       openEditBranchModal(target);
                     }}
-                    className="min-h-[40px] px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    className="zms-action min-h-[40px] px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                   >
                     <Edit className="w-3.5 h-3.5" /> แก้ไขข้อมูลสาขา
                   </button>
@@ -2713,7 +2713,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                         setDetailBranch(null);
                         openCreateDeptModal(bId);
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-teal-700 text-white text-xs font-bold hover:bg-teal-600 flex items-center gap-1 cursor-pointer"
+                      className="zms-action px-3 py-1.5 rounded-xl bg-teal-700 text-white text-xs font-bold hover:bg-teal-600 flex items-center gap-1 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" /> เพิ่มแผนกในสาขานี้
                     </button>
@@ -2759,7 +2759,7 @@ export function BranchesAndDepartmentsView({ onNavigate }: BranchesAndDepartment
                     setDetailDept(null);
                     openEditDeptModal(target);
                   }}
-                  className="min-h-[40px] px-4 py-2 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="zms-action min-h-[40px] px-4 py-2 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Edit className="w-3.5 h-3.5" /> แก้ไขแผนก
                 </button>
@@ -3108,7 +3108,7 @@ export function AdminSettingsView() {
             <button
               onClick={handleBackupNow}
               disabled={isBackingUp}
-              className="w-full py-2.5 px-4 rounded-xl bg-[#0b2545] hover:bg-[#133e6f] text-white font-bold text-xs transition-colors shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
+              className="zms-action w-full py-2.5 px-4 rounded-xl bg-[#0b2545] hover:bg-[#133e6f] text-white font-bold text-xs transition-colors shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${isBackingUp ? 'animate-spin' : ''}`} />
               <span>{isBackingUp ? 'กำลังสำรองข้อมูล...' : 'สั่งสำรองฐานข้อมูลทันที (Backup Snapshot)'}</span>
@@ -3190,8 +3190,8 @@ export function AdminSettingsView() {
 
             <button
               onClick={() => showToast('บันทึกการตั้งค่าพารามิเตอร์เรียบร้อย', 'success')}
-              className="w-full py-2.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
-            >
+              className="zms-action w-full py-2.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
+             aria-label="บันทึกการตั้งค่า" title="บันทึกการตั้งค่า">
               <Save className="w-4 h-4" />
               <span>บันทึกการตั้งค่า</span>
             </button>

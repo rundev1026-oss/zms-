@@ -165,7 +165,7 @@ export function ZakatCalculatorView({ onNavigate, onSetCheckoutAmount }: ZakatCa
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`p-3 rounded-2xl border text-xs font-semibold flex flex-col items-center gap-1.5 transition-all ${
+              className={`zms-action p-3 rounded-2xl border text-xs font-semibold flex flex-col items-center gap-1.5 transition-all ${
                 isActive
                   ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -568,8 +568,8 @@ export function ZakatCalculatorView({ onNavigate, onSetCheckoutAmount }: ZakatCa
           <div className="space-y-2 pt-4 border-t border-slate-100">
             <button
               onClick={handleProceedToPayment}
-              className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 group"
-            >
+              className="zms-action w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 group"
+             aria-label="ดำเนินการจ่ายซะกาต (PromptPay QR)" title="ดำเนินการจ่ายซะกาต (PromptPay QR)">
               <span>ดำเนินการจ่ายซะกาต (PromptPay QR)</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>

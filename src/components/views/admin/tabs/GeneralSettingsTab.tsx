@@ -20,13 +20,15 @@ import {
   Download,
   ShieldCheck,
   Hash,
-  Clock
+  Clock,
+  LayoutGrid,
 } from 'lucide-react';
 
 import { DatabaseBackupTab } from './DatabaseBackupTab';
+import { CardViewSettingsPanel } from './CardViewSettingsPanel';
 
 export interface GeneralSettingsTabProps {
-  initialSubSection?: 'org' | 'system' | 'docs' | 'notifications' | 'security' | 'backup';
+  initialSubSection?: 'org' | 'system' | 'docs' | 'notifications' | 'security' | 'backup' | 'cards';
 }
 
 export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSettingsTabProps = {}) {
@@ -35,7 +37,7 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
     return <DatabaseBackupTab />;
   }
   const { showToast, authToken, currentUser, getAuthHeaders } = useApp();
-  const [activeSubSection, setActiveSubSection] = useState<'org' | 'system' | 'docs' | 'notifications' | 'security' | 'backup'>(initialSubSection);
+  const [activeSubSection, setActiveSubSection] = useState<'org' | 'system' | 'docs' | 'notifications' | 'security' | 'backup' | 'cards'>(initialSubSection);
 
   useEffect(() => {
     if (initialSubSection) {
@@ -152,6 +154,7 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
 
   const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeSubSection === 'cards') return;
     try {
       setIsSaving(true);
       const payload = {
@@ -244,10 +247,10 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
           <button
             type="button"
             onClick={() => setActiveSubSection('org')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`zms-action flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubSection === 'org' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
             }`}
-          >
+           aria-label="A. ข้อมูลองค์กร" title="A. ข้อมูลองค์กร">
             <Building2 className="w-4 h-4" />
             <span>A. ข้อมูลองค์กร</span>
           </button>
@@ -255,10 +258,10 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
           <button
             type="button"
             onClick={() => setActiveSubSection('system')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`zms-action flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubSection === 'system' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
             }`}
-          >
+           aria-label="B. การตั้งค่าระบบ &amp; วงเงิน" title="B. การตั้งค่าระบบ &amp; วงเงิน">
             <Calendar className="w-4 h-4" />
             <span>B. การตั้งค่าระบบ & วงเงิน</span>
           </button>
@@ -266,10 +269,10 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
           <button
             type="button"
             onClick={() => setActiveSubSection('docs')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`zms-action flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubSection === 'docs' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
             }`}
-          >
+           aria-label="C. รูปแบบเอกสาร &amp; รหัส" title="C. รูปแบบเอกสาร &amp; รหัส">
             <FileText className="w-4 h-4" />
             <span>C. รูปแบบเอกสาร & รหัส</span>
           </button>
@@ -277,10 +280,10 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
           <button
             type="button"
             onClick={() => setActiveSubSection('notifications')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`zms-action flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubSection === 'notifications' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
             }`}
-          >
+           aria-label="D. การแจ้งเตือน" title="D. การแจ้งเตือน">
             <Bell className="w-4 h-4" />
             <span>D. การแจ้งเตือน</span>
           </button>
@@ -288,12 +291,23 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
           <button
             type="button"
             onClick={() => setActiveSubSection('security')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`zms-action flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubSection === 'security' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
             }`}
-          >
+           aria-label="E. ความปลอดภัย &amp; Session" title="E. ความปลอดภัย &amp; Session">
             <ShieldCheck className="w-4 h-4" />
             <span>E. ความปลอดภัย & Session</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('cards')}
+            className={`zms-action flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSubSection === 'cards' ? 'bg-[#0B2545] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+           aria-label="F. รูปแบบการ์ด" title="F. รูปแบบการ์ด">
+            <LayoutGrid className="w-4 h-4" />
+            <span>F. รูปแบบการ์ด</span>
           </button>
         </div>
 
@@ -302,7 +316,7 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
             type="button"
             onClick={fetchSettings}
             disabled={isLoading}
-            className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            className="zms-action p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
             title="รีเฟรชการตั้งค่า"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -724,8 +738,8 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
                 type="button"
                 onClick={handleTriggerBackup}
                 disabled={isBackingUp}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-800 text-white font-bold text-xs shadow-xs hover:bg-teal-900 transition-all disabled:opacity-60 shrink-0"
-              >
+                className="zms-action inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-800 text-white font-bold text-xs shadow-xs hover:bg-teal-900 transition-all disabled:opacity-60 shrink-0"
+               aria-label="กำลังสำรองฐานข้อมูล..." title="กำลังสำรองฐานข้อมูล...">
                 {isBackingUp ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -754,7 +768,10 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
           </div>
         )}
 
+        {activeSubSection === 'cards' && <CardViewSettingsPanel />}
+
         {/* Form Bottom Bar */}
+        {activeSubSection !== 'cards' && (
         <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
           <span className="text-xs text-slate-500">
             ระบบบันทึก Audit Log ทุกครั้งที่มีการเปลี่ยนแปลงการตั้งค่าโดยผู้ดูแลระบบ
@@ -762,8 +779,8 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
           <button
             type="submit"
             disabled={isSaving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-800 text-white font-bold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all disabled:opacity-60"
-          >
+            className="zms-action inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-800 text-white font-bold text-xs shadow-xs hover:bg-teal-900 active:scale-98 transition-all disabled:opacity-60"
+           aria-label="กำลังบันทึก..." title="กำลังบันทึก...">
             {isSaving ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -777,6 +794,7 @@ export function GeneralSettingsTab({ initialSubSection = 'org' }: GeneralSetting
             )}
           </button>
         </div>
+        )}
       </form>
     </div>
   );

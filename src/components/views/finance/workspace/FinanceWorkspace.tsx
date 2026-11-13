@@ -26,17 +26,11 @@ import {
 } from 'lucide-react';
 import type { AssistanceApplication, BankAccount, FinancialTransaction, FundAccount } from '@/types';
 import { AllocationScreen, AuditScreen, ExpenseScreen, MovementScreen, ReconcileScreen, ReportScreen } from './FinanceScreens';
+import { TreasurerWorkbenchPage } from './TreasurerWorkbenchPage';
+import { CashPositionCards, StaffCasePaymentPanel } from './StaffCashPanel';
+import { financePageFromSlug, financeSlugFromPage, type FinancePageKey } from '@/lib/financeMenu';
 
-type PageKey =
-  | 'overview'
-  | 'income'
-  | 'banks'
-  | 'allocation'
-  | 'movements'
-  | 'expenses'
-  | 'reconcile'
-  | 'reports'
-  | 'audit';
+type PageKey = FinancePageKey;
 
 const PAGES: { id: PageKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'ภาพรวมการเงิน', icon: Wallet },
@@ -44,10 +38,11 @@ const PAGES: { id: PageKey; label: string; icon: React.ComponentType<{ className
   { id: 'banks', label: 'บัญชีธนาคาร', icon: Building2 },
   { id: 'allocation', label: 'จัดสรรงบตามอัสนัฟ', icon: PieChart },
   { id: 'movements', label: 'ฝาก ถอน โอน', icon: ArrowLeftRight },
+  { id: 'approval', label: 'อนุมัติรอบเบิก', icon: ShieldCheck },
   { id: 'expenses', label: 'รายจ่ายและการช่วยเหลือ', icon: ArrowUpRight },
   { id: 'reconcile', label: 'กระทบยอดธนาคาร', icon: Scale },
-  { id: 'reports', label: 'รายงานการเงิน', icon: FileSpreadsheet },
-  { id: 'audit', label: 'ประวัติธุรกรรม', icon: ShieldCheck },
+  { id: 'reports', label: 'รายงานการเงินและประวัติธุรกรรม', icon: FileSpreadsheet },
+  { id: 'audit', label: 'รายงานการเงินและประวัติธุรกรรม', icon: Landmark },
 ];
 
 const ASNAF = [
@@ -224,6 +219,18 @@ function isOutflow(tx: FinancialTransaction) {
   return (tx.type === 'expense' || tx.type === 'disbursement') && tx.status !== 'cancelled' && tx.status !== 'reversed';
 }
 
+function buildAsnaf(rows: FinancialTransaction[]) {
+  return ASNAF.map((item) => {
+    const matched = rows.filter((tx) => {
+      const value = `${tx.asnafCategory || ''} ${tx.fundName || ''} ${tx.category || ''}`.toLowerCase();
+      return item.keys.some((key) => value.includes(key.toLowerCase()));
+    });
+    const spent = matched.filter(isOutflow).reduce((sum, tx) => sum + tx.amount, 0);
+    const received = matched.filter(isIncome).reduce((sum, tx) => sum + tx.amount, 0);
+    return { ...item, received, spent };
+  });
+}
+
 function statusLabel(tx: FinancialTransaction) {
   if (tx.status === 'pending') return 'รอนุมัติ';
   if (tx.status === 'cancelled') return 'ยกเลิก';
@@ -317,6 +324,10 @@ export function FinanceWorkspace({
   onRefresh,
   onOpenApprovals,
   onRecordIncome,
+  section,
+  reportTab,
+  bankReconcile,
+  onSectionChange,
 }: {
   userName: string;
   roleLabel: string;
@@ -338,10 +349,58 @@ export function FinanceWorkspace({
     notes?: string,
     extra?: { bankAccountId?: string; moneyType?: 'zakat' | 'sadaqah' | 'operational_admin'; donorName?: string; usageRestriction?: string; receivedDate?: string },
   ) => Promise<boolean>;
+  section?: string | null;
+  reportTab?: 'reports' | 'transactions';
+  bankReconcile?: boolean;
+  onSectionChange?: (target: string) => void;
 }) {
-  const now = new Date();
-  const [page, setPage] = useState<PageKey>('overview');
-  const [year, setYear] = useState(String(buddhistYear(now)));
+  const routedPage = section ? financePageFromSlug(section) : null;
+  const [page, setPage] = useState<PageKey>(routedPage || 'overview');
+  const [ledgerTab, setLedgerTab] = useState<'reports' | 'transactions'>(reportTab === 'transactions' ? 'transactions' : 'reports');
+  const [showReconcile, setShowReconcile] = useState(Boolean(bankReconcile));
+  const [reportFrom, setReportFrom] = useState('');
+  const [reportTo, setReportTo] = useState('');
+  const [reportMoney, setReportMoney] = useState('all');
+  const [reportBank, setReportBank] = useState('all');
+  const [reportStatus, setReportStatus] = useState('all');
+  const openPage = (next: PageKey) => {
+    if (next === 'audit') {
+      setPage('reports');
+      setLedgerTab('transactions');
+      onSectionChange?.('/finance/reports?tab=transactions');
+      return;
+    }
+    if (next === 'reconcile') {
+      const nextOpen = !showReconcile;
+      setPage('banks');
+      setShowReconcile(nextOpen);
+      onSectionChange?.(nextOpen ? '/finance/bank-accounts?view=reconcile' : '/finance/bank-accounts');
+      return;
+    }
+    setPage(next);
+    onSectionChange?.(`/finance/${financeSlugFromPage(next)}`);
+  };
+  useEffect(() => {
+    if (routedPage) setPage(routedPage);
+  }, [routedPage]);
+  useEffect(() => {
+    setLedgerTab(reportTab === 'transactions' ? 'transactions' : 'reports');
+  }, [reportTab]);
+  useEffect(() => {
+    setShowReconcile(Boolean(bankReconcile));
+  }, [bankReconcile]);
+  useEffect(() => {
+    if (page === 'banks' && showReconcile) {
+      document.getElementById('bank-reconcile-panel')?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [page, showReconcile]);
+  const [year, setYear] = useState('2569');
+  useEffect(() => {
+    const today = new Date();
+    setYear(String(today.getFullYear() + 543));
+    const iso = today.toISOString().slice(0, 10);
+    setIncomeForm((form) => (form.receivedDate ? form : { ...form, receivedDate: iso }));
+  }, []);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -398,7 +457,7 @@ export function FinanceWorkspace({
     notes: '',
     referenceNo: '',
     purpose: '',
-    receivedDate: new Date().toISOString().slice(0, 10),
+    receivedDate: '',
   });
 
   useEffect(() => {
@@ -497,15 +556,22 @@ export function FinanceWorkspace({
   const incomeSelected = incomeListed.find((tx) => tx.id === incomeSelectedId) || null;
   const editingIncome = incomeEditingId ? transactions.find((tx) => tx.id === incomeEditingId) || null : null;
 
-  const asnafRows = ASNAF.map((item) => {
-    const matched = inYear.filter((tx) => {
-      const value = `${tx.asnafCategory || ''} ${tx.fundName || ''} ${tx.category || ''}`.toLowerCase();
-      return item.keys.some((key) => value.includes(key.toLowerCase()));
-    });
-    const spent = matched.filter(isOutflow).reduce((sum, tx) => sum + tx.amount, 0);
-    const received = matched.filter(isIncome).reduce((sum, tx) => sum + tx.amount, 0);
-    return { ...item, received, spent };
-  });
+  const asnafRows = buildAsnaf(inYear);
+  const reportRows = useMemo(() => inYear.filter((tx) => {
+    const instant = financeInstant(tx.date);
+    if ((reportFrom || reportTo) && !instant) return false;
+    if (reportFrom && instant && instant < new Date(`${reportFrom}T00:00:00`)) return false;
+    if (reportTo && instant && instant > new Date(`${reportTo}T23:59:59`)) return false;
+    if (reportMoney !== 'all' && (tx.moneyType || 'zakat') !== reportMoney) return false;
+    if (reportBank !== 'all' && tx.bankAccountId !== reportBank) return false;
+    if (reportStatus !== 'all' && tx.status !== reportStatus) return false;
+    return true;
+  }), [inYear, reportFrom, reportTo, reportMoney, reportBank, reportStatus]);
+  const reportIncome = reportRows.filter(isIncome).reduce((sum, tx) => sum + tx.amount, 0);
+  const reportExpense = reportRows.filter(isOutflow).reduce((sum, tx) => sum + tx.amount, 0);
+  const reportAsnaf = useMemo(() => buildAsnaf(reportRows), [reportRows]);
+  const reportAccounts = reportBank === 'all' ? bankAccounts : bankAccounts.filter((account) => account.id === reportBank);
+  const reportBankTotal = reportAccounts.filter((account) => account.status === 'active').reduce((sum, account) => sum + Number(account.currentBalance || 0), 0);
   function fundsForMoney(type: 'zakat' | 'sadaqah' | 'operational_admin') {
     const category = type === 'operational_admin' ? 'operational' : type;
     const matched = funds.filter((fund) => fund.category === category);
@@ -855,7 +921,7 @@ export function FinanceWorkspace({
   const pageTitle = PAGES.find((item) => item.id === page)?.label || 'การเงินและบัญชี';
 
   return (
-    <div className="min-h-full space-y-4 bg-[#f4f7fb] pb-16 text-slate-800">
+    <div className="min-h-full min-w-0 max-w-full space-y-4 bg-[#f4f7fb] pb-16 text-slate-800">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-slate-500">
           <span className="font-bold text-[#0e2744]">ZMS</span>
@@ -865,7 +931,7 @@ export function FinanceWorkspace({
           <span className="text-slate-700">{pageTitle}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => { onRefresh(); setReloadKey((key) => key + 1); }} className="rounded-full border border-slate-200 bg-white p-2 text-slate-500" title="โหลดข้อมูลล่าสุด">
+          <button type="button" onClick={() => { onRefresh(); setReloadKey((key) => key + 1); }} className="zms-action rounded-full border border-slate-200 bg-white p-2 text-slate-500" title="โหลดข้อมูลล่าสุด">
             <RefreshCw className="h-4 w-4" />
           </button>
           <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs">
@@ -875,26 +941,6 @@ export function FinanceWorkspace({
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {PAGES.map((item) => {
-          const Icon = item.icon;
-          const active = page === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setPage(item.id)}
-              className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${
-                active ? 'bg-[#0e2744] text-white' : 'border border-slate-200 bg-white text-slate-600'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#0e2744]">{pageTitle}</h1>
@@ -902,22 +948,22 @@ export function FinanceWorkspace({
             {page === 'income' ? 'ทะเบียนรับเงิน • แยกประเภทและวัตถุประสงค์ก่อนรับรายได้'
               : page === 'banks' ? 'แยกบัญชีตามประเภทเงิน ตรวจสอบยอดในระบบกับรายการเคลื่อนไหว'
               : page === 'allocation' ? 'ควบคุมสัดส่วนงบซะกาตแยกกองทุนย่อย จากงบที่บันทึกในปีนี้'
-              : page === 'movements' ? 'ติดตามเงินเคลื่อนย้ายและตรวจสอบเงินสด ไม่นับซ้ำเป็นรายรับหรือรายจ่าย'
+              : page === 'movements' ? 'กลุ่มงานเหรัญญิก · บริหารฝาก ถอน โอน และตรวจยอดบัญชี A B C'
+              : page === 'approval' ? 'กลุ่มงานเหรัญญิก · ตรวจรอบเบิก อนุมัติแล้วโอนภายในจากบัญชี B ไปบัญชี C'
               : page === 'expenses' ? 'แยกรายจ่ายช่วยเหลือออกจากค่าใช้จ่ายบริหาร ตรวจก่อนบันทึกจ่าย'
               : page === 'reconcile' ? 'เทียบรายการในระบบกับยอดสเตตเมนต์ที่บันทึกไว้'
-              : page === 'reports' ? 'ตรวจสอบผลการดำเนินงานจากรายการที่ลงบัญชี'
-              : page === 'audit' ? 'ติดตามทุกรายการในสมุดบัญชี พร้อมผู้บันทึกและสถานะ'
+              : page === 'reports' ? 'ดูรายงานจากสมุดบัญชี และตรวจประวัติธุรกรรมในหน้าเดียวกัน'
               : `ปีงบประมาณ ${year} · ${dashboardState === 'loading' ? 'กำลังคำนวณจากรายการจริง' : dashboardState === 'error' ? 'โหลดตัวเลขสรุปไม่สำเร็จ' : 'ตัวเลขคำนวณจากรายการที่บันทึกในระบบ'}`}
           </p>
         </div>
         {page === 'income' ? (
           <div className="flex gap-2">
-            <button type="button" onClick={exportIncomeCsv} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+            <button type="button" onClick={exportIncomeCsv} className="zms-action inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
               <Download className="h-4 w-4" />
               ส่งออก
             </button>
             {canRecordIncome ? (
-              <button type="button" onClick={focusIncomeForm} className="inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white">
+              <button type="button" onClick={focusIncomeForm} className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white">
                 <Plus className="h-4 w-4" />
                 เพิ่มรายรับ
               </button>
@@ -925,12 +971,12 @@ export function FinanceWorkspace({
           </div>
         ) : page === 'banks' ? (
           <div className="flex gap-2">
-            <button type="button" onClick={() => setPage('reconcile')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+            <button type="button" onClick={() => openPage('reconcile')} aria-pressed={showReconcile} className={`zms-action inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${showReconcile ? 'border-teal-200 bg-teal-50 text-teal-900' : 'border-slate-200 bg-white text-slate-700'}`}>
               <FileSpreadsheet className="h-4 w-4" />
               รายงานกระทบยอด
             </button>
             {canManageBanks ? (
-              <button type="button" onClick={openBankCreate} className="inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white">
+              <button type="button" onClick={openBankCreate} className="zms-action inline-flex items-center gap-2 rounded-xl bg-[#0D9488] px-3 py-2 text-sm font-bold text-white">
                 <Plus className="h-4 w-4" />
                 เพิ่มบัญชี
               </button>
@@ -958,6 +1004,7 @@ export function FinanceWorkspace({
 
       {page === 'overview' ? (
         <div className="space-y-4">
+          <CashPositionCards />
           <div className="grid gap-3 md:grid-cols-4">
             <Metric label="รายรับทั้งหมด" value={baht(dashboard?.kpi.totalIncome ?? incomeTotal)} hint="รายการรับเงินที่ยืนยันแล้ว" />
             <Metric label="รายจ่ายทั้งหมด" value={baht(dashboard?.kpi.totalExpense ?? expenseTotal)} hint="รายจ่ายช่วยเหลือและค่าบริหาร" />
@@ -1012,7 +1059,7 @@ export function FinanceWorkspace({
             <Card>
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="text-sm font-bold">รายการเคลื่อนไหวล่าสุด</div>
-                <button type="button" onClick={() => setPage('audit')} className="text-xs font-semibold text-emerald-700">ดูทั้งหมด</button>
+                <button type="button" onClick={() => openPage('audit')} className="text-xs font-semibold text-emerald-700">ดูทั้งหมด</button>
               </div>
               <TxTable rows={recent.slice(0, 6)} onSelect={setSelectedId} selectedId={selected?.id} />
             </Card>
@@ -1231,9 +1278,9 @@ export function FinanceWorkspace({
                     <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${matched ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{matched ? 'ตรงกัน' : 'มีส่วนต่าง'}</span>
                   </div>
                   <div className="flex gap-2 border-t border-slate-100 px-3 py-3">
-                    {canManageBanks ? <button type="button" onClick={() => openBankEdit(account)} className={actionClass}><Pencil className="h-3.5 w-3.5" />แก้ไข</button> : null}
-                    <button type="button" onClick={() => openBankHistory(account)} className={actionClass}><Eye className="h-3.5 w-3.5" />ดูประวัติ</button>
-                    {canReconcile ? <button type="button" onClick={() => { setBankTarget(account); setStatementBalance(String(account.reconciledBalance || account.currentBalance || 0)); setStatementNote(''); setBankError(''); setBankMode('reconcile'); }} className={actionClass}><Scale className="h-3.5 w-3.5" />กระทบยอด</button> : null}
+                    {canManageBanks ? <button type="button" onClick={() => openBankEdit(account)} className={"zms-action " + actionClass}><Pencil className="h-3.5 w-3.5" />แก้ไข</button> : null}
+                    <button type="button" onClick={() => openBankHistory(account)} className={"zms-action " + actionClass}><Eye className="h-3.5 w-3.5" />ดูประวัติ</button>
+                    {canReconcile ? <button type="button" onClick={() => { setBankTarget(account); setStatementBalance(String(account.reconciledBalance || account.currentBalance || 0)); setStatementNote(''); setBankError(''); setBankMode('reconcile'); }} className={"zms-action " + actionClass}><Scale className="h-3.5 w-3.5" />กระทบยอด</button> : null}
                     {canManageBanks ? <button type="button" onClick={() => { setBankTarget(account); setBankError(''); setBankMode('detail'); }} className={actionClass}>{account.status === 'active' ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</button> : null}
                   </div>
                 </Card>
@@ -1371,28 +1418,83 @@ export function FinanceWorkspace({
         />
       ) : null}
       {page === 'movements' ? <MovementScreen rows={inYear} bankTotal={bankTotal} cash={dashboard?.kpi.totalCashOnHand ?? 0} banks={bankAccounts} actor={actor} onChanged={onRefresh} /> : null}
-      {page === 'expenses' ? <ExpenseScreen rows={inYear.filter((tx) => tx.type === 'expense' || tx.type === 'disbursement')} bankTotal={bankTotal} cash={dashboard?.kpi.totalCashOnHand ?? 0} banks={bankAccounts} fundAccounts={funds} actor={actor} onChanged={onRefresh} /> : null}
-      {page === 'reconcile' ? (
-        <ReconcileScreen
-          banks={bankAccounts}
-          rows={inYear}
-          onOpen={(account) => { setBankTarget(account); setStatementBalance(String(account.reconciledBalance || account.currentBalance || 0)); setStatementNote(''); setBankError(''); setBankMode('reconcile'); }}
-        />
+      {page === 'approval' ? (
+        ['super_admin', 'executive', 'finance'].includes(actor.role) ? (
+          <TreasurerWorkbenchPage actor={actor} rows={inYear} onRefreshParent={onRefresh} />
+        ) : (
+          <div className="rounded-2xl border border-[#E2E8F0] bg-white p-6 text-sm text-slate-600">
+            สิทธิ์อนุมัติรอบเบิกอยู่ที่ผู้ดูแลระบบ ผู้บริหาร และเจ้าหน้าที่การเงิน
+          </div>
+        )
+      ) : null}
+      {page === 'expenses' ? (
+        <div className="space-y-4">
+          <StaffCasePaymentPanel actor={actor} onChanged={onRefresh} />
+          <ExpenseScreen rows={inYear.filter((tx) => tx.type === 'expense' || tx.type === 'disbursement')} bankTotal={bankTotal} cash={dashboard?.kpi.totalCashOnHand ?? 0} banks={bankAccounts} fundAccounts={funds} actor={actor} onChanged={onRefresh} />
+        </div>
+      ) : null}
+      {page === 'banks' && showReconcile ? (
+        <div id="bank-reconcile-panel" className="scroll-mt-4">
+          <ReconcileScreen
+            banks={bankAccounts}
+            rows={inYear}
+            onOpen={(account) => { setBankTarget(account); setStatementBalance(String(account.reconciledBalance || account.currentBalance || 0)); setStatementNote(''); setBankError(''); setBankMode('reconcile'); }}
+          />
+        </div>
       ) : null}
       {page === 'reports' ? (
-        <ReportScreen
-          year={year}
-          income={dashboard?.kpi.totalIncome ?? incomeTotal}
-          expense={dashboard?.kpi.totalExpense ?? expenseTotal}
-          net={dashboard?.kpi.netBalance ?? net}
-          bankTotal={dashboard?.kpi.totalBankBalance ?? bankTotal}
-          accounts={bankAccounts}
-          cash={dashboard?.kpi.totalCashOnHand ?? 0}
-          funds={funds}
-          asnaf={asnafRows}
-        />
+        <div className="min-w-0 max-w-full space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <label className="text-xs text-slate-500">ตั้งแต่
+              <input type="date" value={reportFrom} onChange={(event) => setReportFrom(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700" />
+            </label>
+            <label className="text-xs text-slate-500">ถึง
+              <input type="date" value={reportTo} onChange={(event) => setReportTo(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700" />
+            </label>
+            <label className="text-xs text-slate-500">ประเภทเงิน
+              <select value={reportMoney} onChange={(event) => setReportMoney(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="all">ทุกประเภท</option>
+                {INCOME_MONEY_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-slate-500">บัญชีธนาคาร
+              <select value={reportBank} onChange={(event) => setReportBank(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="all">ทุกบัญชี</option>
+                {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.bankName} · {account.accountName}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-slate-500">สถานะ
+              <select value={reportStatus} onChange={(event) => setReportStatus(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="all">ทุกสถานะ</option>
+                <option value="completed">ลงบัญชีแล้ว</option>
+                <option value="pending">รอยืนยัน</option>
+                <option value="reversed">กลับรายการ</option>
+                <option value="cancelled">ยกเลิก</option>
+              </select>
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-1 rounded-2xl border border-[#E2E8F0] bg-white p-1 sm:flex sm:w-fit" role="tablist">
+            <button type="button" role="tab" aria-selected={ledgerTab === 'reports'} onClick={() => { setLedgerTab('reports'); onSectionChange?.('/finance/reports'); }} className={`rounded-xl px-4 py-2 text-sm font-semibold ${ledgerTab === 'reports' ? 'bg-[#0B2545] text-white' : 'text-slate-600'}`}>รายงานการเงิน</button>
+            <button type="button" role="tab" aria-selected={ledgerTab === 'transactions'} onClick={() => { setLedgerTab('transactions'); onSectionChange?.('/finance/reports?tab=transactions'); }} className={`rounded-xl px-4 py-2 text-sm font-semibold ${ledgerTab === 'transactions' ? 'bg-[#0B2545] text-white' : 'text-slate-600'}`}>ประวัติธุรกรรม</button>
+          </div>
+          {ledgerTab === 'transactions' ? (
+            <AuditScreen rows={reportRows} compactFilters />
+          ) : (
+            <ReportScreen
+              year={year}
+              income={reportIncome}
+              expense={reportExpense}
+              net={reportIncome - reportExpense}
+              bankTotal={reportBankTotal}
+              accounts={reportAccounts}
+              cash={dashboard?.kpi.totalCashOnHand ?? 0}
+              funds={funds}
+              asnaf={reportAsnaf}
+              rows={reportRows}
+            />
+          )}
+        </div>
       ) : null}
-      {page === 'audit' ? <AuditScreen rows={inYear} /> : null}
     </div>
   );
 }
@@ -1600,10 +1702,10 @@ function IncomeBoard({
             <div className="text-[11px] text-slate-400">{editable ? 'แก้ไขได้ก่อนกลับรายการ' : 'เลือกรายการเพื่อดู แก้ไข หรือพิมพ์ใบเสร็จ'}</div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={!selected} onClick={onDetail} className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"><Eye className="h-3.5 w-3.5" />รายละเอียด</button>
-            <button type="button" disabled={!selected || !editable || !canRecord} onClick={() => selected && onEdit(selected)} className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"><Pencil className="h-3.5 w-3.5" />แก้ไข</button>
-            <button type="button" disabled={!selected} onClick={() => selected && onPrint(selected)} className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"><Printer className="h-3.5 w-3.5" />พิมพ์ใบเสร็จ</button>
-            <button type="button" disabled={!selected || selected.status !== 'pending' || !canRecord || saving} onClick={onConfirm} className="inline-flex items-center gap-1 rounded-full bg-[#0B2545] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Check className="h-3.5 w-3.5" />ยืนยันรับเงิน</button>
+            <button type="button" disabled={!selected} onClick={onDetail} className="zms-action inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"><Eye className="h-3.5 w-3.5" />รายละเอียด</button>
+            <button type="button" disabled={!selected || !editable || !canRecord} onClick={() => selected && onEdit(selected)} className="zms-action inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"><Pencil className="h-3.5 w-3.5" />แก้ไข</button>
+            <button type="button" disabled={!selected} onClick={() => selected && onPrint(selected)} className="zms-action inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"><Printer className="h-3.5 w-3.5" />พิมพ์ใบเสร็จ</button>
+            <button type="button" disabled={!selected || selected.status !== 'pending' || !canRecord || saving} onClick={onConfirm} className="zms-action inline-flex items-center gap-1 rounded-full bg-[#0B2545] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Check className="h-3.5 w-3.5" />ยืนยันรับเงิน</button>
           </div>
         </div>
         {detailOpen && selected ? (
@@ -1680,7 +1782,7 @@ function IncomeForm({
         </div>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">{editing ? (step === 4 ? 'รับเงินแล้ว' : step === 2 ? 'รอยืนยัน' : 'แก้ไข') : 'รอบันทึก'}</span>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400" aria-label="ปิดฟอร์ม"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} className="zms-action rounded-lg p-1 text-slate-400" aria-label="ปิดฟอร์ม"><X className="h-4 w-4" /></button>
         </div>
       </div>
       {error ? <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : null}
@@ -1770,7 +1872,7 @@ function IncomeForm({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={onReset} className="rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600">{editing ? 'ยกเลิกการแก้ไข' : 'ล้างฟอร์ม'}</button>
-            <button type="submit" disabled={saving || funds.length === 0} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0D9488] py-2.5 text-sm font-bold text-white disabled:opacity-50">
+            <button type="submit" disabled={saving || funds.length === 0} className="zms-action inline-flex items-center justify-center gap-2 rounded-xl bg-[#0D9488] py-2.5 text-sm font-bold text-white disabled:opacity-50">
               <Check className="h-4 w-4" />
               {saving ? 'กำลังบันทึก...' : editing ? 'บันทึกการแก้ไข' : 'บันทึกรายรับ'}
             </button>

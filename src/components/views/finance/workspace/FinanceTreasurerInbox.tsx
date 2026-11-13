@@ -427,7 +427,7 @@ export function FinanceTreasurerInbox({
             <button
               type="button"
               onClick={onOpenCreateBatch}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-teal-600 bg-teal-600/10 px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-600/20 transition"
+              className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-teal-600 bg-teal-600/10 px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-600/20 transition"
             >
               <FileText className="h-4 w-4" /> สร้างรอบเบิกเงินใหม่
             </button>
@@ -436,7 +436,7 @@ export function FinanceTreasurerInbox({
           <button
             type="button"
             onClick={fetchBatches}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+            className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-teal-700' : ''}`} />
             รีเฟรช
@@ -555,7 +555,7 @@ export function FinanceTreasurerInbox({
                       <button
                         type="button"
                         onClick={() => loadDetail(b.id)}
-                        className="inline-flex items-center gap-1 rounded-xl bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 hover:bg-teal-100 transition border border-teal-200/60"
+                        className="zms-action inline-flex items-center gap-1 rounded-xl bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 hover:bg-teal-100 transition border border-teal-200/60"
                       >
                         <Eye className="h-3.5 w-3.5" /> ตรวจสอบ
                       </button>
@@ -601,7 +601,7 @@ export function FinanceTreasurerInbox({
                   setActionModal(null);
                   setActionError('');
                 }}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
+                className="zms-action rounded-xl p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -888,7 +888,7 @@ export function FinanceTreasurerInbox({
                           setActionModal('revision');
                           setReasonNote('');
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 transition"
+                        className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 transition"
                       >
                         <RotateCcw className="h-4 w-4" /> ส่งกลับแก้ไข
                       </button>
@@ -899,7 +899,7 @@ export function FinanceTreasurerInbox({
                           setActionModal('reject');
                           setReasonNote('');
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-800 hover:bg-rose-100 transition"
+                        className="zms-action inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-800 hover:bg-rose-100 transition"
                       >
                         <Ban className="h-4 w-4" /> ไม่อนุมัติ
                       </button>
@@ -910,7 +910,7 @@ export function FinanceTreasurerInbox({
                           setActionModal('approve');
                           setReasonNote('');
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-teal-800 transition"
+                        className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-teal-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-teal-800 transition"
                       >
                         <CheckCircle2 className="h-4 w-4" /> อนุมัติรอบเบิก
                       </button>
@@ -928,7 +928,7 @@ export function FinanceTreasurerInbox({
                         setHandoverProof('');
                         setHandoverNotes('');
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-800 transition"
+                      className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-indigo-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-800 transition"
                     >
                       <HandCoins className="h-4 w-4" /> บันทึกการส่งมอบเงินสดให้เจ้าหน้าที่
                     </button>
@@ -952,7 +952,7 @@ export function FinanceTreasurerInbox({
                         setActionModal('close_round');
                         setReasonNote('ตรวจสอบยอดเงินจ่ายจริงและเงินคืนครบถ้วน สมดุล 100% ปิดรอบการเบิกจ่าย');
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 transition"
+                      className="zms-action inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 transition"
                     >
                       <CheckCheck className="h-4 w-4" /> อนุมัติปิดรอบการเบิกจ่าย
                     </button>
@@ -989,7 +989,7 @@ export function FinanceTreasurerInbox({
                         setActionModal(null);
                         setActionError('');
                       }}
-                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                      className="zms-action rounded-lg p-1 text-slate-400 hover:bg-slate-100"
                     >
                       <X className="h-4 w-4" />
                     </button>

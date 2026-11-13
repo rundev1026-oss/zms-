@@ -19,7 +19,8 @@ import {
   Search, 
   Filter, 
   Plus, 
-  Eye, 
+  Eye,
+  EyeOff,
   FileCheck2, 
   CheckCircle, 
   Printer, 
@@ -28,7 +29,6 @@ import {
   Phone, 
   Calendar, 
   X,
-  User,
   Heart,
   AlertTriangle,
   FileText,
@@ -39,7 +39,6 @@ import {
   Home,
   CheckSquare,
   Square,
-  DollarSign,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
@@ -64,7 +63,10 @@ import {
   ClipboardCheck,
   CheckCircle2,
   XCircle,
-  HeartHandshake
+  HeartHandshake,
+  List,
+  LayoutGrid,
+  MoreHorizontal,
 } from 'lucide-react';
 import { DocumentListTable } from '@/components/common/DocumentListTable';
 import { GoogleMapsLocationPicker, LocationData } from '@/components/common/GoogleMapsLocationPicker';
@@ -86,6 +88,10 @@ import { PeriodicAssessmentModal } from '@/components/views/registry/PeriodicAss
 import { AssessmentHistorySection, getAssessmentStatusMeta } from '@/components/views/registry/AssessmentHistorySection';
 import { MemberRequestsSection } from '@/components/views/registry/MemberRequestsSection';
 import { AssistanceRequestWizardModal } from '@/components/views/assistance/AssistanceRequestWizardModal';
+import { BeneficiaryRegistryCards, registryAssessmentMeta, resolveRequestStats } from '@/components/views/registry/BeneficiaryRegistryCards';
+import { BeneficiaryIntegratedProfile, PROFILE_SECTION_ANCHOR } from '@/components/views/registry/BeneficiaryIntegratedProfile';
+import { useCardViewSettings } from '@/hooks/useCardViewSettings';
+import { resolveCardPageSize } from '@/lib/cardViewSettings';
 
 export type RegistryMainSection =
   | 'member_info'        // 1. ข้อมูลสมาชิก
@@ -102,23 +108,25 @@ export type RegistryMainSection =
   | 'assistance_history'
   | 'status';
 
-const MAIN_SECTIONS = [
-  { id: 'member_info', label: '1. ข้อมูลสมาชิก', icon: User },
-  { id: 'family', label: '2. ข้อมูลครอบครัว', icon: Users },
-  { id: 'economy', label: '3. รายได้ รายจ่าย และหนี้สิน', icon: DollarSign },
-  { id: 'limitations', label: '4. สภาพปัจจุบันและข้อจำกัด', icon: AlertTriangle },
-  { id: 'documents', label: '5. เอกสารแนบ', icon: FileText },
-  { id: 'assessments', label: '6. ประวัติการประเมินสิทธิ์', icon: ClipboardCheck },
-  { id: 'requests', label: '7. ประวัติคำร้อง', icon: FilePlus2 },
-  { id: 'aid_history', label: '8. ประวัติการช่วยเหลือ', icon: HeartHandshake },
-] as const;
-
 const MEMBER_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   ACTIVE: { label: 'สมาชิกปกติ', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
   PENDING_VERIFICATION: { label: 'รอตรวจสอบสมาชิก', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
   SUSPENDED: { label: 'ระงับสถานะสมาชิก', cls: 'bg-rose-50 text-rose-800 border-rose-200' },
   ARCHIVED: { label: 'ปิดประวัติถาวร', cls: 'bg-slate-200 text-slate-700 border-slate-300' },
 };
+
+function MemberStatusBadge({ status }: { status?: string | null }) {
+  const meta = MEMBER_STATUS_LABELS[String(status || 'ACTIVE').toUpperCase()] || MEMBER_STATUS_LABELS.ACTIVE;
+  return (
+    <span className={`inline-flex max-w-[48%] shrink-0 items-center truncate rounded-full border px-2.5 py-0.5 text-[12px] font-bold leading-5 sm:text-[13px] ${meta.cls}`}>
+      {meta.label}
+    </span>
+  );
+}
+
+function closeActionMenu(target: HTMLElement) {
+  target.closest('details')?.removeAttribute('open');
+}
 
 function getDisplayMemberCode(reg?: Partial<BeneficiaryRegistryItem> | null): string {
   if (!reg) return '-';
@@ -198,11 +206,22 @@ export function BeneficiaryRegistryView({
   const [orgBranches, setOrgBranches] = useState<{ id: string; code: string; name: string; status: string }[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+  const [displayMode, setDisplayMode] = useState<'table' | 'card'>('table');
+  const [sortMode, setSortMode] = useState<'registered_desc' | 'registered_asc' | 'name_asc' | 'code_asc' | 'assessment_desc'>('registered_desc');
+  const [memberStatusFilter, setMemberStatusFilter] = useState<string>('all');
+  const [assessmentResultFilter, setAssessmentResultFilter] = useState<string>('all');
+  const [requestStatusFilter, setRequestStatusFilter] = useState<string>('all');
+  const { layout: cardLayout } = useCardViewSettings('registry');
   const [registryViewMode, setRegistryViewMode] = useState<'active' | 'deleted'>('active');
   const [softDeleteTarget, setSoftDeleteTarget] = useState<{ id: string; registryNumber: string; fullName: string } | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<{ id: string; registryNumber: string; fullName: string } | null>(null);
   const [auditTarget, setAuditTarget] = useState<{ id: string; registryNumber: string; fullName: string } | null>(null);
   const [deletedRefreshTrigger, setDeletedRefreshTrigger] = useState<number>(0);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('zms_registry_view_mode');
+    if (saved === 'card' || saved === 'table') setDisplayMode(saved);
+  }, []);
 
   useEffect(() => {
     fetch('/api/organization/structure')
@@ -240,6 +259,11 @@ export function BeneficiaryRegistryView({
   // 8 Main Sections state (Master Requirement Section 8)
   const [selectedRegistry, setSelectedRegistry] = useState<BeneficiaryRegistryItem | null>(null);
   const [activeMainSection, setActiveMainSection] = useState<RegistryMainSection>('member_info');
+  const [profileFocus, setProfileFocus] = useState<{ id: string; nonce: number } | null>(null);
+  const focusProfile = (section: string) => {
+    const id = PROFILE_SECTION_ANCHOR[section] || PROFILE_SECTION_ANCHOR.member_info;
+    setProfileFocus({ id, nonce: Date.now() });
+  };
   const [activePersonalSubSection, setActivePersonalSubSection] = useState<PersonalSubTab>('info');
   const [memberInfoSubTab, setMemberInfoSubTab] = useState<'info' | 'location' | 'coordinator' | 'status'>('info');
   const [limitationsSubTab, setLimitationsSubTab] = useState<'limitations' | 'other_aid'>('limitations');
@@ -291,6 +315,43 @@ export function BeneficiaryRegistryView({
   }>(null);
   const [reasonError, setReasonError] = useState<string | null>(null);
   const editBaseline = useRef<any>(null);
+  const profileBodyRef = useRef<HTMLDivElement>(null);
+  const [memberHeaderCollapsed, setMemberHeaderCollapsed] = useState(false);
+  const [showFullNationalId, setShowFullNationalId] = useState(false);
+
+  useEffect(() => {
+    const el = profileBodyRef.current;
+    if (!selectedRegistry || !el) {
+      setMemberHeaderCollapsed(false);
+      return;
+    }
+    let frame = 0;
+    const update = () => {
+      const top = el.scrollTop;
+      setMemberHeaderCollapsed((prev) => {
+        if (!prev && top > 120) return true;
+        if (prev && top < 72) return false;
+        return prev;
+      });
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        update();
+      });
+    };
+    update();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [selectedRegistry, isStatusDialogOpen]);
+
+  useEffect(() => {
+    setShowFullNationalId(false);
+  }, [selectedRegistry?.id]);
 
   const isAnyModalActive = Boolean(
     selectedRegistry || 
@@ -375,6 +436,19 @@ export function BeneficiaryRegistryView({
       const matchPeriod =
         assessmentPeriodFilter === 'all' ||
         item.latestAssessment?.assessmentPeriod === assessmentPeriodFilter;
+      const matchMemberStatus =
+        memberStatusFilter === 'all' ||
+        String(item.memberStatus || 'ACTIVE').toUpperCase() === memberStatusFilter;
+      const matchAssessment =
+        assessmentResultFilter === 'all' ||
+        registryAssessmentMeta(item).key === assessmentResultFilter;
+      const requestStats = resolveRequestStats(item, applications);
+      const matchRequest =
+        requestStatusFilter === 'all' ||
+        (requestStatusFilter === 'pending' && requestStats.pending > 0) ||
+        (requestStatusFilter === 'approved' && requestStats.approved > 0) ||
+        (requestStatusFilter === 'assisted' && requestStats.disbursed > 0) ||
+        (requestStatusFilter === 'none' && requestStats.total === 0);
 
       if (currentUser.role === 'member') {
         const isOwner =
@@ -384,17 +458,39 @@ export function BeneficiaryRegistryView({
         if (!isOwner) return false;
       }
 
-      return matchSearch && matchStatus && matchAsnaf && matchBranch && matchPeriod;
+      return matchSearch && matchStatus && matchAsnaf && matchBranch && matchPeriod && matchMemberStatus && matchAssessment && matchRequest;
     });
-  }, [registries, searchTerm, statusFilter, asnafFilter, branchFilter, assessmentPeriodFilter, currentUser]);
+  }, [registries, applications, searchTerm, statusFilter, asnafFilter, branchFilter, assessmentPeriodFilter, memberStatusFilter, assessmentResultFilter, requestStatusFilter, currentUser]);
 
-  // Pagination calculation
-  const totalItems = filteredRegistries.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const sortedRegistries = useMemo(() => {
+    const items = [...filteredRegistries];
+    const dateValue = (value?: string) => {
+      const time = value ? new Date(value).getTime() : 0;
+      return Number.isNaN(time) ? 0 : time;
+    };
+    items.sort((a, b) => {
+      if (sortMode === 'name_asc') return formatPersonName(a).localeCompare(formatPersonName(b), 'th');
+      if (sortMode === 'code_asc') return getDisplayMemberCode(a).localeCompare(getDisplayMemberCode(b), 'en');
+      if (sortMode === 'assessment_desc') {
+        return dateValue(b.latestAssessment?.assessmentDate) - dateValue(a.latestAssessment?.assessmentDate);
+      }
+      const diff = dateValue(b.registeredDate) - dateValue(a.registeredDate);
+      return sortMode === 'registered_asc' ? -diff : diff;
+    });
+    return items;
+  }, [filteredRegistries, sortMode]);
+
+  const listPageSize = displayMode === 'card' ? resolveCardPageSize(cardLayout, sortedRegistries.length) : pageSize;
+  const totalItems = sortedRegistries.length;
+  const totalPages = Math.ceil(totalItems / listPageSize) || 1;
   const paginatedRegistries = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredRegistries.slice(start, start + pageSize);
-  }, [filteredRegistries, currentPage, pageSize]);
+    const start = (currentPage - 1) * listPageSize;
+    return sortedRegistries.slice(start, start + listPageSize);
+  }, [sortedRegistries, currentPage, listPageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   const canEditRegistry = (reg: BeneficiaryRegistryItem | null) => {
     if (!reg) return false;
@@ -478,6 +574,7 @@ export function BeneficiaryRegistryView({
       }
       const targetSec = initialMainSection ? normalizeSectionKey(initialMainSection) : 'member_info';
       setActiveMainSection(targetSec);
+      focusProfile(targetSec);
       setMemberInfoSubTab('info');
       setIsEditing(Boolean(initialStartEdit));
       await Promise.all([
@@ -504,6 +601,7 @@ export function BeneficiaryRegistryView({
     }
     const normalized = normalizeSectionKey(mainSection);
     setActiveMainSection(normalized);
+    focusProfile(mainSection === 'aid_history' ? 'aid_history' : normalized);
     setActivePersonalSubSection(personalSub);
     setIsEditing(false);
     void loadRegistryDetail(reg.id);
@@ -524,14 +622,20 @@ export function BeneficiaryRegistryView({
   };
 
   // Start editing registry
-  const handleStartEdit = async (mainSec: RegistryMainSection = 'member_info', personalSub?: PersonalSubTab) => {
-    if (!selectedRegistry) return;
-    if (!canEditRegistry(selectedRegistry)) {
+  const handleStartEdit = async (
+    mainSec: RegistryMainSection = 'member_info',
+    personalSub?: PersonalSubTab,
+    sourceRegistry?: BeneficiaryRegistryItem,
+  ) => {
+    const target = sourceRegistry || selectedRegistry;
+    if (!target) return;
+    if (sourceRegistry) setSelectedRegistry(sourceRegistry);
+    if (!canEditRegistry(target)) {
       showToast('ท่านไม่มีสิทธิ์แก้ไขข้อมูลทะเบียนนี้', 'error');
       return;
     }
-    const fresh = await loadRegistryDetail(selectedRegistry.id);
-    const source = fresh || selectedRegistry;
+    const fresh = await loadRegistryDetail(target.id);
+    const source = fresh || target;
     const name = splitPersonName(source);
     const initialForm = {
       titlePrefix: name.prefix,
@@ -937,17 +1041,17 @@ export function BeneficiaryRegistryView({
           <button
             onClick={() => refreshData()}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[40px]"
+            className="zms-action flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[40px]"
             title="รีเฟรชข้อมูลล่าสุด"
-          >
+           aria-label="รีเฟรช">
             <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
             <span>รีเฟรช</span>
           </button>
 
           <button
             onClick={() => onNavigate('new-application')}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs min-h-[40px]"
-          >
+            className="zms-action flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs min-h-[40px]"
+           aria-label="ขึ้นทะเบียนสมาชิกใหม่" title="ขึ้นทะเบียนสมาชิกใหม่">
             <Plus className="w-4 h-4" />
             <span>ขึ้นทะเบียนสมาชิกใหม่</span>
           </button>
@@ -1047,7 +1151,7 @@ export function BeneficiaryRegistryView({
           <button
             type="button"
             onClick={() => setRegistryViewMode('active')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`zms-action flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               registryViewMode === 'active'
                 ? 'bg-[#0b2545] text-white shadow-xs'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1059,12 +1163,12 @@ export function BeneficiaryRegistryView({
           <button
             type="button"
             onClick={() => setRegistryViewMode('deleted')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`zms-action flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               registryViewMode === 'deleted'
                 ? 'bg-red-700 text-white shadow-xs'
                 : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
             }`}
-          >
+           aria-label="สมาชิกที่ถูกจำหน่าย/ลบ (Soft Deleted)" title="สมาชิกที่ถูกจำหน่าย/ลบ (Soft Deleted)">
             <Trash2 className="w-4 h-4" />
             <span>สมาชิกที่ถูกจำหน่าย/ลบ (Soft Deleted)</span>
           </button>
@@ -1133,7 +1237,7 @@ export function BeneficiaryRegistryView({
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="zms-action absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1167,11 +1271,141 @@ export function BeneficiaryRegistryView({
               ))}
             </select>
           </div>
+
+          <div>
+            <select
+              value={memberStatusFilter}
+              onChange={(e) => { setMemberStatusFilter(e.target.value); setCurrentPage(1); }}
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0b2545] text-xs font-medium"
+            >
+              <option value="all">สถานะสมาชิกทั้งหมด</option>
+              <option value="ACTIVE">สมาชิกปกติ</option>
+              <option value="SUSPENDED">ถูกระงับ</option>
+              <option value="ARCHIVED">ปิดประวัติถาวร</option>
+            </select>
+          </div>
+          <div>
+            <select
+              value={assessmentResultFilter}
+              onChange={(e) => { setAssessmentResultFilter(e.target.value); setCurrentPage(1); }}
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0b2545] text-xs font-medium"
+            >
+              <option value="all">ผลการประเมินทั้งหมด</option>
+              <option value="pending_assessment">รอประเมิน</option>
+              <option value="review">รอตรวจสอบ</option>
+              <option value="eligible">มีคุณสมบัติตามเกณฑ์</option>
+              <option value="ineligible">ไม่มีคุณสมบัติตามเกณฑ์</option>
+              <option value="reassess">ต้องประเมินใหม่</option>
+            </select>
+          </div>
+          <div>
+            <select
+              value={requestStatusFilter}
+              onChange={(e) => { setRequestStatusFilter(e.target.value); setCurrentPage(1); }}
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0b2545] text-xs font-medium"
+            >
+              <option value="all">สถานะคำร้องทั้งหมด</option>
+              <option value="pending">มีคำร้องรอพิจารณา</option>
+              <option value="approved">มีคำร้องที่อนุมัติ</option>
+              <option value="assisted">ได้รับการช่วยเหลือจริง</option>
+              <option value="none">ยังไม่มีคำร้อง</option>
+            </select>
+          </div>
+          <div>
+            <select
+              value={sortMode}
+              onChange={(e) => { setSortMode(e.target.value as typeof sortMode); setCurrentPage(1); }}
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0b2545] text-xs font-medium"
+            >
+              <option value="registered_desc">วันที่ขึ้นทะเบียนล่าสุด</option>
+              <option value="registered_asc">วันที่ขึ้นทะเบียนเก่าสุด</option>
+              <option value="name_asc">ชื่อสมาชิก ก–ฮ</option>
+              <option value="code_asc">รหัสสมาชิก</option>
+              <option value="assessment_desc">วันที่ประเมินล่าสุด</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* 3. Member Registry Data Table */}
+      {/* 3. Member Registry Data Table / Card View */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#0B2545]">รายการสมาชิก</p>
+            <p className="text-[11px] text-slate-500">
+              {displayMode === 'card'
+                ? `${cardLayout.cardsPerRow} การ์ด/แถว · ${listPageSize} รายการต่อหน้า`
+                : `ตาราง ${listPageSize} รายการต่อหน้า`}
+            </p>
+          </div>
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1" role="group" aria-label="สลับมุมมองรายการสมาชิก">
+            <button
+              type="button"
+              aria-pressed={displayMode === 'table'}
+              onClick={() => {
+                setDisplayMode('table');
+                window.localStorage.setItem('zms_registry_view_mode', 'table');
+              }}
+              className={`zms-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${
+                displayMode === 'table' ? 'bg-[#0B2545] text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <List className="h-4 w-4" /> ตาราง
+            </button>
+            <button
+              type="button"
+              aria-pressed={displayMode === 'card'}
+              onClick={() => {
+                setDisplayMode('card');
+                window.localStorage.setItem('zms_registry_view_mode', 'card');
+              }}
+              className={`zms-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${
+                displayMode === 'card' ? 'bg-[#0B2545] text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4" /> การ์ด
+            </button>
+          </div>
+        </div>
+        {displayMode === 'card' ? (
+          <BeneficiaryRegistryCards
+            items={paginatedRegistries}
+            applications={applications}
+            layout={cardLayout}
+            memberCode={getDisplayMemberCode}
+            memberStatus={(reg) => {
+              const key = String(reg.memberStatus || 'ACTIVE').toUpperCase();
+              return MEMBER_STATUS_LABELS[key] || MEMBER_STATUS_LABELS.ACTIVE;
+            }}
+            asnafLabel={(reg) => {
+              const asnafKey = String(reg.asnafCategory || '').toLowerCase();
+              return ASNAF_LABELS[asnafKey] || reg.asnafCategory || 'ไม่ระบุอัสนัฟ';
+            }}
+            personName={(reg) => formatPersonName(reg)}
+            canEdit={canEditRegistry}
+            canAssess={canPerformAssessment}
+            canDelete={currentUser.role === 'super_admin'}
+            onOpen={(reg, section) => handleOpenDetails(reg, section || 'member_info')}
+            onEdit={(reg) => {
+              handleOpenDetails(reg, 'member_info', 'info');
+              void handleStartEdit('member_info', 'info', reg);
+            }}
+            onAssess={async (reg) => {
+              setSelectedRegistry(reg);
+              await loadRegistryDetail(reg.id);
+              await loadMemberAssessments(reg.id);
+              setIsPeriodicAssessmentModalOpen(true);
+            }}
+            onRequest={(reg) => handleStartAssistanceRequest(reg.id)}
+            onDelete={(reg) => {
+              setSoftDeleteTarget({
+                id: reg.id,
+                registryNumber: getDisplayMemberCode(reg),
+                fullName: formatPersonName(reg),
+              });
+            }}
+          />
+        ) : (
         <div className="overflow-x-auto touch-scroll">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
@@ -1292,7 +1526,7 @@ export function BeneficiaryRegistryView({
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => handleOpenDetails(reg, 'member_info', 'info')}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-[#0b2545] hover:bg-slate-100 transition-colors"
+                            className="zms-action p-1.5 rounded-lg text-slate-600 hover:text-[#0b2545] hover:bg-slate-100 transition-colors"
                             title="เปิดข้อมูลสมาชิก (8 ส่วนหลัก)"
                           >
                             <Eye className="w-4 h-4" />
@@ -1306,9 +1540,9 @@ export function BeneficiaryRegistryView({
                                 await loadMemberAssessments(reg.id);
                                 setIsPeriodicAssessmentModalOpen(true);
                               }}
-                              className="inline-flex items-center gap-1 px-2 py-1 bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200 rounded-lg text-[10px] font-bold transition-colors"
+                              className="zms-action inline-flex items-center gap-1 px-2 py-1 bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200 rounded-lg text-[10px] font-bold transition-colors"
                               title="ประเมินสิทธิ์ใหม่ (สร้างระเบียนประเมินใหม่โดยไม่สร้างทะเบียนบุคคลซ้ำ)"
-                            >
+                             aria-label="ประเมินใหม่">
                               <ClipboardCheck className="w-3.5 h-3.5 text-teal-700" />
                               <span className="hidden xl:inline">ประเมินใหม่</span>
                             </button>
@@ -1318,9 +1552,9 @@ export function BeneficiaryRegistryView({
                             <button
                               onClick={() => {
                                 handleOpenDetails(reg, 'member_info', 'info');
-                                handleStartEdit('member_info', 'info');
+                                void handleStartEdit('member_info', 'info', reg);
                               }}
-                              className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors"
+                              className="zms-action p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors"
                               title="แก้ไขข้อมูลสมาชิก"
                             >
                               <Edit className="w-4 h-4" />
@@ -1329,9 +1563,9 @@ export function BeneficiaryRegistryView({
 
                           <button
                             onClick={() => handleStartAssistanceRequest(reg.id)}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 rounded-lg text-[10px] font-bold transition-colors"
+                            className="zms-action inline-flex items-center gap-1 px-2 py-1 bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 rounded-lg text-[10px] font-bold transition-colors"
                             title="ยื่นคำร้องขอความช่วยเหลือ"
-                          >
+                           aria-label="ยื่นคำร้อง">
                             <FilePlus2 className="w-3.5 h-3.5 text-sky-700" />
                             <span className="hidden xl:inline">ยื่นคำร้อง</span>
                           </button>
@@ -1346,7 +1580,7 @@ export function BeneficiaryRegistryView({
                                   fullName: formatPersonName(reg),
                                 });
                               }}
-                              className="p-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                              className="zms-action p-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
                               title="จำหน่าย/ลบสมาชิก (Super Admin Only)"
                             >
                               <Trash2 className="w-3.5 h-3.5 text-red-600" />
@@ -1361,18 +1595,21 @@ export function BeneficiaryRegistryView({
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Pagination bar */}
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
           <div>
-            แสดง {totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1} ถึง {Math.min(currentPage * pageSize, totalItems)} จากสมาชิกทั้งหมด {totalItems} ราย
+            แสดง {totalItems === 0 ? 0 : (currentPage - 1) * listPageSize + 1} ถึง {Math.min(currentPage * listPageSize, totalItems)} จากสมาชิกทั้งหมด {totalItems} ราย
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
+              aria-label="หน้าก่อนหน้า"
+              title="หน้าก่อนหน้า"
+              className="zms-action p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -1382,7 +1619,9 @@ export function BeneficiaryRegistryView({
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
+              aria-label="หน้าถัดไป"
+              title="หน้าถัดไป"
+              className="zms-action p-1.5 rounded-lg border border-slate-200 hover:bg-white disabled:opacity-40 transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -1396,7 +1635,7 @@ export function BeneficiaryRegistryView({
       {selectedRegistry && !isStatusDialogOpen && (
         <ModalPortal>
           <div 
-            className="fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-fadeIn overflow-hidden"
+            className="fixed inset-0 z-[1000] flex items-stretch justify-center bg-slate-950/60 backdrop-blur-xs animate-fadeIn overflow-hidden sm:items-center sm:p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 if (isEditing) {
@@ -1411,461 +1650,291 @@ export function BeneficiaryRegistryView({
               role="dialog"
               aria-modal="true"
               aria-labelledby="beneficiary-detail-title"
-              className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl h-[94vh] max-h-[calc(100dvh-24px)] flex flex-col overflow-hidden"
+              className="bg-white shadow-2xl border border-slate-200 flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col overflow-hidden sm:h-[94vh] sm:max-h-[calc(100dvh-24px)] sm:rounded-2xl"
             >
-            {/* Modal Header */}
-            <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0b2545] via-[#103463] to-[#133e6f] text-white flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 shrink-0 shadow-sm">
-              <div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-amber-300 font-semibold mb-1">
-                  <span className="font-mono bg-white/15 px-2.5 py-0.5 rounded-md border border-amber-300/30 text-amber-200 font-bold">
-                    รหัสสมาชิกถาวร: {getDisplayMemberCode(selectedRegistry)}
-                  </span>
-                  <span>•</span>
-                  <span>วันที่ขึ้นทะเบียน: {selectedRegistry.registeredDate ? new Date(selectedRegistry.registeredDate).toLocaleDateString('th-TH') : '-'}</span>
-                  <span>•</span>
-                  <span className="text-slate-200">สาขา: {selectedRegistry.branchName || 'สำนักงานกลาง'}</span>
+            {/* Modal Header — expands at the top, collapses while the profile scrolls */}
+            <div className={`member-smart-header sticky top-0 z-30 shrink-0 bg-gradient-to-r from-[#0b2545] via-[#103463] to-[#133e6f] text-white shadow-sm ${memberHeaderCollapsed ? 'is-collapsed' : ''}`}>
+              <style>{`
+                .member-smart-header {
+                  padding: 12px;
+                  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+                  transition: padding 250ms ease;
+                }
+                @media (min-width: 768px) {
+                  .member-smart-header:not(.is-collapsed) {
+                    padding: 16px;
+                    padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+                  }
+                }
+                @media (min-width: 1024px) {
+                  .member-smart-header:not(.is-collapsed) {
+                    padding: 20px;
+                    padding-top: calc(env(safe-area-inset-top, 0px) + 20px);
+                  }
+                }
+                .member-smart-header.is-collapsed {
+                  padding: 12px;
+                  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+                }
+                .member-smart-header .member-header-title { transition: font-size 250ms ease, line-height 250ms ease; }
+                .member-smart-header .member-header-extra {
+                  display: grid;
+                  grid-template-rows: 1fr;
+                  opacity: 1;
+                  transition: grid-template-rows 250ms ease, opacity 220ms ease;
+                }
+                .member-smart-header.is-collapsed .member-header-extra {
+                  grid-template-rows: 0fr;
+                  flex: 0 0 0;
+                  width: 0;
+                  min-width: 0;
+                  opacity: 0;
+                  pointer-events: none;
+                  overflow: hidden;
+                }
+                .member-smart-header .member-header-extra > div { min-height: 0; }
+                .member-smart-header.is-collapsed .member-header-extra > div { overflow: hidden; }
+                .member-smart-header details > :not(summary) { display: none; }
+                .member-smart-header details[open] > :not(summary) { display: block; }
+                @media (prefers-reduced-motion: reduce) {
+                  .member-smart-header,
+                  .member-smart-header .member-header-title,
+                  .member-smart-header .member-header-extra { transition: none; }
+                }
+              `}</style>
+              <div className="min-w-0 lg:flex lg:items-start lg:justify-between lg:gap-4">
+              <div className="min-w-0 w-full flex-1">
+                <div className={memberHeaderCollapsed ? 'flex min-w-0 items-center gap-2' : 'min-w-0'}>
+                  <div className="min-w-0 flex-1">
+                    <p className={`min-w-0 truncate font-mono font-bold text-amber-200 ${memberHeaderCollapsed ? 'text-[12px] leading-4' : 'text-[13px] leading-5'}`}>
+                      {getDisplayMemberCode(selectedRegistry)}
+                    </p>
+                    <h2 id="beneficiary-detail-title" className={`member-header-title font-black text-white ${memberHeaderCollapsed ? 'truncate text-[17px] leading-6' : 'mt-1 text-[24px] leading-tight break-words sm:text-[26px] lg:text-[30px]'}`}>
+                      {formatPersonName(selectedRegistry)}
+                    </h2>
+                    {!memberHeaderCollapsed && (
+                      <div className="mt-1.5">
+                        <MemberStatusBadge status={selectedRegistry.memberStatus} />
+                      </div>
+                    )}
+                  </div>
+                  {memberHeaderCollapsed && <MemberStatusBadge status={selectedRegistry.memberStatus} />}
                 </div>
-                
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 id="beneficiary-detail-title" className="text-lg sm:text-2xl font-black text-white tracking-tight">
-                    {formatPersonName(selectedRegistry)}
-                  </h2>
-                  {/* Separated Member Status Badge */}
-                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                    (MEMBER_STATUS_LABELS[String(selectedRegistry.memberStatus || 'ACTIVE').toUpperCase()] || MEMBER_STATUS_LABELS.ACTIVE).cls
-                  }`}>
-                    {(MEMBER_STATUS_LABELS[String(selectedRegistry.memberStatus || 'ACTIVE').toUpperCase()] || MEMBER_STATUS_LABELS.ACTIVE).label}
-                  </span>
-                  {/* Separated Latest Assessment Status Badge */}
-                  {(() => {
-                    const latest = memberAssessments[0] || selectedRegistry.latestAssessment;
-                    const meta = latest
-                      ? getAssessmentStatusMeta(latest.status)
-                      : {
-                          label: REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus]?.label || 'รอประเมินสิทธิ์',
-                          cls: 'bg-amber-100 text-amber-800 border-amber-300',
-                        };
-                    return (
-                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${meta.cls}`}>
-                        ประเมินล่าสุด: {meta.label}
-                        {latest?.assessmentNumber ? ` (${latest.assessmentNumber})` : ''}
+                <div className="member-header-extra" aria-hidden={memberHeaderCollapsed}>
+                  <div className="min-w-0 space-y-0.5 overflow-hidden pt-1.5">
+                    <p className="truncate text-[14px] font-semibold leading-5 text-teal-100">
+                      {selectedRegistry.occupation?.trim()
+                        || (selectedRegistry.asnafCategory
+                          ? (ASNAF_LABELS[selectedRegistry.asnafCategory] || selectedRegistry.asnafCategory)
+                          : 'ยังไม่ระบุอาชีพ')}
+                    </p>
+                    <div className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-slate-100">
+                      <span className="shrink-0 text-slate-300">บัตรประชาชน</span>
+                      <span className="min-w-0 truncate font-mono font-bold">
+                        {(() => {
+                          const masked = selectedRegistry.nationalIdMasked || 'ไม่มีเลขบัตร';
+                          const digits = String(selectedRegistry.nationalId || '').replace(/\D/g, '');
+                          const canReveal = ['super_admin', 'approver', 'officer'].includes(currentUser.role) && digits.length === 13;
+                          if (!showFullNationalId || !canReveal) return masked;
+                          return `${digits[0]}-${digits.slice(1, 5)}-${digits.slice(5, 10)}-${digits.slice(10, 12)}-${digits[12]}`;
+                        })()}
                       </span>
-                    );
-                  })()}
-                </div>
-
-                <div className="text-xs text-slate-300 flex flex-wrap items-center gap-2 mt-1.5">
-                  <span>บัตร ปชช: {selectedRegistry.nationalIdMasked}</span>
-                  <span>•</span>
-                  <span>โทร: {selectedRegistry.phone || '-'}</span>
-                  <span>•</span>
-                  <span>{selectedRegistry.community || selectedRegistry.subdistrict}, {selectedRegistry.district}, {selectedRegistry.province}</span>
+                      {['super_admin', 'approver', 'officer'].includes(currentUser.role) && (
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/80 hover:bg-white/10"
+                          aria-label={showFullNationalId ? 'ซ่อนเลขบัตรประชาชน' : 'แสดงเลขบัตรประชาชน'}
+                          title={showFullNationalId ? 'ซ่อนเลขบัตรประชาชน' : 'แสดงเลขบัตรประชาชน'}
+                          onClick={() => {
+                            const digits = String(selectedRegistry.nationalId || '').replace(/\D/g, '');
+                            if (digits.length !== 13) {
+                              showToast('บทบาทนี้เห็นได้เฉพาะเลขบัตรที่ปกปิดไว้', 'info');
+                              return;
+                            }
+                            setShowFullNationalId((open) => !open);
+                          }}
+                        >
+                          {showFullNationalId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      )}
+                    </div>
+                    <p className="truncate text-[13px] leading-5 text-slate-200">{selectedRegistry.phone || 'ไม่มีเบอร์โทร'}</p>
+                    <p className="truncate text-[13px] leading-5 text-slate-200">
+                      {[selectedRegistry.community || selectedRegistry.subdistrict, selectedRegistry.district, selectedRegistry.province].filter(Boolean).join(' ') || 'ไม่มีที่อยู่'}
+                    </p>
+                    <p className="text-[12px] leading-5 text-slate-300">ขึ้นทะเบียน {selectedRegistry.registeredDate ? new Date(selectedRegistry.registeredDate).toLocaleDateString('th-TH') : '-'}</p>
+                    <p className="truncate text-[12px] leading-5 text-slate-300">{selectedRegistry.branchName || 'สำนักงานกลาง'}</p>
+                    <p className="truncate text-[12px] leading-5 text-slate-300">
+                      {(() => {
+                        const latest = memberAssessments[0] || selectedRegistry.latestAssessment;
+                        const meta = latest ? getAssessmentStatusMeta(latest.status) : { label: 'ยังไม่ประเมิน' };
+                        return `ประเมินล่าสุด: ${meta.label}`;
+                      })()}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* 4 Required Primary Action Buttons (Section 8) + Secondary Tools */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className={`member-header-extra ${memberHeaderCollapsed ? '' : 'mt-2.5 lg:mt-0 lg:max-w-xl lg:shrink-0'}`} aria-hidden={memberHeaderCollapsed}>
+              <div>
                 {!isEditing ? (
-                  <>
-                    {/* 1. แก้ไขข้อมูลสมาชิก */}
+                  <div className="grid grid-cols-4 justify-items-center gap-2 md:flex md:flex-wrap md:items-center md:justify-end">
                     {canEditRegistry(selectedRegistry) && (
                       <button
                         type="button"
                         onClick={() => handleStartEdit(activeMainSection)}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors shadow-sm"
+                        className="zms-action flex h-12 w-12 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 text-[14px] font-bold text-white shadow-sm md:h-11 md:w-auto md:px-3"
+                        aria-label="แก้ไขข้อมูลสมาชิก"
+                        title="แก้ไขข้อมูลสมาชิก"
                       >
-                        <Edit className="w-3.5 h-3.5" />
-                        <span>แก้ไขข้อมูลสมาชิก</span>
+                        <Edit className="h-4 w-4" />
+                        <span className="hidden md:inline">แก้ไข</span>
                       </button>
                     )}
-
-                    {/* 2. ประเมินสิทธิ์ใหม่ */}
                     {canPerformAssessment && (
                       <button
                         type="button"
                         onClick={() => setIsPeriodicAssessmentModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs transition-colors shadow-sm"
+                        className="zms-action flex h-12 w-12 items-center justify-center gap-1.5 rounded-xl bg-amber-400 text-[14px] font-extrabold text-slate-950 shadow-sm md:h-11 md:w-auto md:px-3"
+                        aria-label="ประเมินสิทธิ์"
+                        title="ประเมินสิทธิ์"
                       >
-                        <ClipboardCheck className="w-3.5 h-3.5 text-slate-950" />
-                        <span>ประเมินสิทธิ์ใหม่</span>
+                        <ClipboardCheck className="h-4 w-4" />
+                        <span className="hidden md:inline">ประเมินสิทธิ์</span>
                       </button>
                     )}
-
-                    {/* 3. ยื่นคำร้องขอความช่วยเหลือ */}
                     <button
                       type="button"
                       onClick={() => handleStartAssistanceRequest(selectedRegistry.id)}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl text-xs transition-colors shadow-sm"
+                      className="zms-action flex h-12 w-12 items-center justify-center gap-1.5 rounded-xl bg-sky-500 text-[14px] font-bold text-white shadow-sm md:h-11 md:w-auto md:px-3"
+                      aria-label="ยื่นคำร้อง"
+                      title="ยื่นคำร้อง"
                     >
-                      <FilePlus2 className="w-3.5 h-3.5" />
-                      <span>ยื่นคำร้องขอความช่วยเหลือ</span>
+                      <FilePlus2 className="h-4 w-4" />
+                      <span className="hidden md:inline">ยื่นคำร้อง</span>
                     </button>
-
-                    {/* 4. ดูประวัติการประเมิน */}
-                    <button
-                      type="button"
-                      onClick={() => setActiveMainSection('assessments')}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/25 text-white font-bold rounded-xl text-xs transition-colors border border-white/15"
-                    >
-                      <History className="w-3.5 h-3.5 text-emerald-300" />
-                      <span>ดูประวัติการประเมิน ({memberAssessments.length || selectedRegistry.assessmentCount || 0})</span>
-                    </button>
-
                     <button
                       type="button"
                       onClick={() => {
-                        window.location.assign(`/beneficiaries/${selectedRegistry.id}/print`);
+                        if (isEditing) setShowUnsavedConfirm(true);
+                        else setSelectedRegistry(null);
                       }}
-                      className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs transition-colors border border-white/10"
-                      title="พิมพ์เอกสารแบบสำรวจสมาชิก"
+                      className="zms-action flex h-12 w-12 items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 text-[14px] font-bold text-white md:h-11 md:w-auto md:px-3"
+                      aria-label="กลับ"
+                      title="กลับ"
                     >
-                      <Printer className="w-4 h-4" />
+                      <ArrowLeft className="h-4 w-4" />
+                      <span className="hidden md:inline">กลับ</span>
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenHistoryModal(selectedRegistry.id)}
-                      className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs transition-colors border border-white/10"
-                      title="ดูประวัติการแก้ไขข้อมูลรายฟิลด์ (Audit Trail)"
-                    >
-                      <FileCheck2 className="w-4 h-4 text-amber-300" />
-                    </button>
-                  </>
+                    <details className="relative col-span-4 w-full md:w-auto">
+                      <summary className="flex h-11 w-full cursor-pointer list-none items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 text-[14px] font-bold text-white md:w-auto [&::-webkit-details-marker]:hidden">
+                        <MoreHorizontal className="h-4 w-4" />
+                        เพิ่มเติม
+                      </summary>
+                      <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl border border-white/15 bg-[#0b2545] p-1.5 shadow-xl md:left-auto md:w-64">
+                        <button type="button" data-keep-label onClick={(event) => { closeActionMenu(event.currentTarget); focusProfile('assessments'); }} className="zms-action flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-[14px] font-bold text-white hover:bg-white/10" aria-label="ประวัติการประเมิน" title="ประวัติการประเมิน">
+                          <History className="h-4 w-4 shrink-0 text-emerald-300" />
+                          <span>ประวัติการประเมิน ({memberAssessments.length || selectedRegistry.assessmentCount || 0})</span>
+                        </button>
+                        <button type="button" data-keep-label onClick={(event) => { closeActionMenu(event.currentTarget); window.location.assign(`/beneficiaries/${selectedRegistry.id}/print`); }} className="zms-action flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-[14px] font-bold text-white hover:bg-white/10" aria-label="พิมพ์ข้อมูล" title="พิมพ์ข้อมูล">
+                          <Printer className="h-4 w-4 shrink-0" />
+                          <span>พิมพ์ข้อมูล</span>
+                        </button>
+                        <button type="button" data-keep-label onClick={(event) => { closeActionMenu(event.currentTarget); focusProfile('documents'); }} className="zms-action flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-[14px] font-bold text-white hover:bg-white/10" aria-label="ดูเอกสาร" title="ดูเอกสาร">
+                          <FileText className="h-4 w-4 shrink-0 text-sky-300" />
+                          <span>ดูเอกสาร</span>
+                        </button>
+                        <button type="button" data-keep-label onClick={(event) => { closeActionMenu(event.currentTarget); focusProfile('audit'); }} className="zms-action flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-[14px] font-bold text-white hover:bg-white/10" aria-label="ประวัติการแก้ไข" title="ประวัติการแก้ไข">
+                          <FileCheck2 className="h-4 w-4 shrink-0 text-amber-300" />
+                          <span>ประวัติการแก้ไข</span>
+                        </button>
+                      </div>
+                    </details>
+                  </div>
                 ) : (
-                  <>
+                  <div className="grid grid-cols-2 justify-items-center gap-2 md:flex md:justify-end">
                     <button
                       type="button"
                       onClick={handleCancelEdit}
                       disabled={isSaving}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-xl text-xs transition-colors"
+                      className="zms-action flex h-12 w-12 items-center justify-center gap-1.5 rounded-xl bg-white/20 text-[14px] font-semibold text-white md:h-11 md:w-auto md:px-3"
+                      aria-label="ยกเลิก"
+                      title="ยกเลิก"
                     >
-                      <X className="w-3.5 h-3.5" />
-                      <span>ยกเลิก</span>
+                      <X className="h-4 w-4" />
+                      <span className="hidden md:inline">ยกเลิก</span>
                     </button>
-
                     <button
                       type="button"
                       onClick={handleSaveEdit}
                       disabled={isSaving}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-xl text-xs transition-colors shadow-md disabled:opacity-50"
+                      className="zms-action flex h-12 w-12 items-center justify-center gap-1.5 rounded-xl bg-emerald-500 text-[14px] font-extrabold text-slate-950 disabled:opacity-50 md:h-11 md:w-auto md:px-3"
+                      aria-label={isSaving ? 'กำลังบันทึก' : 'บันทึก'}
+                      title={isSaving ? 'กำลังบันทึก' : 'บันทึก'}
                     >
-                      {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}</span>
+                      {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      <span className="hidden md:inline">{isSaving ? 'กำลังบันทึก...' : 'บันทึก'}</span>
                     </button>
-                  </>
+                  </div>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isEditing) {
-                      setShowUnsavedConfirm(true);
-                    } else {
-                      setSelectedRegistry(null);
-                    }
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-2 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-xs transition-colors border border-white/15"
-                  title="ปิดหน้ารายละเอียดสมาชิก"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">กลับ</span>
-                </button>
+              </div>
+              </div>
               </div>
             </div>
 
-            {/* Mobile Navigation Dropdown (< md) */}
-            <div className="md:hidden p-2.5 bg-slate-100 border-b border-slate-200 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-slate-600 shrink-0">ส่วนข้อมูล (8 หมวด):</span>
-                <select
-                  value={activeMainSection}
-                  onChange={(e) => {
-                    const sec = e.target.value as RegistryMainSection;
-                    setActiveMainSection(sec);
-                  }}
-                  className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 shadow-xs focus:ring-2 focus:ring-[#0b2545]"
-                >
-                  {MAIN_SECTIONS.map((sec) => (
-                    <option key={sec.id} value={sec.id}>
-                      {sec.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div ref={profileBodyRef} className="flex-1 overflow-y-auto bg-[#F4F7FB] px-2.5 pb-4 pt-2 sm:p-5">
+              <BeneficiaryIntegratedProfile
+                registry={selectedRegistry}
+                applications={applications}
+                memberAssessments={memberAssessments}
+                isLoadingAssessments={isLoadingAssessments}
+                isEditing={isEditing}
+                editForm={editForm}
+                setEditForm={setEditForm}
+                canEdit={canEditRegistry(selectedRegistry)}
+                canAssess={canPerformAssessment}
+                canApprove={canApproveAssessment}
+                canViewUnmaskedId={['super_admin', 'approver', 'officer'].includes(currentUser.role)}
+                authToken={authToken}
+                asnafLabels={ASNAF_LABELS}
+                statusLabels={REGISTRATION_STATUS_LABELS}
+                focusRequest={profileFocus}
+                isSavingLocation={isSavingLocationDirectly}
+                isSavingChecklist={isSavingChecklist}
+                onStartEdit={(section) => {
+                  if (section === 'coordinator') void handleStartEdit('coordinator');
+                  else if (section === 'household') void handleStartEdit('family', 'household');
+                  else if (section === 'economy') void handleStartEdit('economy', 'economy');
+                  else if (section === 'limitations' || section === 'other_aid') void handleStartEdit('limitations', section);
+                  else void handleStartEdit('member_info', 'info');
+                }}
+                onSaveLocationDirectly={handleSaveLocationDirectly}
+                onOpenStatusDialog={() => handleOpenStatusDialog(selectedRegistry)}
+                onOpenHistoryModal={() => handleOpenHistoryModal(selectedRegistry.id)}
+                onSaveChecklist={handleSaveChecklist}
+                onRefreshRegistry={async () => { await loadRegistryDetail(selectedRegistry.id); }}
+                onOpenNewAssessment={() => setIsPeriodicAssessmentModalOpen(true)}
+                onRefreshAssessments={async () => {
+                  await Promise.all([
+                    loadMemberAssessments(selectedRegistry.id),
+                    loadRegistryDetail(selectedRegistry.id),
+                    refreshData(),
+                  ]);
+                }}
+                showToast={showToast}
+                onOpenCreateRequest={() => handleStartAssistanceRequest(selectedRegistry.id)}
+                onNavigateToRequests={(reqId) => {
+                  setSelectedRegistry(null);
+                  if (onOpenAssistanceRequestDetail && reqId) onOpenAssistanceRequestDetail(reqId);
+                  else onNavigate('assistance-requests');
+                }}
+                onOpenReceiptModal={(app) => setSelectedAidForReceipt(app)}
+              />
             </div>
 
-            {/* 8-Section Navigation Tabs Bar (Master Requirement Section 8) */}
-            <div className="border-b border-slate-200 bg-slate-50 px-3 sm:px-4 flex items-center gap-1 overflow-x-auto text-xs font-semibold shrink-0 no-scrollbar touch-scroll">
-              {MAIN_SECTIONS.map((sec) => {
-                const Icon = sec.icon;
-                const isActive = activeMainSection === sec.id;
-                return (
-                  <button
-                    key={sec.id}
-                    type="button"
-                    onClick={() => setActiveMainSection(sec.id as RegistryMainSection)}
-                    className={`flex items-center gap-1.5 py-3 px-3 border-b-2 font-bold whitespace-nowrap transition-all text-xs ${
-                      isActive
-                        ? 'border-emerald-600 text-emerald-800 bg-emerald-50/70 shadow-2xs'
-                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                    }`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`} />
-                    <span>{sec.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Modal Body Container with 8 Required Sections */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/60">
-              {/* 1. ข้อมูลสมาชิก (ข้อมูลบุคคลและที่อยู่ + พิกัดแผนที่ + ผู้ประสานงาน/ผู้รับรอง + สถานะสมาชิก) */}
-              {activeMainSection === 'member_info' && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-1.5 flex-wrap bg-white p-2 rounded-xl border border-slate-200 text-xs">
-                    {[
-                      { id: 'info', label: 'ข้อมูลบุคคลและที่อยู่อาศัย' },
-                      { id: 'location', label: 'พิกัดบ้านและแผนที่ Google Maps' },
-                      { id: 'coordinator', label: 'ผู้ประสานงานและผู้รับรอง' },
-                      { id: 'status', label: 'สถานะสมาชิกและประวัติสถานะ' },
-                    ].map((sub) => (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        onClick={() => setMemberInfoSubTab(sub.id as any)}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                          memberInfoSubTab === sub.id
-                            ? 'bg-[#0b2545] text-white'
-                            : 'text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {sub.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {memberInfoSubTab === 'info' && (
-                    <PersonalSection
-                      registry={selectedRegistry}
-                      isEditing={isEditing}
-                      editForm={editForm}
-                      setEditForm={setEditForm}
-                      canEdit={canEditRegistry(selectedRegistry)}
-                      onStartEdit={(subSec) => {
-                        if (subSec === 'household') handleStartEdit('family', 'household');
-                        else if (subSec === 'economy') handleStartEdit('economy', 'economy');
-                        else if (subSec === 'limitations' || subSec === 'other_aid') handleStartEdit('limitations', subSec);
-                        else handleStartEdit('member_info', 'info');
-                      }}
-                      activeSubTab="info"
-                      setActiveSubTab={(sub) => {
-                        if (sub === 'household') setActiveMainSection('family');
-                        else if (sub === 'economy') setActiveMainSection('economy');
-                        else if (sub === 'limitations' || sub === 'other_aid') {
-                          setLimitationsSubTab(sub);
-                          setActiveMainSection('limitations');
-                        }
-                      }}
-                      asnafLabels={ASNAF_LABELS}
-                      canViewUnmaskedId={['super_admin', 'approver', 'officer'].includes(currentUser.role)}
-                    />
-                  )}
-
-                  {memberInfoSubTab === 'location' && (
-                    <LocationSection
-                      registry={selectedRegistry}
-                      canEdit={canEditRegistry(selectedRegistry)}
-                      onSaveLocationDirectly={handleSaveLocationDirectly}
-                      isSavingLocation={isSavingLocationDirectly}
-                    />
-                  )}
-
-                  {memberInfoSubTab === 'coordinator' && (
-                    <CoordinatorSection
-                      registry={selectedRegistry}
-                      isEditing={isEditing}
-                      editForm={editForm}
-                      setEditForm={setEditForm}
-                      canEdit={canEditRegistry(selectedRegistry)}
-                      onStartEdit={() => {
-                        setMemberInfoSubTab('coordinator');
-                        handleStartEdit('coordinator');
-                      }}
-                    />
-                  )}
-
-                  {memberInfoSubTab === 'status' && (
-                    <StatusSection
-                      registry={selectedRegistry}
-                      statusLabels={REGISTRATION_STATUS_LABELS}
-                      canEdit={canEditRegistry(selectedRegistry)}
-                      onOpenStatusDialog={() => handleOpenStatusDialog(selectedRegistry)}
-                      onOpenHistoryModal={() => handleOpenHistoryModal(selectedRegistry.id)}
-                      onSaveChecklist={handleSaveChecklist}
-                      isSavingChecklist={isSavingChecklist}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* 2. ข้อมูลครอบครัว */}
-              {activeMainSection === 'family' && (
-                <PersonalSection
-                  registry={selectedRegistry}
-                  isEditing={isEditing}
-                  editForm={editForm}
-                  setEditForm={setEditForm}
-                  canEdit={canEditRegistry(selectedRegistry)}
-                  onStartEdit={() => handleStartEdit('family', 'household')}
-                  activeSubTab="household"
-                  setActiveSubTab={(sub) => {
-                    if (sub === 'info') setActiveMainSection('member_info');
-                    else if (sub === 'economy') setActiveMainSection('economy');
-                    else if (sub === 'limitations' || sub === 'other_aid') {
-                      setLimitationsSubTab(sub);
-                      setActiveMainSection('limitations');
-                    }
-                  }}
-                  asnafLabels={ASNAF_LABELS}
-                  canViewUnmaskedId={['super_admin', 'approver', 'officer'].includes(currentUser.role)}
-                />
-              )}
-
-              {/* 3. รายได้ รายจ่าย และหนี้สิน */}
-              {activeMainSection === 'economy' && (
-                <PersonalSection
-                  registry={selectedRegistry}
-                  isEditing={isEditing}
-                  editForm={editForm}
-                  setEditForm={setEditForm}
-                  canEdit={canEditRegistry(selectedRegistry)}
-                  onStartEdit={() => handleStartEdit('economy', 'economy')}
-                  activeSubTab="economy"
-                  setActiveSubTab={(sub) => {
-                    if (sub === 'info') setActiveMainSection('member_info');
-                    else if (sub === 'household') setActiveMainSection('family');
-                    else if (sub === 'limitations' || sub === 'other_aid') {
-                      setLimitationsSubTab(sub);
-                      setActiveMainSection('limitations');
-                    }
-                  }}
-                  asnafLabels={ASNAF_LABELS}
-                  canViewUnmaskedId={['super_admin', 'approver', 'officer'].includes(currentUser.role)}
-                />
-              )}
-
-              {/* 4. สภาพปัจจุบันและข้อจำกัด */}
-              {activeMainSection === 'limitations' && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-1.5 bg-white p-2 rounded-xl border border-slate-200 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setLimitationsSubTab('limitations')}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                        limitationsSubTab === 'limitations' ? 'bg-[#0b2545] text-white' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      สภาพปัญหาและข้อจำกัดปัจจุบัน
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLimitationsSubTab('other_aid')}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                        limitationsSubTab === 'other_aid' ? 'bg-[#0b2545] text-white' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      ความช่วยเหลือจากหน่วยงานภายนอก
-                    </button>
-                  </div>
-
-                  <PersonalSection
-                    registry={selectedRegistry}
-                    isEditing={isEditing}
-                    editForm={editForm}
-                    setEditForm={setEditForm}
-                    canEdit={canEditRegistry(selectedRegistry)}
-                    onStartEdit={() => handleStartEdit('limitations', limitationsSubTab)}
-                    activeSubTab={limitationsSubTab}
-                    setActiveSubTab={(sub) => {
-                      if (sub === 'info') setActiveMainSection('member_info');
-                      else if (sub === 'household') setActiveMainSection('family');
-                      else if (sub === 'economy') setActiveMainSection('economy');
-                      else if (sub === 'limitations' || sub === 'other_aid') setLimitationsSubTab(sub);
-                    }}
-                    asnafLabels={ASNAF_LABELS}
-                    canViewUnmaskedId={['super_admin', 'approver', 'officer'].includes(currentUser.role)}
-                  />
-                </div>
-              )}
-
-              {/* 5. เอกสารแนบ */}
-              {activeMainSection === 'documents' && (
-                <DocumentsSection
-                  registry={selectedRegistry}
-                  canEdit={canEditRegistry(selectedRegistry)}
-                  onRefreshRegistry={async () => {
-                    await loadRegistryDetail(selectedRegistry.id);
-                  }}
-                  onDocumentsUploaded={async () => {
-                    await loadRegistryDetail(selectedRegistry.id);
-                  }}
-                />
-              )}
-
-              {/* 6. ประวัติการประเมินสิทธิ์ */}
-              {activeMainSection === 'assessments' && (
-                <AssessmentHistorySection
-                  registry={selectedRegistry}
-                  assessments={memberAssessments}
-                  isLoading={isLoadingAssessments}
-                  canAssess={canPerformAssessment}
-                  canApprove={canApproveAssessment}
-                  authToken={authToken}
-                  onOpenNewAssessment={() => setIsPeriodicAssessmentModalOpen(true)}
-                  onRefreshAssessments={async () => {
-                    await Promise.all([
-                      loadMemberAssessments(selectedRegistry.id),
-                      loadRegistryDetail(selectedRegistry.id),
-                      refreshData(),
-                    ]);
-                  }}
-                  showToast={showToast}
-                />
-              )}
-
-              {/* 7. ประวัติคำร้อง */}
-              {activeMainSection === 'requests' && (
-                <MemberRequestsSection
-                  registry={selectedRegistry}
-                  contextApplications={applications}
-                  authToken={authToken}
-                  canCreateRequest={true}
-                  onOpenCreateRequest={() => handleStartAssistanceRequest(selectedRegistry.id)}
-                  onNavigateToRequests={(reqId) => {
-                    setSelectedRegistry(null);
-                    if (onOpenAssistanceRequestDetail && reqId) {
-                      onOpenAssistanceRequestDetail(reqId);
-                    } else {
-                      onNavigate('assistance-requests');
-                    }
-                  }}
-                />
-              )}
-
-              {/* 8. ประวัติการช่วยเหลือ */}
-              {activeMainSection === 'aid_history' && (
-                <AssistanceHistorySection
-                  registry={selectedRegistry}
-                  applications={applications}
-                  onOpenReceiptModal={(app) => setSelectedAidForReceipt(app)}
-                  onOpenNewAssistanceDialog={() => handleStartAssistanceRequest(selectedRegistry.id)}
-                  canEdit={canEditRegistry(selectedRegistry)}
-                />
-              )}
-            </div>
 
             {/* Modal Footer */}
-            <div className="p-3.5 sm:p-4 border-t border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+            <div className={`shrink-0 gap-3 border-t border-slate-200 bg-white p-3 text-xs sm:p-4 ${isEditing ? 'flex flex-col lg:flex-row lg:items-end lg:justify-between' : 'hidden lg:flex lg:flex-wrap lg:items-center lg:justify-between'}`}>
               {!isEditing ? (
                 <>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1873,10 +1942,7 @@ export function BeneficiaryRegistryView({
                       {getDisplayMemberCode(selectedRegistry)}
                     </span>
                     <span className="text-slate-300">•</span>
-                    <span className="text-slate-500">หมวดปัจจุบัน:</span>
-                    <span className="font-bold text-slate-800">
-                      {MAIN_SECTIONS.find((s) => s.id === activeMainSection)?.label}
-                    </span>
+                    <span className="font-bold text-slate-800">โปรไฟล์สมาชิกแบบหน้าเดียว</span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
@@ -1884,8 +1950,8 @@ export function BeneficiaryRegistryView({
                       <button
                         type="button"
                         onClick={() => handleStartEdit(activeMainSection)}
-                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-xs"
-                      >
+                        className="zms-action px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-xs"
+                       aria-label="แก้ไขข้อมูลสมาชิก" title="แก้ไขข้อมูลสมาชิก">
                         <Edit className="w-3.5 h-3.5" />
                         <span>แก้ไขข้อมูลสมาชิก</span>
                       </button>
@@ -1895,8 +1961,8 @@ export function BeneficiaryRegistryView({
                       <button
                         type="button"
                         onClick={() => setIsPeriodicAssessmentModalOpen(true)}
-                        className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-xs"
-                      >
+                        className="zms-action px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-xs"
+                       aria-label="ประเมินสิทธิ์ใหม่" title="ประเมินสิทธิ์ใหม่">
                         <ClipboardCheck className="w-3.5 h-3.5" />
                         <span>ประเมินสิทธิ์ใหม่</span>
                       </button>
@@ -1905,8 +1971,8 @@ export function BeneficiaryRegistryView({
                     <button
                       type="button"
                       onClick={() => handleStartAssistanceRequest(selectedRegistry.id)}
-                      className="px-4 py-2 bg-[#0b2545] hover:bg-slate-800 text-white rounded-xl font-bold transition-colors shadow-xs flex items-center gap-1.5"
-                    >
+                      className="zms-action px-4 py-2 bg-[#0b2545] hover:bg-slate-800 text-white rounded-xl font-bold transition-colors shadow-xs flex items-center gap-1.5"
+                     aria-label="ยื่นคำร้องขอความช่วยเหลือ" title="ยื่นคำร้องขอความช่วยเหลือ">
                       <FilePlus2 className="w-3.5 h-3.5 text-emerald-400" />
                       <span>ยื่นคำร้องขอความช่วยเหลือ</span>
                     </button>
@@ -1980,12 +2046,12 @@ export function BeneficiaryRegistryView({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex shrink-0 items-center gap-3">
                     <button
                       type="button"
                       onClick={handleCancelEdit}
                       disabled={isSaving}
-                      className="px-3.5 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl font-semibold transition-colors"
+                      className="min-h-11 rounded-xl border border-slate-300 px-4 font-semibold text-slate-700 transition-colors hover:bg-slate-100"
                     >
                       ยกเลิกการแก้ไข
                     </button>
@@ -1994,7 +2060,7 @@ export function BeneficiaryRegistryView({
                       type="button"
                       onClick={handleSaveEdit}
                       disabled={isSaving}
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-colors shadow-md disabled:opacity-50 flex items-center gap-1.5"
+                      className="zms-action flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-5 font-bold text-white shadow-md transition-colors hover:bg-emerald-500 disabled:opacity-50"
                     >
                       {isSaving ? (
                         <RefreshCw className="w-4 h-4 animate-spin" />
@@ -2033,6 +2099,7 @@ export function BeneficiaryRegistryView({
                 refreshData(),
               ]);
               setActiveMainSection('assessments');
+              focusProfile('assessments');
             }}
             showToast={showToast}
           />
@@ -2059,7 +2126,7 @@ export function BeneficiaryRegistryView({
                 <h3 className="font-bold text-sm">ปรับสถานะสมาชิก / การตรวจสอบ</h3>
                 <button
                   onClick={() => setIsStatusDialogOpen(false)}
-                  className="text-slate-300 hover:text-white"
+                  className="zms-action text-slate-300 hover:text-white"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -2262,8 +2329,8 @@ export function BeneficiaryRegistryView({
                   type="button"
                   onClick={handleConfirmSave}
                   disabled={isSaving || (savePreview.material && (savePreview.syncedForm?.editNotes || '').trim().length < 5)}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-1.5 transition-colors shadow-xs"
-                >
+                  className="zms-action px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-1.5 transition-colors shadow-xs"
+                 aria-label="กำลังบันทึก..." title="กำลังบันทึก...">
                   {isSaving ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />

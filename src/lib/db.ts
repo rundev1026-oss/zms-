@@ -1062,9 +1062,11 @@ export async function initDb(): Promise<void> {
   }
 
 
-  // Seed default Funds if empty
+  // Seed default Funds if empty. Demo transactions are inserted only with that first
+  // fund setup. An intentional empty ledger must stay empty.
   const fundCount = await db.execute('SELECT COUNT(*) as count FROM fund_accounts');
-  if (Number(fundCount.rows[0].count) === 0) {
+  const seedDemoFinance = Number(fundCount.rows[0].count) === 0;
+  if (seedDemoFinance) {
     await db.execute({
       sql: `INSERT INTO fund_accounts (id, code, name, description, category, total_received, committed_amount, disbursed_amount, available_amount, target_goal) VALUES
         ('fund-1', 'FND-ZKT-01', 'กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)', 'เพื่อการยังชีพ ค่าอาหาร ค่ายา และที่อยู่อาศัยขั้นพื้นฐานของผู้ยากไร้', 'zakat', 3500000, 250000, 2100000, 1150000, 5000000),
@@ -1077,9 +1079,9 @@ export async function initDb(): Promise<void> {
     });
   }
 
-  // Seed default Financial Transactions if empty
+  // Seed default Financial Transactions only on a brand-new database
   const txnCount = await db.execute('SELECT COUNT(*) as count FROM financial_transactions');
-  if (Number(txnCount.rows[0].count) === 0) {
+  if (seedDemoFinance && Number(txnCount.rows[0].count) === 0) {
     const seedTransactions = [
       {
         id: 'txn-seed-1',
@@ -1171,7 +1173,7 @@ export async function initDb(): Promise<void> {
 
   // Ensure Opening Balance ledger records exist so reconciliation is mathematically exact
   const openingCount = await db.execute("SELECT COUNT(*) as count FROM financial_transactions WHERE category LIKE 'ยอดยกมา%'");
-  if (Number(openingCount.rows[0].count) === 0) {
+  if (seedDemoFinance && Number(openingCount.rows[0].count) === 0) {
     const openingTxns = [
       { id: 'txn-opn-1', no: 'TXN-OPN-2569-001', date: '01 ต.ค. 2569 08:00', type: 'income', fundId: 'fund-1', fundName: 'กองทุนซะกาตผู้ยากไร้และขัดสน (Faqir & Miskin)', cat: 'ยอดยกมาต้นงวด (Opening Balance)', amount: 3250000.0, ref: 'OPN-BAL-2569-01' },
       { id: 'txn-opn-2', no: 'TXN-OPN-2569-002', date: '01 ต.ค. 2569 08:00', type: 'income', fundId: 'fund-2', fundName: 'กองทุนซะกาตเพื่อการปลดเปลื้องหนี้สิน (Gharimin)', cat: 'ยอดยกมาต้นงวด (Opening Balance)', amount: 1400000.0, ref: 'OPN-BAL-2569-02' },

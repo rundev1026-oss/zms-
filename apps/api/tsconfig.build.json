@@ -4,5 +4,6 @@
     "rootDir": "./src",
     "incremental": false
   },
-  "exclude": ["node_modules", "dist", "test", "prisma", "**/*.spec.ts"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test", "prisma", "scripts", "tmp-*", "**/*.spec.ts"]
 }

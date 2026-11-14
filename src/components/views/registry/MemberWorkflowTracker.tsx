@@ -107,13 +107,13 @@ function buildSteps(
   const stats = resolveRequestStats(registry, applications);
   const memberStatus = String(registry.memberStatus || 'ACTIVE').toUpperCase();
   const missingCore = !registry.phone || !(registry.address || registry.province) || !registry.nationalIdMasked;
-  const incomplete = missingCore || registry.registrationStatus === 'need_more_info';
+  const incomplete = missingCore;
   const registered = Boolean(registry.registeredDate) || memberStatus === 'ACTIVE' || memberStatus === 'PENDING_VERIFICATION';
 
   let registration: StepModel;
   if (memberStatus === 'ARCHIVED') {
     registration = { id: 'register', title: 'ทะเบียนสมาชิก', status: 'ลบแบบ Soft Delete', date: dateText(registry.updatedAt), tone: 'problem', details: [] };
-  } else if (memberStatus === 'SUSPENDED' || registry.registrationStatus === 'suspended') {
+  } else if (memberStatus === 'SUSPENDED') {
     registration = { id: 'register', title: 'ทะเบียนสมาชิก', status: 'ถูกระงับ', date: dateText(registry.registeredDate), tone: 'problem', details: [] };
   } else if (!registered) {
     registration = { id: 'register', title: 'ทะเบียนสมาชิก', status: 'ยังไม่ลงทะเบียน', date: 'ยังไม่มีวันที่', tone: 'idle', details: [] };

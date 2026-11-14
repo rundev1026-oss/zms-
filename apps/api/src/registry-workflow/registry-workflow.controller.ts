@@ -63,26 +63,15 @@ export class RegistryWorkflowController {
     return this.workflow.reject(id, dto.reason, user);
   }
 
-  @Post(':id/suspend')
-  @RequirePermissions('beneficiaries.decide')
-  @ApiOperation({ summary: 'ระงับทะเบียนที่มีคุณสมบัติ ไม่ใช่สถานะของคำร้อง' })
-  suspend(
+  @Post(':id/re-review')
+  @RequirePermissions('beneficiaries.review')
+  @ApiOperation({ summary: 'ส่งทะเบียนกลับเข้าสู่สถานะตรวจสอบข้อมูลใหม่ (เช่น หลังแก้ไขข้อมูลสำคัญหรือขอทบทวน)' })
+  reReview(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReasonDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.workflow.suspend(id, dto.reason, user);
-  }
-
-  @Post(':id/archive')
-  @RequirePermissions('beneficiaries.decide')
-  @ApiOperation({ summary: 'เก็บถาวรทะเบียนที่ปิดผลแล้ว ไม่ใช่สถานะของคำร้อง' })
-  archive(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ReasonDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.workflow.archive(id, dto.reason, user);
+    return this.workflow.reReview(id, dto.reason, user);
   }
 
   @Get(':id/history')

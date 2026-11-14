@@ -431,14 +431,14 @@ export class AsnafService {
     switch (assessmentStatus.toUpperCase()) {
       case 'ELIGIBLE':
       case 'APPROVED':
-        return 'ELIGIBLE';
+        return 'QUALIFIED';
       case 'NOT_ELIGIBLE':
-        return 'INELIGIBLE';
+        return 'NOT_QUALIFIED';
       case 'RETURNED_FOR_CORRECTION':
-        return 'NEEDS_CORRECTION';
+        return 'DRAFT';
       case 'PENDING_ASSESSMENT':
       case 'UNDER_REVIEW':
-        return 'UNDER_ASSESSMENT';
+        return 'UNDER_REVIEW';
       default:
         return null;
     }

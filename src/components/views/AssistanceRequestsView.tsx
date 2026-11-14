@@ -10,7 +10,7 @@ import {
   FaqirMiskinSubFund,
   AsnafAllocation
 } from '@/types';
-import { formatPersonName } from '@zms/shared';
+import { formatPersonName, getRegistryStatusLabelTh } from '@zms/shared';
 import { normalizePrimaryGroupCode } from '@/lib/financeUtils';
 import { computeDocumentChecklist } from '@/lib/registryDocuments';
 import { DocumentListTable } from '@/components/common/DocumentListTable';
@@ -1236,7 +1236,7 @@ export function AssistanceRequestsView({
                   </div>
                   {linkedRegistry ? (
                     <div className="mt-1 text-xs text-teal-800">
-                      เชื่อมโยงกับเลขทะเบียน <strong>{linkedRegistry.registrationNo}</strong> (สถานะ: {linkedRegistry.registrationStatus})
+                      เชื่อมโยงกับเลขทะเบียน <strong>{linkedRegistry.registrationNo}</strong> (สถานะ: {getRegistryStatusLabelTh(linkedRegistry.registrationStatus)})
                     </div>
                   ) : (
                     <div className="mt-1 text-xs text-amber-800">

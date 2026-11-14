@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getRegistryStatusLabelTh } from '@zms/shared';
 import { 
   User, 
   UserRole, 
@@ -1370,7 +1371,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      showToast(`อัปเดตสถานะทะเบียนสำเร็จ: ${json.data.registrationStatus}`, 'success');
+      showToast(
+        `อัปเดตสถานะทะเบียนสำเร็จ: ${getRegistryStatusLabelTh(json.data.registrationStatus)}`,
+        'success',
+      );
       await refreshData();
       return true;
     } catch (err: any) {

@@ -124,13 +124,9 @@ export interface SurveyPrintModel {
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'ร่าง',
-  pending_verification: 'รอตรวจสอบข้อมูล',
-  pending_survey: 'รอลงพื้นที่สำรวจ',
-  pending_qualification: 'รอพิจารณาคุณสมบัติ',
+  under_review: 'ตรวจสอบข้อมูล',
   qualified: 'มีคุณสมบัติตามเกณฑ์',
-  disqualified: 'ไม่มีคุณสมบัติตามเกณฑ์',
-  need_more_info: 'รอตรวจสอบใหม่',
-  suspended: 'ระงับหรือยกเลิกทะเบียน',
+  not_qualified: 'ไม่มีคุณสมบัติตามเกณฑ์',
 };
 
 const MARITAL: Record<string, string> = {

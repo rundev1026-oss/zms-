@@ -63,48 +63,58 @@ export async function upsertApplicationIntoSqlite(app: any): Promise<boolean> {
     const db = getDb();
 
     // 1. Ensure linked Beneficiary and Household exist
-    if (app.beneficiaryId) {
-      const benCheck = await db.execute({
-        sql: 'SELECT id FROM beneficiaries WHERE id = ?',
-        args: [app.beneficiaryId],
+    let resolvedBeneficiaryId = String(app.beneficiaryId || `ben-${String(app.id).slice(0, 12)}`);
+    const ben = app.beneficiary || {};
+    const benNationalId = String(
+      app.nationalId || ben.identityNumber || ben.nationalId || ben.thaiNationalId || `99${Date.now().toString().slice(-11)}`
+    );
+
+    const benCheck = await db.execute({
+      sql: 'SELECT id FROM beneficiaries WHERE id = ? OR national_id = ? LIMIT 1',
+      args: [resolvedBeneficiaryId, benNationalId],
+    });
+
+    if (benCheck.rows.length > 0) {
+      resolvedBeneficiaryId = String(benCheck.rows[0].id);
+    } else {
+      const hhId = `hh-${resolvedBeneficiaryId.slice(0, 18)}`;
+
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO households (id, household_no, address, district, province, community)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+        args: [
+          hhId,
+          `HH-${ben.memberId || ben.id?.slice?.(0, 8) || Date.now().toString().slice(-6)}`,
+          String(app.address || ben.address || 'ตามทะเบียน'),
+          String(app.district || ben.district || 'เมืองยะลา'),
+          String(app.province || ben.province || 'ยะลา'),
+          String(app.community || ben.community || 'สำนักงานกลาง'),
+        ],
       });
 
-      if (benCheck.rows.length === 0) {
-        const ben = app.beneficiary || {};
-        const hhId = `hh-${String(app.beneficiaryId).slice(0, 18)}`;
-        
-        await db.execute({
-          sql: `INSERT OR IGNORE INTO households (id, household_no, address, district, province, community)
-                VALUES (?, ?, ?, ?, ?, ?)`,
-          args: [
-            hhId,
-            `HH-${ben.memberId || ben.id?.slice?.(0, 8) || Date.now().toString().slice(-6)}`,
-            app.address || ben.address || 'ตามทะเบียน',
-            app.district || ben.district || 'เมืองยะลา',
-            app.province || ben.province || 'ยะลา',
-            app.community || ben.community || 'สำนักงานกลาง',
-          ],
-        });
-
-        await db.execute({
-          sql: `INSERT OR IGNORE INTO beneficiaries (
-            id, household_id, full_name, national_id, phone, asnaf_category,
-            title_prefix, registration_no, branch_id, branch_name
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          args: [
-            app.beneficiaryId,
-            hhId,
-            ben.fullName || `${ben.firstName || ''} ${ben.lastName || ''}`.trim() || 'ผู้ขอรับความช่วยเหลือ',
-            ben.identityNumber || ben.nationalId || ben.thaiNationalId || '0000000000000',
-            ben.phone || '0000000000',
-            app.asnafCategory || 'faqir_miskin',
-            ben.title || 'นาย',
-            ben.memberId || ben.registryNumber || 'REG-2569-0001',
-            app.branchId || 'br-hq',
-            app.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
-          ],
-        });
-      }
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO beneficiaries (
+          id, household_id, full_name, national_id, phone, asnaf_category,
+          title_prefix, registration_no, branch_id, branch_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          resolvedBeneficiaryId,
+          hhId,
+          String(
+            app.fullName ||
+              ben.fullName ||
+              `${ben.firstName || ''} ${ben.lastName || ''}`.trim() ||
+              'ผู้ขอรับความช่วยเหลือ'
+          ),
+          benNationalId,
+          String(app.phone || ben.phone || '0000000000'),
+          String(app.asnafCategory || 'faqir_miskin'),
+          String(app.title || ben.title || 'นาย'),
+          String(app.registrationNo || ben.memberId || ben.registryNumber || `REG-${Date.now().toString().slice(-6)}`),
+          String(app.branchId || 'br-hq'),
+          String(app.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร'),
+        ],
+      });
     }
 
     // 2. Upsert application into SQLite
@@ -146,46 +156,92 @@ export async function upsertApplicationIntoSqlite(app: any): Promise<boolean> {
         delivery_method = COALESCE(excluded.delivery_method, assistance_applications.delivery_method),
         updated_at = CURRENT_TIMESTAMP`,
       args: [
-        app.id,
-        app.applicationNo || app.id,
-        app.beneficiaryId,
-        app.asnafCategory || 'faqir_miskin',
+        String(app.id),
+        String(app.applicationNo || app.id),
+        resolvedBeneficiaryId,
+        String(app.asnafCategory || 'faqir_miskin'),
         Number(app.requestedAmount || 0),
-        app.approvedAmount ? Number(app.approvedAmount) : null,
-        app.disbursedAmount ? Number(app.disbursedAmount) : null,
-        app.status || 'submitted',
-        app.urgencyLevel || 'normal',
-        app.assignedOfficerId || 'u-1',
-        app.assignedOfficerName || 'ผู้ดูแลระบบ',
+        app.approvedAmount !== undefined && app.approvedAmount !== null ? Number(app.approvedAmount) : null,
+        app.disbursedAmount !== undefined && app.disbursedAmount !== null ? Number(app.disbursedAmount) : null,
+        String(app.status || 'submitted'),
+        String(app.urgencyLevel || 'normal'),
+        String(app.assignedOfficerId || 'u-officer-1'),
+        String(app.assignedOfficerName || 'เจ้าหน้าที่สำรวจภาคสนาม'),
         app.appliedDate ? String(app.appliedDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
-        app.branchId || 'br-hq',
-        app.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร',
-        app.hardshipReasons || '',
-        app.assistanceType || 'ปัจจัยยังชีพ',
-        app.assistanceTypeDetails || '',
-        app.necessityDetails || '',
-        app.memberId || '',
-        app.registrationNo || '',
-        app.assistanceTypeId || null,
-        app.assistanceGroup || 'core',
-        app.primaryGroupCode || 'faqir_miskin',
-        app.specificFundId || null,
-        app.specificFundCode || null,
-        app.specificFundName || null,
-        app.fiscalYear || '2569',
-        app.assistanceFormatId || null,
-        app.assistanceFormatCode || null,
-        app.assistanceFormatName || null,
-        app.deliveryMethod || null,
-        app.requestStatus || app.status || 'submitted',
-        app.assessmentStatus || 'pending',
-        app.approvalStatus || 'pending',
-        app.paymentStatus || 'unpaid',
-        app.deliveryStatus || 'pending',
-        app.followupStatus || 'pending',
-        ['closed', 'terminated'].includes(String(app.completionStatus || '').toLowerCase()) ? app.completionStatus : 'active',
+        String(app.branchId || 'br-hq'),
+        String(app.branchName || 'สำนักงานใหญ่ กรุงเทพมหานคร'),
+        typeof app.hardshipReasons === 'string'
+          ? app.hardshipReasons
+          : JSON.stringify(app.hardshipReasons || {}),
+        String(app.assistanceType || 'ปัจจัยยังชีพ'),
+        typeof app.assistanceTypeDetails === 'string'
+          ? app.assistanceTypeDetails
+          : JSON.stringify(app.assistanceTypeDetails || ''),
+        String(app.necessityDetails || ''),
+        String(app.memberId || ''),
+        String(app.registrationNo || ''),
+        app.assistanceTypeId ? String(app.assistanceTypeId) : null,
+        String(app.assistanceGroup || app.assistanceTypeGroup || 'core'),
+        String(app.primaryGroupCode || 'faqir_miskin'),
+        app.specificFundId ? String(app.specificFundId) : null,
+        app.specificFundCode ? String(app.specificFundCode) : null,
+        app.specificFundName ? String(app.specificFundName) : null,
+        String(app.fiscalYear || '2569'),
+        app.assistanceFormatId ? String(app.assistanceFormatId) : null,
+        app.assistanceFormatCode ? String(app.assistanceFormatCode) : null,
+        app.assistanceFormatName ? String(app.assistanceFormatName) : null,
+        app.deliveryMethod ? String(app.deliveryMethod) : null,
+        String(app.requestStatus || app.status || 'submitted'),
+        String(
+          app.assessmentStatus ||
+            (['pending_approval', 'wait_disbursement', 'approved', 'disbursed'].includes(String(app.status || '')) ||
+            app.assessment ||
+            app.legacyAssessment
+              ? 'completed'
+              : 'pending')
+        ),
+        String(
+          app.approvalStatus ||
+            (['wait_disbursement', 'approved', 'disbursed'].includes(String(app.status || ''))
+              ? 'approved'
+              : 'pending')
+        ),
+        String(app.paymentStatus || 'unpaid'),
+        String(app.deliveryStatus || 'pending'),
+        String(app.followupStatus || 'pending'),
+        ['closed', 'terminated'].includes(String(app.completionStatus || '').toLowerCase())
+          ? String(app.completionStatus)
+          : 'active',
       ],
     });
+
+    const asm = app.assessment || app.legacyAssessment;
+    if (asm) {
+      await db.execute({
+        sql: `INSERT OR REPLACE INTO beneficiary_assessments (
+          id, application_id, assessed_by_id, assessed_by_name, assessed_date,
+          living_score, housing_condition, housing_notes, debt_burden_summary,
+          primary_hardship, officer_recommendation, recommended_amount, recommended_fund_id, recommended_specific_fund_id, general_notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          String(asm.id || `asm-${app.id}`),
+          String(app.id),
+          String(asm.assessedById || 'u-1'),
+          String(asm.assessedByName || 'เจ้าหน้าที่ผู้ประเมิน'),
+          String(asm.assessedDate || new Date().toISOString().slice(0, 10)),
+          Number(asm.livingScore || 0),
+          String(asm.housingCondition || 'moderate'),
+          String(asm.housingNotes || ''),
+          String(asm.debtBurdenSummary || ''),
+          String(asm.primaryHardship || ''),
+          String(asm.officerRecommendation || 'recommend_full'),
+          Number(asm.recommendedAmount || app.requestedAmount || 0),
+          String(asm.recommendedFundId || 'fund-1'),
+          asm.recommendedSpecificFundId ? String(asm.recommendedSpecificFundId) : null,
+          String(asm.generalNotes || ''),
+        ],
+      }).catch(() => {});
+    }
 
     return true;
   } catch (err) {

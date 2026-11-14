@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { formatPersonName, splitPersonName } from '@zms/shared';
+import {
+  formatPersonName,
+  splitPersonName,
+  normalizeRegistryStatusCode,
+} from '@zms/shared';
 import { resolveServerToken } from '@/lib/serverToken';
 import {
   buildHouseholdPayload,
   buildIncomeProfilePayload,
   mapNestBeneficiaryToRegistryItem,
+  mapStatusToFrontend,
   readNestFailure,
 } from '@/lib/registrySurvey';
 
@@ -60,7 +65,10 @@ export async function GET(request: NextRequest) {
 
     const queryParams = new URLSearchParams();
     if (search) queryParams.set('q', search);
-    if (registrationStatus && registrationStatus !== 'all') queryParams.set('status', registrationStatus.toUpperCase());
+    if (registrationStatus && registrationStatus !== 'all') {
+      const normalizedStatus = normalizeRegistryStatusCode(registrationStatus);
+      queryParams.set('status', normalizedStatus || registrationStatus.toUpperCase());
+    }
     if (asnafCategory && asnafCategory !== 'all') queryParams.set('asnafCategoryId', asnafCategory);
     if (province && province !== 'all') queryParams.set('province', province);
     queryParams.set('page', page);
@@ -108,17 +116,7 @@ export async function GET(request: NextRequest) {
         asnafCategory = item.asnaf.toLowerCase();
       }
 
-      // Map NestJS status enum to Frontend RegistrationStatus
-      let regStatus = item.registrationStatus || item.status || 'draft';
-      const statusUpper = String(regStatus).toUpperCase();
-      if (statusUpper === 'DRAFT') regStatus = 'draft';
-      else if (statusUpper === 'SUBMITTED') regStatus = 'pending_verification';
-      else if (statusUpper === 'PENDING_REVIEW') regStatus = 'pending_qualification';
-      else if (statusUpper === 'APPROVED') regStatus = 'qualified';
-      else if (statusUpper === 'REJECTED') regStatus = 'disqualified';
-      else if (statusUpper === 'SUSPENDED') regStatus = 'suspended';
-      else if (statusUpper === 'NEED_INFO') regStatus = 'need_more_info';
-      else regStatus = String(regStatus).toLowerCase();
+      const regStatus = mapStatusToFrontend(item.registrationStatus || item.status || 'draft');
 
       const survey = mapNestBeneficiaryToRegistryItem(item);
       return {
@@ -322,6 +320,28 @@ export async function POST(request: NextRequest) {
       console.error('Failed to record initial assessment:', asnafErr);
     }
 
+    // 7. Submit DRAFT -> UNDER_REVIEW when registration is submitted (not saved as draft)
+    const isDraftSubmit =
+      input.registrationStatus === 'draft' ||
+      input.status === 'draft' ||
+      body.submitStatus === 'draft';
+    let finalStatus = mapStatusToFrontend(createData.status || 'DRAFT');
+    if (!isDraftSubmit) {
+      try {
+        const submitRes = await fetch(`${API_BASE_URL}/beneficiaries/${beneficiaryId}/submit`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({}),
+        });
+        if (submitRes.ok) {
+          const submittedData = await submitRes.json().catch(() => null);
+          finalStatus = mapStatusToFrontend(submittedData?.status || 'UNDER_REVIEW');
+        }
+      } catch (submitErr) {
+        console.warn('Auto-submit after registration failed, keeping DRAFT:', submitErr);
+      }
+    }
+
     const permanentMemberId = createData.memberId || createData.registryNumber;
 
     return NextResponse.json({
@@ -332,7 +352,7 @@ export async function POST(request: NextRequest) {
         memberId: permanentMemberId,
         memberCode: permanentMemberId,
         registrationNo: permanentMemberId,
-        status: createData.status,
+        status: finalStatus,
       },
       message: `ขึ้นทะเบียนสมาชิกสำเร็จ รหัสสมาชิกถาวร ${permanentMemberId}`,
     });

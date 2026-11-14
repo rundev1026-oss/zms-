@@ -60,7 +60,7 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
     dashboardStats?.pendingAssessments ??
     dashboardStats?.separated?.pendingAssessments ??
     dashboardStats?.pendingVerificationRegistries ??
-    registries.filter((r) => ['pending_verification', 'draft', 'pending_survey', 'pending_qualification'].includes(r.registrationStatus)).length;
+    registries.filter((r) => r.registrationStatus === 'under_review').length;
   const eligibleCount =
     dashboardStats?.eligibleCount ??
     dashboardStats?.separated?.eligibleCount ??
@@ -69,7 +69,9 @@ export function ExecutiveDashboard({ onNavigate, onSelectApplication }: Executiv
   const ineligibleCount =
     dashboardStats?.ineligibleCount ??
     dashboardStats?.separated?.ineligibleCount ??
-    registries.filter((r) => r.registrationStatus === 'disqualified').length;
+    dashboardStats?.notQualifiedBeneficiaries ??
+    dashboardStats?.disqualifiedBeneficiaries ??
+    registries.filter((r) => r.registrationStatus === 'not_qualified').length;
   const totalRequestsCount =
     dashboardStats?.totalAssistanceRequests ??
     dashboardStats?.separated?.totalAssistanceRequests ??

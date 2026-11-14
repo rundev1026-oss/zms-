@@ -99,14 +99,10 @@ export interface DuplicateCheckResult {
 
 // สถานะการขึ้นทะเบียนผู้มีสิทธิ์รับซะกาต (Zakat Eligibility Registration Status)
 export type RegistrationStatus =
-  | 'draft'                  // 1. ร่างทะเบียน
-  | 'pending_verification'   // 2. รอตรวจสอบข้อมูล
-  | 'pending_survey'         // 3. รอลงพื้นที่สำรวจ
-  | 'pending_qualification'  // 4. รอพิจารณาคุณสมบัติ
-  | 'qualified'              // 5. มีคุณสมบัติตามเกณฑ์
-  | 'disqualified'           // 6. ไม่มีคุณสมบัติตามเกณฑ์
-  | 'need_more_info'         // 7. ต้องตรวจสอบเพิ่มเติม
-  | 'suspended';             // 8. ระงับหรือยกเลิกทะเบียน
+  | 'draft'          // 1. ร่าง
+  | 'under_review'   // 2. ตรวจสอบข้อมูล
+  | 'qualified'      // 3. มีคุณสมบัติตามเกณฑ์
+  | 'not_qualified'; // 4. ไม่มีคุณสมบัติตามเกณฑ์
 
 export type AsnafCategory =
   | 'faqir'           // ผู้ยากไร้ (ไม่มีรายได้)
@@ -1917,6 +1913,15 @@ export interface DashboardSeparatedStats {
   pendingVerificationRegistries: number;      // จำนวนทะเบียนที่รอตรวจสอบ
   qualifiedBeneficiaries: number;             // จำนวนผู้ผ่านการพิจารณาคุณสมบัติ
   qualifiedRegistries?: number;               // alias
+  notQualifiedBeneficiaries?: number;         // จำนวนผู้ไม่มีคุณสมบัติตามเกณฑ์
+  disqualifiedBeneficiaries?: number;         // legacy alias
+  draftRegistries?: number;                   // จำนวนทะเบียนสถานะร่าง
+  statusBreakdown?: {
+    draft: number;
+    underReview: number;
+    qualified: number;
+    notQualified: number;
+  };
   pendingAssistanceRequests: number;          // จำนวนคำร้องขอความช่วยเหลือที่รอดำเนินการ
   pendingRequests?: number;                   // alias
   approvedAssistanceRequests: number;         // จำนวนคำร้องที่อนุมัติแล้ว
@@ -2402,13 +2407,29 @@ export interface GeneralLedgerEntry {
 export interface FundSolvencyCheckResult {
   isSolvent: boolean;
   applicationId?: string;
+  requestedAmount?: number;
   approvedAmount: number;
+  moneyTypePool?: {
+    code: 'zakat' | 'sadaqah' | 'operational' | 'restricted';
+    name: string;
+    totalReceived: number;
+    disbursedAmount: number;
+    committedAmount: number;
+    availableBeforeApproval: number;
+    remainingAfterApproval: number;
+    isSolvent: boolean;
+  };
   fundAccount: {
     id: string;
     code: string;
     name: string;
+    category?: string;
+    totalReceived?: number;
+    disbursedAmount?: number;
     availableAmount: number;
     committedAmount: number;
+    availableBeforeApproval?: number;
+    remainingAfterApproval?: number;
   };
   specificSubFund: {
     id: string;
@@ -2418,11 +2439,20 @@ export interface FundSolvencyCheckResult {
     disbursedAmount?: number;
     remainingAmount: number;
     committedAmount: number;
+    availableBeforeApproval?: number;
+    remainingAfterApproval?: number;
+    isSolvent?: boolean;
   };
   asnafAllocation?: {
     asnafCode: string;
     asnafName: string;
+    allocatedAmount?: number;
+    disbursedAmount?: number;
+    committedAmount?: number;
     remainingAmount: number;
+    availableBeforeApproval?: number;
+    remainingAfterApproval?: number;
+    isSolvent?: boolean;
   };
   chartOfAccountsPreview: {
     debit: { code: string; name: string; category: string; amount: number };

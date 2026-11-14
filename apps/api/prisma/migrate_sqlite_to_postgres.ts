@@ -6,9 +6,9 @@ import * as crypto from 'crypto';
 
 const RegistryStatus = {
   DRAFT: 'DRAFT',
-  PENDING_REVIEW: 'PENDING_REVIEW',
-  ELIGIBLE: 'ELIGIBLE',
-  INELIGIBLE: 'INELIGIBLE',
+  UNDER_REVIEW: 'UNDER_REVIEW',
+  QUALIFIED: 'QUALIFIED',
+  NOT_QUALIFIED: 'NOT_QUALIFIED',
 } as const;
 type RegistryStatusType = (typeof RegistryStatus)[keyof typeof RegistryStatus];
 
@@ -463,11 +463,17 @@ async function main() {
     const lastName = parts.slice(1).join(' ') || '-';
     const rawNatId = row.national_id ? String(row.national_id).trim() : null;
 
-    let status: RegistryStatusType = RegistryStatus.PENDING_REVIEW;
+    let status: RegistryStatusType = RegistryStatus.UNDER_REVIEW;
     const regStatus = String(row.registration_status || '').toLowerCase();
-    if (regStatus === 'draft') status = RegistryStatus.DRAFT;
-    else if (regStatus === 'qualified') status = RegistryStatus.ELIGIBLE;
-    else if (regStatus.includes('pending')) status = RegistryStatus.PENDING_REVIEW;
+    if (regStatus === 'draft' || regStatus === 'need_more_info' || regStatus === 'needs_correction') {
+      status = RegistryStatus.DRAFT;
+    } else if (regStatus === 'qualified' || regStatus === 'eligible') {
+      status = RegistryStatus.QUALIFIED;
+    } else if (regStatus === 'not_qualified' || regStatus === 'disqualified' || regStatus === 'ineligible' || regStatus === 'suspended' || regStatus === 'archived') {
+      status = RegistryStatus.NOT_QUALIFIED;
+    } else {
+      status = RegistryStatus.UNDER_REVIEW;
+    }
 
     await prisma.beneficiary.upsert({
       where: { id: benId },
@@ -595,7 +601,7 @@ async function main() {
             id: dummyBenId,
             legacyId: `head_${hhId}`,
             registryNumber: `ZMS-2026-HH-${String(hhId).slice(-4)}`,
-            status: RegistryStatus.PENDING_REVIEW,
+            status: RegistryStatus.UNDER_REVIEW,
             title: 'นาง',
             firstName,
             lastName,

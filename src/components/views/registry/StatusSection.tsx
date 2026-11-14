@@ -41,7 +41,8 @@ export function StatusSection({
   onSaveChecklist,
   isSavingChecklist = false,
 }: StatusSectionProps) {
-  const currentStatusMeta = statusLabels[registry.registrationStatus] || statusLabels.pending_verification;
+  const currentStatusMeta =
+    statusLabels[registry.registrationStatus] || statusLabels.under_review || statusLabels.draft;
 
   // Checklist local state
   const [checklist, setChecklist] = useState<EvaluatorChecklist>(

@@ -12,7 +12,7 @@ function makeInMemoryPeriodicEnv() {
     memberId: 'MB-2026-000012',
     registryNumber: 'ZMS-2026-000012',
     memberStatus: 'ACTIVE',
-    status: 'PENDING_REVIEW',
+    status: 'UNDER_REVIEW',
     title: 'นาง',
     firstName: 'มารีแย',
     lastName: 'ลาเต๊ะ',

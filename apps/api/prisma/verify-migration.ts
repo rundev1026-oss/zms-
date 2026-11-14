@@ -7,8 +7,9 @@ function beneficiaryRow(
   registryNumber: string,
   lastName: string,
   identityType: 'THAI_NATIONAL_ID' | 'OTHER',
-  status: 'DRAFT' | 'PENDING_REVIEW' | 'ARCHIVED',
+  status: 'DRAFT' | 'UNDER_REVIEW' | 'QUALIFIED' | 'NOT_QUALIFIED',
   identityNumber: string,
+  memberStatus: 'ACTIVE' | 'ARCHIVED' = 'ACTIVE',
 ) {
   return {
     registryNumber,
@@ -18,6 +19,7 @@ function beneficiaryRow(
     identityNumber,
     identityNumberNormalized: identityNumber,
     status,
+    memberStatus,
   };
 }
 
@@ -94,7 +96,7 @@ async function main(): Promise<void> {
           'ZMS-2026-900002',
           'ระบบซ้ำ',
           'THAI_NATIONAL_ID',
-          'PENDING_REVIEW',
+          'UNDER_REVIEW',
           sharedId,
         ),
       });
@@ -112,12 +114,13 @@ async function main(): Promise<void> {
         'ZMS-2026-900003',
         'คลังหนึ่ง',
         'THAI_NATIONAL_ID',
-        'ARCHIVED',
+        'NOT_QUALIFIED',
         sharedId,
+        'ARCHIVED',
       ),
     });
     await tx.beneficiary.create({
-      data: beneficiaryRow('ZMS-2026-900004', 'คลังสอง', 'THAI_NATIONAL_ID', 'ARCHIVED', sharedId),
+      data: beneficiaryRow('ZMS-2026-900004', 'คลังสอง', 'THAI_NATIONAL_ID', 'NOT_QUALIFIED', sharedId, 'ARCHIVED'),
     });
   });
 

@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  getRegistryStatusLabelTh,
+  normalizeRegistryStatusCode,
+  type RegistryStatusCode,
+} from '@zms/shared';
 import { resolveServerToken } from '@/lib/serverToken';
 import { mapNestBeneficiaryToRegistryItem, readNestFailure } from '@/lib/registrySurvey';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
+const TRANSITION_ENDPOINT_MAP: Partial<
+  Record<RegistryStatusCode, Partial<Record<RegistryStatusCode, { path: string; requiresReason: boolean }>>>
+> = {
+  DRAFT: {
+    UNDER_REVIEW: { path: 'submit', requiresReason: false },
+  },
+  UNDER_REVIEW: {
+    DRAFT: { path: 'request-correction', requiresReason: true },
+    QUALIFIED: { path: 'approve', requiresReason: true },
+    NOT_QUALIFIED: { path: 'reject', requiresReason: true },
+  },
+  QUALIFIED: {
+    UNDER_REVIEW: { path: 're-review', requiresReason: true },
+  },
+  NOT_QUALIFIED: {
+    UNDER_REVIEW: { path: 're-review', requiresReason: true },
+  },
+};
 
 export async function POST(
   request: NextRequest,
@@ -11,7 +35,8 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status, memberStatus, reason } = body;
+    const { status, memberStatus, reason, notes } = body;
+    const reasonText = String(reason ?? notes ?? '').trim();
     const token = resolveServerToken(request);
 
     const headers: Record<string, string> = {
@@ -27,7 +52,7 @@ export async function POST(
         headers,
         body: JSON.stringify({
           memberStatus: String(memberStatus).toUpperCase(),
-          reason: reason || `ปรับสถานะสมาชิกเป็น ${memberStatus}`,
+          reason: reasonText || `ปรับสถานะสมาชิกเป็น ${memberStatus}`,
         }),
       });
       if (!nestRes.ok) {
@@ -41,8 +66,8 @@ export async function POST(
       });
     }
 
-    // 2. Map frontend status strings to NestJS member-status or periodic assessment status
-    const rawStatus = String(status || '').toLowerCase();
+    // 2. Enforce strictly 4 canonical Registration Status transitions
+    const rawStatus = String(status || '').trim();
     if (!rawStatus) {
       return NextResponse.json(
         { success: false, error: 'กรุณาระบุสถานะที่ต้องการเปลี่ยน' },
@@ -50,93 +75,76 @@ export async function POST(
       );
     }
 
-    if (rawStatus === 'suspended' || rawStatus === 'archived' || rawStatus === 'active') {
-      const targetMemberStatus =
-        rawStatus === 'suspended'
-          ? 'SUSPENDED'
-          : rawStatus === 'archived'
-            ? 'ARCHIVED'
-            : 'ACTIVE';
-      const nestRes = await fetch(`${API_BASE_URL}/beneficiaries/${id}/member-status`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({
-          memberStatus: targetMemberStatus,
-          reason: reason || `ปรับสถานะสมาชิกเป็น ${targetMemberStatus}`,
-        }),
-      });
-      if (!nestRes.ok) {
-        const error = await readNestFailure(nestRes, 'ไม่สามารถปรับสถานะสมาชิกได้');
-        return NextResponse.json({ success: false, error }, { status: nestRes.status });
-      }
-      const updated = await nestRes.json();
-      return NextResponse.json({
-        success: true,
-        data: mapNestBeneficiaryToRegistryItem(updated),
-      });
+    const targetCode = normalizeRegistryStatusCode(rawStatus);
+    if (!targetCode) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'สถานะทะเบียนไม่ถูกต้อง ระบบรองรับเฉพาะ 4 สถานะ (ร่าง, ตรวจสอบข้อมูล, มีคุณสมบัติตามเกณฑ์, ไม่มีคุณสมบัติตามเกณฑ์)',
+        },
+        { status: 400 },
+      );
     }
 
-    // For assessment-related status transitions, update the latest assessment if one exists,
-    // or create an initial assessment record so history is preserved in PostgreSQL.
-    const mappedAssessmentStatus =
-      rawStatus === 'qualified' || rawStatus === 'eligible'
-        ? 'ELIGIBLE'
-        : rawStatus === 'disqualified' || rawStatus === 'ineligible'
-          ? 'NOT_ELIGIBLE'
-          : rawStatus === 'need_more_info' || rawStatus === 'needs_correction'
-            ? 'RETURNED_FOR_CORRECTION'
-            : rawStatus === 'pending_qualification' || rawStatus === 'under_review'
-              ? 'UNDER_REVIEW'
-              : 'PENDING_ASSESSMENT';
-
-    const listRes = await fetch(`${API_BASE_URL}/beneficiaries/${id}/assessments`, {
+    const currentRes = await fetch(`${API_BASE_URL}/beneficiaries/${id}`, {
       headers,
       cache: 'no-store',
     });
-    if (listRes.ok) {
-      const listData = await listRes.json();
-      const latestAsm = listData?.items?.[0];
-      if (latestAsm?.id) {
-        const patchRes = await fetch(
-          `${API_BASE_URL}/beneficiaries/${id}/assessments/${latestAsm.id}/status`,
-          {
-            method: 'PATCH',
-            headers,
-            body: JSON.stringify({
-              status: mappedAssessmentStatus,
-              reviewerNote: reason || `เปลี่ยนสถานะเป็น ${mappedAssessmentStatus}`,
-            }),
-          },
-        );
-        if (!patchRes.ok) {
-          const error = await readNestFailure(patchRes, 'ไม่สามารถปรับสถานะการประเมินได้');
-          return NextResponse.json({ success: false, error }, { status: patchRes.status });
-        }
-      } else {
-        const createRes = await fetch(`${API_BASE_URL}/beneficiaries/${id}/assessments`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            assessmentType: 'INITIAL',
-            status: mappedAssessmentStatus,
-            rationale: reason || `บันทึกสถานะการประเมิน ${mappedAssessmentStatus}`,
-          }),
-        });
-        if (!createRes.ok) {
-          const error = await readNestFailure(createRes, 'ไม่สามารถสร้างผลการประเมินได้');
-          return NextResponse.json({ success: false, error }, { status: createRes.status });
-        }
-      }
+    if (!currentRes.ok) {
+      const error = await readNestFailure(currentRes, 'ไม่พบข้อมูลทะเบียนผู้มีสิทธิ์รับซะกาต');
+      return NextResponse.json({ success: false, error }, { status: currentRes.status });
+    }
+    const currentRow = await currentRes.json();
+    const currentCode = normalizeRegistryStatusCode(currentRow.status || currentRow.registrationStatus) || 'DRAFT';
+
+    if (currentCode === targetCode) {
+      return NextResponse.json({
+        success: true,
+        data: mapNestBeneficiaryToRegistryItem(currentRow),
+      });
+    }
+
+    const edge = TRANSITION_ENDPOINT_MAP[currentCode]?.[targetCode];
+    if (!edge) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `ไม่สามารถเปลี่ยนสถานะจาก "${getRegistryStatusLabelTh(currentCode)}" เป็น "${getRegistryStatusLabelTh(targetCode)}" ได้โดยตรงตามลำดับขั้นตอน`,
+        },
+        { status: 422 },
+      );
+    }
+
+    if (edge.requiresReason && reasonText.length < 2) {
+      return NextResponse.json(
+        { success: false, error: 'กรุณาระบุเหตุผลประกอบการเปลี่ยนสถานะ' },
+        { status: 400 },
+      );
+    }
+
+    const transitionRes = await fetch(`${API_BASE_URL}/beneficiaries/${id}/${edge.path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(
+        edge.path === 'submit'
+          ? {}
+          : { reason: reasonText || `เปลี่ยนสถานะเป็น ${getRegistryStatusLabelTh(targetCode)}` },
+      ),
+    });
+
+    if (!transitionRes.ok) {
+      const error = await readNestFailure(transitionRes, 'ไม่สามารถเปลี่ยนสถานะทะเบียนได้');
+      return NextResponse.json({ success: false, error }, { status: transitionRes.status });
     }
 
     const freshRes = await fetch(`${API_BASE_URL}/beneficiaries/${id}`, {
       headers,
       cache: 'no-store',
     });
-    const fresh = freshRes.ok ? await freshRes.json() : null;
+    const fresh = freshRes.ok ? await freshRes.json() : await transitionRes.json().catch(() => null);
     return NextResponse.json({
       success: true,
-      data: fresh ? mapNestBeneficiaryToRegistryItem(fresh) : { id, registrationStatus: rawStatus },
+      data: fresh ? mapNestBeneficiaryToRegistryItem(fresh) : { id, registrationStatus: targetCode.toLowerCase() },
     });
   } catch (error: any) {
     return NextResponse.json(

@@ -1724,8 +1724,11 @@ export class BeneficiaryService {
     await initDb();
     const db = getDb();
 
-    const appRes = await db.execute({
-      sql: `SELECT a.id, a.application_no, a.requested_amount, a.approved_amount, a.specific_fund_id,
+    const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+
+    let appRes = await db.execute({
+      sql: `SELECT a.id, a.application_no, a.requested_amount, a.approved_amount, a.disbursed_amount,
+                   a.status, a.approval_status, a.specific_fund_id, a.approved_fund_id, a.approved_specific_fund_id,
                    a.primary_group_code, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.assistance_format_id,
                    a.assistance_format_code, a.delivery_method, a.fiscal_year,
                    ass.recommended_fund_id, ass.recommended_specific_fund_id
@@ -1736,11 +1739,41 @@ export class BeneficiaryService {
     });
 
     if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(params.applicationId);
+        if (synced) {
+          appRes = await db.execute({
+            sql: `SELECT a.id, a.application_no, a.requested_amount, a.approved_amount, a.disbursed_amount,
+                         a.status, a.approval_status, a.specific_fund_id, a.approved_fund_id, a.approved_specific_fund_id,
+                         a.primary_group_code, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.assistance_format_id,
+                         a.assistance_format_code, a.delivery_method, a.fiscal_year,
+                         ass.recommended_fund_id, ass.recommended_specific_fund_id
+                  FROM assistance_applications a
+                  LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
+                  WHERE a.id = ?`,
+            args: [params.applicationId],
+          });
+        }
+      } catch {}
+    }
+
+    if (appRes.rows.length === 0) {
       throw new Error(`ไม่พบคำร้อง ${params.applicationId}`);
     }
 
     const app = appRes.rows[0];
     const fiscalYear = String(app.fiscal_year || '2569');
+    const requestedAmount = round2(Number(app.requested_amount || 0));
+    const approvedAmount = round2(Number(params.approvedAmount || 0));
+
+    // If this application is already approved/waiting disbursement, exclude its own existing hold from "Before Approval"
+    const wasApproved =
+      String(app.approval_status || '') === 'approved' ||
+      ['approved', 'wait_disbursement'].includes(String(app.status || ''));
+    const ownCommitted = wasApproved
+      ? round2(Math.max(0, Number(app.approved_amount || 0) - Number(app.disbursed_amount || 0)))
+      : 0;
 
     // Strict Assistance Type-driven Sub-Fund Resolution
     const asnafRaw = String(app.asnaf_category || 'faqir_miskin');
@@ -1755,6 +1788,7 @@ export class BeneficiaryService {
     }
     if (!targetSpecificFundId) {
       targetSpecificFundId =
+        (app.approved_specific_fund_id ? String(app.approved_specific_fund_id) : undefined) ||
         (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
         (app.specific_fund_id ? String(app.specific_fund_id) : undefined);
     }
@@ -1764,7 +1798,7 @@ export class BeneficiaryService {
     }
 
     const sfRes = await db.execute({
-      sql: 'SELECT id, fund_code, code, name, primary_group_code, fund_account_id, is_active, remaining_amount, committed_amount, allocated_amount FROM faqir_miskin_sub_funds WHERE id = ? OR code = ? OR fund_code = ? LIMIT 1',
+      sql: 'SELECT id, fund_code, code, name, primary_group_code, fund_account_id, is_active, remaining_amount, committed_amount, allocated_amount, disbursed_amount FROM faqir_miskin_sub_funds WHERE id = ? OR code = ? OR fund_code = ? LIMIT 1',
       args: [targetSpecificFundId, targetSpecificFundId, targetSpecificFundId],
     });
 
@@ -1781,45 +1815,108 @@ export class BeneficiaryService {
     }
     if (!targetFundAccountId) targetFundAccountId = 'fund-1';
 
-    const fundRes = await db.execute({
-      sql: 'SELECT id, code, name, available_amount, committed_amount FROM fund_accounts WHERE id = ?',
-      args: [targetFundAccountId],
-    });
-
-    if (fundRes.rows.length === 0) {
-      throw new Error(`ไม่พบบัญชีกองทุนรหัส ${targetFundAccountId}`);
-    }
-
-    const fund = fundRes.rows[0];
-    const availableAmount = Number(fund.available_amount || 0);
-
-    // Live specific fund metrics
-    let sfRemaining = Number(sf.remaining_amount || 0);
-    let sfAllocated = Number(sf.allocated_amount || 0);
-    let sfDisbursed = Number(sf.disbursed_amount || 0);
-    let sfCommitted = Number(sf.committed_amount || 0);
-
-    try {
-      const sfList = await FinancialService.getSpecificFunds({
+    // Load live 3-tier balances from FinancialService
+    const [allFunds, asnafList, sfList] = await Promise.all([
+      FinancialService.getFunds(),
+      FinancialService.getAsnafAllocations(fiscalYear),
+      FinancialService.getSpecificFunds({
         fiscalYear,
         primaryGroupCode,
         status: 'all',
-      });
-      const liveSf = sfList.find((s) => s.id === targetSpecificFundId || s.code === sf.code || s.fundCode === sf.fund_code);
-      if (liveSf) {
-        sfRemaining = Number(liveSf.remainingAmount ?? sfRemaining);
-        sfAllocated = Number(liveSf.allocatedAmount ?? sfAllocated);
-        sfDisbursed = Number(liveSf.disbursedAmount ?? sfDisbursed);
-        sfCommitted = Number(liveSf.committedAmount ?? sfCommitted);
-      }
-    } catch {}
+      }),
+    ]);
 
-    // Asnaf Allocation
-    const asnafRes = await db.execute({
-      sql: 'SELECT asnaf_code, asnaf_name, remaining_amount, committed_amount FROM asnaf_allocations WHERE asnaf_code = ? AND fiscal_year = ? LIMIT 1',
-      args: [primaryGroupCode, fiscalYear],
+    const liveFund =
+      allFunds.find((f) => f.id === targetFundAccountId || f.code === targetFundAccountId) ||
+      allFunds.find((f) => f.id === String(sf.fund_account_id || 'fund-1')) ||
+      allFunds[0];
+
+    if (!liveFund) {
+      throw new Error(`ไม่พบบัญชีกองทุนรหัส ${targetFundAccountId}`);
+    }
+
+    // Normalize Money Type Category (Tier 1: ประเภทเงิน)
+    const rawCat = String(liveFund.category || 'zakat').toLowerCase();
+    const moneyTypeCode: 'zakat' | 'sadaqah' | 'operational' | 'restricted' =
+      rawCat === 'sadaqah'
+        ? 'sadaqah'
+        : rawCat === 'admin' || rawCat === 'operational'
+        ? 'operational'
+        : rawCat === 'restricted' || rawCat === 'specific_donation'
+        ? 'restricted'
+        : 'zakat';
+
+    const moneyTypeLabelMap: Record<'zakat' | 'sadaqah' | 'operational' | 'restricted', string> = {
+      zakat: 'เงินซะกาต',
+      sadaqah: 'เงินศอดะเกาะห์ทั่วไป',
+      operational: 'เงินสำหรับบริหาร',
+      restricted: 'เงินบริจาคเฉพาะวัตถุประสงค์',
+    };
+
+    const matchingPoolFunds = allFunds.filter((f) => {
+      const c = String(f.category || '').toLowerCase();
+      if (moneyTypeCode === 'zakat') return c === 'zakat';
+      if (moneyTypeCode === 'sadaqah') return c === 'sadaqah';
+      if (moneyTypeCode === 'operational') return c === 'admin' || c === 'operational';
+      return c === 'restricted' || c === 'specific_donation';
     });
-    const asnafAlloc = asnafRes.rows.length > 0 ? asnafRes.rows[0] : null;
+
+    const poolTotalReceived = round2(matchingPoolFunds.reduce((s, f) => s + Number(f.totalReceived || 0), 0));
+    const poolDisbursed = round2(matchingPoolFunds.reduce((s, f) => s + Number(f.disbursedAmount || 0), 0));
+    const poolCommittedRaw = round2(matchingPoolFunds.reduce((s, f) => s + Number(f.committedAmount || 0), 0));
+    const poolCommittedBefore = round2(Math.max(0, poolCommittedRaw - ownCommitted));
+    const poolAvailableBefore = round2(poolTotalReceived - poolDisbursed - poolCommittedBefore);
+    const poolRemainingAfter = round2(poolAvailableBefore - approvedAmount);
+
+    // Tier 2: Asnaf / Primary Group Allocation
+    const liveAsnaf = asnafList.find((a) => a.asnafCode === primaryGroupCode);
+    const asnafAllocated = liveAsnaf ? round2(Number(liveAsnaf.adjustedBudgetAmount ?? liveAsnaf.allocatedAmount ?? 0)) : 0;
+    const asnafDisbursed = liveAsnaf ? round2(Number(liveAsnaf.netDisbursedAmount ?? liveAsnaf.disbursedAmount ?? 0)) : 0;
+    const asnafCommittedBefore = liveAsnaf
+      ? round2(Math.max(0, Number(liveAsnaf.committedAmount || 0) - ownCommitted))
+      : 0;
+    const asnafAvailableBefore = liveAsnaf
+      ? round2(Number(liveAsnaf.availableAfterCommitment ?? liveAsnaf.remainingAmount ?? 0) + ownCommitted)
+      : poolAvailableBefore;
+    const asnafRemainingAfter = round2(asnafAvailableBefore - approvedAmount);
+
+    // Tier 3: Specific Sub-Fund
+    const liveSf = sfList.find(
+      (s) => s.id === String(sf.id) || s.code === String(sf.code) || s.fundCode === String(sf.fund_code)
+    );
+    const sfAllocated = liveSf
+      ? round2(Number(liveSf.adjustedBudgetAmount ?? liveSf.allocatedAmount ?? 0))
+      : round2(Number(sf.allocated_amount || 0));
+    const sfDisbursed = liveSf
+      ? round2(Number(liveSf.netDisbursedAmount ?? liveSf.disbursedAmount ?? 0))
+      : round2(Number(sf.disbursed_amount || 0));
+    const sfCommittedBefore = liveSf
+      ? round2(Math.max(0, Number(liveSf.committedAmount || 0) - ownCommitted))
+      : round2(Math.max(0, Number(sf.committed_amount || 0) - ownCommitted));
+    const sfAvailableBefore = liveSf
+      ? round2(Number(liveSf.availableAfterCommitment ?? liveSf.remainingAmount ?? 0) + ownCommitted)
+      : round2(Number(sf.remaining_amount || 0) + ownCommitted);
+    const sfRemainingAfter = round2(sfAvailableBefore - approvedAmount);
+
+    // For main fundAccount display: if this is a Zakat fund where total_received is pooled in fund-1,
+    // expose the Zakat pool availableBeforeApproval so it never shows a misleading 0 on fund-2..fund-6
+    const fundTotalReceived =
+      moneyTypeCode === 'zakat' && Number(liveFund.totalReceived || 0) === 0
+        ? poolTotalReceived
+        : round2(Number(liveFund.totalReceived || 0));
+    const fundDisbursed =
+      moneyTypeCode === 'zakat' && Number(liveFund.totalReceived || 0) === 0
+        ? poolDisbursed
+        : round2(Number(liveFund.disbursedAmount || 0));
+    const fundCommittedBefore =
+      moneyTypeCode === 'zakat' && Number(liveFund.totalReceived || 0) === 0
+        ? poolCommittedBefore
+        : round2(Math.max(0, Number(liveFund.committedAmount || 0) - ownCommitted));
+    const fundAvailableBefore =
+      moneyTypeCode === 'zakat'
+        ? poolAvailableBefore
+        : round2(fundTotalReceived - fundDisbursed - fundCommittedBefore);
+    const fundRemainingAfter = round2(fundAvailableBefore - approvedAmount);
 
     // Chart of accounts preview
     const { debitAcc, creditAcc } = getChartOfAccountsForDisbursement({
@@ -1830,29 +1927,59 @@ export class BeneficiaryService {
     });
 
     let isSolvent = true;
-    let reason = '';
+    const reasons: string[] = [];
 
     if (Number(sf.is_active ?? 1) === 0) {
       isSolvent = false;
-      reason = `กองทุนเฉพาะเจาะจง "${sf.name}" ถูกปิดใช้งาน ไม่สามารถจัดสรรงบประมาณได้`;
-    } else if (availableAmount < params.approvedAmount) {
-      isSolvent = false;
-      reason = `ยอดเงินคงเหลือจัดสรรได้ในบัญชีกองทุน "${fund.name}" ไม่เพียงพอ (คงเหลือ: ฿${availableAmount.toLocaleString()} บาท, ยอดที่ขออนุมัติ: ฿${params.approvedAmount.toLocaleString()} บาท, ขาดอีก: ฿${(params.approvedAmount - availableAmount).toLocaleString()} บาท)`;
-    } else if (sfRemaining < params.approvedAmount) {
-      isSolvent = false;
-      reason = `ยอดงบประมาณคงเหลือในกองทุนเฉพาะเจาะจง "${sf.name}" (${sf.fund_code || sf.code}) ไม่เพียงพอ (คงเหลือจัดสรรได้: ฿${sfRemaining.toLocaleString()} บาท, ยอดที่ขออนุมัติ: ฿${params.approvedAmount.toLocaleString()} บาท, ขาดอีก: ฿${(params.approvedAmount - sfRemaining).toLocaleString()} บาท)`;
+      reasons.push(`กองทุนเฉพาะเจาะจง "${sf.name}" ถูกปิดใช้งาน ไม่สามารถจัดสรรงบประมาณได้`);
     }
+    if (poolAvailableBefore < approvedAmount) {
+      isSolvent = false;
+      reasons.push(
+        `ยอดเงินคงเหลือประเภท "${moneyTypeLabelMap[moneyTypeCode]}" ไม่เพียงพอ (ก่อนพิจารณา: ฿${poolAvailableBefore.toLocaleString()}, อนุมัติครั้งนี้: ฿${approvedAmount.toLocaleString()}, ขาดอีก: ฿${round2(approvedAmount - poolAvailableBefore).toLocaleString()})`
+      );
+    }
+    if (liveAsnaf && moneyTypeCode === 'zakat' && asnafAvailableBefore < approvedAmount) {
+      isSolvent = false;
+      reasons.push(
+        `ยอดเงินคงเหลือกองทุนอัสนัฟ "${liveAsnaf.asnafName}" ไม่เพียงพอ (ก่อนพิจารณา: ฿${asnafAvailableBefore.toLocaleString()}, อนุมัติครั้งนี้: ฿${approvedAmount.toLocaleString()}, ขาดอีก: ฿${round2(approvedAmount - asnafAvailableBefore).toLocaleString()})`
+      );
+    }
+    if (sfAvailableBefore < approvedAmount) {
+      isSolvent = false;
+      reasons.push(
+        `ยอดงบประมาณคงเหลือในกองทุนย่อย "${sf.name}" (${sf.fund_code || sf.code}) ไม่เพียงพอ (ก่อนพิจารณา: ฿${sfAvailableBefore.toLocaleString()}, อนุมัติครั้งนี้: ฿${approvedAmount.toLocaleString()}, ขาดอีก: ฿${round2(approvedAmount - sfAvailableBefore).toLocaleString()})`
+      );
+    }
+
+    const reason = reasons.join(' | ');
 
     return {
       isSolvent,
       applicationId: String(app.id),
-      approvedAmount: params.approvedAmount,
+      requestedAmount,
+      approvedAmount,
+      moneyTypePool: {
+        code: moneyTypeCode,
+        name: moneyTypeLabelMap[moneyTypeCode],
+        totalReceived: poolTotalReceived,
+        disbursedAmount: poolDisbursed,
+        committedAmount: poolCommittedBefore,
+        availableBeforeApproval: poolAvailableBefore,
+        remainingAfterApproval: poolRemainingAfter,
+        isSolvent: poolAvailableBefore >= approvedAmount,
+      },
       fundAccount: {
-        id: String(fund.id),
-        code: String(fund.code || ''),
-        name: String(fund.name),
-        availableAmount,
-        committedAmount: Number(fund.committed_amount || 0),
+        id: String(liveFund.id),
+        code: String(liveFund.code || ''),
+        name: String(liveFund.name),
+        category: moneyTypeCode,
+        totalReceived: fundTotalReceived,
+        disbursedAmount: fundDisbursed,
+        availableAmount: fundAvailableBefore,
+        committedAmount: fundCommittedBefore,
+        availableBeforeApproval: fundAvailableBefore,
+        remainingAfterApproval: fundRemainingAfter,
       },
       specificSubFund: {
         id: String(sf.id),
@@ -1860,26 +1987,37 @@ export class BeneficiaryService {
         name: String(sf.name),
         allocatedAmount: sfAllocated,
         disbursedAmount: sfDisbursed,
-        remainingAmount: sfRemaining,
-        committedAmount: Number(sf.committed_amount || 0),
+        remainingAmount: sfAvailableBefore,
+        committedAmount: sfCommittedBefore,
+        availableBeforeApproval: sfAvailableBefore,
+        remainingAfterApproval: sfRemainingAfter,
+        isSolvent: sfAvailableBefore >= approvedAmount && Number(sf.is_active ?? 1) !== 0,
       },
-      asnafAllocation: asnafAlloc ? {
-        asnafCode: String(asnafAlloc.asnaf_code),
-        asnafName: String(asnafAlloc.asnaf_name),
-        remainingAmount: Number(asnafAlloc.remaining_amount || 0),
-      } : undefined,
+      asnafAllocation: liveAsnaf
+        ? {
+            asnafCode: String(liveAsnaf.asnafCode),
+            asnafName: String(liveAsnaf.asnafName),
+            allocatedAmount: asnafAllocated,
+            disbursedAmount: asnafDisbursed,
+            committedAmount: asnafCommittedBefore,
+            remainingAmount: asnafAvailableBefore,
+            availableBeforeApproval: asnafAvailableBefore,
+            remainingAfterApproval: asnafRemainingAfter,
+            isSolvent: asnafAvailableBefore >= approvedAmount,
+          }
+        : undefined,
       chartOfAccountsPreview: {
         debit: {
           code: debitAcc.code,
           name: debitAcc.name,
           category: debitAcc.category,
-          amount: params.approvedAmount,
+          amount: approvedAmount,
         },
         credit: {
           code: creditAcc.code,
           name: creditAcc.name,
           category: creditAcc.category,
-          amount: params.approvedAmount,
+          amount: approvedAmount,
         },
       },
       reason: isSolvent ? undefined : reason,
@@ -1914,6 +2052,7 @@ export class BeneficiaryService {
     // 2. Fetch Application & Assessment details
     let appRes = await db.execute({
       sql: `SELECT a.id, a.application_no, a.assigned_officer_id, a.status, a.beneficiary_id,
+                   a.requested_amount, a.approved_amount, a.disbursed_amount, a.approved_fund_id, a.approved_specific_fund_id,
                    a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.fiscal_year,
                    a.request_status, a.assessment_status, a.approval_status, a.delivery_method, a.completion_status,
                    ass.recommended_fund_id, ass.recommended_specific_fund_id
@@ -1930,6 +2069,7 @@ export class BeneficiaryService {
         if (synced) {
           appRes = await db.execute({
             sql: `SELECT a.id, a.application_no, a.assigned_officer_id, a.status, a.beneficiary_id,
+                         a.requested_amount, a.approved_amount, a.disbursed_amount, a.approved_fund_id, a.approved_specific_fund_id,
                          a.specific_fund_id, a.primary_group_code, a.asnaf_category, a.assistance_type, a.assistance_type_id, a.fiscal_year,
                          a.request_status, a.assessment_status, a.approval_status, a.delivery_method, a.completion_status,
                          ass.recommended_fund_id, ass.recommended_specific_fund_id
@@ -1986,12 +2126,19 @@ export class BeneficiaryService {
       throw new Error(`CANNOT_APPROVE_TERMINATED: คำร้องนี้อยู่ในสถานะ ${app.completion_status} ไม่สามารถอนุมัติได้`);
     }
 
-    if (String(app.approval_status || 'pending') === 'approved') {
+    const wasApproved =
+      String(app.approval_status || 'pending') === 'approved' ||
+      ['approved', 'wait_disbursement'].includes(String(app.status || ''));
+    const prevApprovedAmount = wasApproved
+      ? Math.max(0, Number(app.approved_amount || 0) - Number(app.disbursed_amount || 0))
+      : 0;
+
+    if (wasApproved && Math.abs(prevApprovedAmount - approvedAmount) < 0.005) {
       throw new Error(`ALREADY_APPROVED: คำร้องนี้ได้รับการอนุมัติเรียบร้อยแล้ว ห้ามอนุมัติซ้ำ`);
     }
 
-    // State Check: Must be in pending_approval (or pre-approval states)
-    if (!['pending_approval', 'doc_review', 'assessment', 'submitted'].includes(String(app.status))) {
+    // State Check: Must be in pending_approval (or pre-approval states, or wait_disbursement when revising approved amount)
+    if (!['pending_approval', 'doc_review', 'assessment', 'submitted', 'wait_disbursement', 'approved'].includes(String(app.status))) {
       throw new Error(`คำร้องนี้อยู่ในสถานะ "${app.status}" ไม่สามารถอนุมัติได้ (ต้องอยู่ในสถานะรออนุมัติเท่านั้น)`);
     }
 
@@ -2010,6 +2157,7 @@ export class BeneficiaryService {
     }
     if (!targetSpecificFundId) {
       targetSpecificFundId =
+        (app.approved_specific_fund_id ? String(app.approved_specific_fund_id) : undefined) ||
         (app.recommended_specific_fund_id ? String(app.recommended_specific_fund_id) : undefined) ||
         (app.specific_fund_id ? String(app.specific_fund_id) : undefined);
     }
@@ -2049,35 +2197,55 @@ export class BeneficiaryService {
     }
 
     const fund = solvency.fundAccount;
-    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
     const approvedDateStr = new Date().toLocaleDateString('th-TH');
+    const holdDelta = Math.round((approvedAmount - prevApprovedAmount) * 100) / 100;
 
-    // 5. Atomic Multi-Tier Commitment Updates (Fund Balance Hold)
+    const balanceImpactSnapshot = {
+      applicationId,
+      applicationNo: String(app.application_no || ''),
+      requestedAmount: Number(app.requested_amount || 0),
+      approvedAmount,
+      previousApprovedAmount: wasApproved ? prevApprovedAmount : null,
+      moneyTypePool: solvency.moneyTypePool,
+      asnafAllocation: solvency.asnafAllocation,
+      specificSubFund: solvency.specificSubFund,
+      fundAccount: solvency.fundAccount,
+      recordedAt: new Date().toISOString(),
+      approvedById: currentActor.id,
+      approvedByName: currentActor.name,
+    };
+
+    // 5. Atomic Multi-Tier Commitment Updates (Fund Balance Hold — NOT cash disbursement!)
     // A) Fund Accounts
     await db.execute({
       sql: `UPDATE fund_accounts 
-            SET committed_amount = committed_amount + ?, available_amount = available_amount - ?, updated_at = CURRENT_TIMESTAMP
+            SET committed_amount = MAX(0, committed_amount + ?),
+                available_amount = MAX(0, available_amount - ?),
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
-      args: [approvedAmount, approvedAmount, targetFundAccountId],
+      args: [holdDelta, holdDelta, targetFundAccountId],
     });
 
     // B) Specific Funds (faqir_miskin_sub_funds)
     await db.execute({
       sql: `UPDATE faqir_miskin_sub_funds
-            SET committed_amount = committed_amount + ?, remaining_amount = MAX(0, remaining_amount - ?), updated_at = CURRENT_TIMESTAMP
+            SET committed_amount = MAX(0, committed_amount + ?),
+                remaining_amount = MAX(0, remaining_amount - ?),
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
-      args: [approvedAmount, approvedAmount, sf.id],
+      args: [holdDelta, holdDelta, sf.id],
     });
 
     // C) Primary Asnaf Allocation (asnaf_allocations)
     await db.execute({
       sql: `UPDATE asnaf_allocations
-            SET committed_amount = committed_amount + ?, remaining_amount = MAX(0, remaining_amount - ?)
+            SET committed_amount = MAX(0, committed_amount + ?),
+                remaining_amount = MAX(0, remaining_amount - ?)
             WHERE asnaf_code = ? AND fiscal_year = ?`,
-      args: [approvedAmount, approvedAmount, primaryGroupCode, fiscalYear],
+      args: [holdDelta, holdDelta, primaryGroupCode, fiscalYear],
     });
 
-    // D) Assistance Applications (Multi-Lifecycle Update)
+    // D) Assistance Applications (Multi-Lifecycle Update + Balance Impact Snapshot)
     await db.execute({
       sql: `UPDATE assistance_applications
             SET status = 'wait_disbursement',
@@ -2098,6 +2266,7 @@ export class BeneficiaryService {
                 approved_by_name = ?,
                 approved_date = ?,
                 approval_notes = ?,
+                balance_impact_snapshot = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?`,
       args: [
@@ -2109,6 +2278,7 @@ export class BeneficiaryService {
         currentActor.name,
         approvedDateStr,
         notes || 'อนุมัติวงเงินช่วยเหลือ',
+        JSON.stringify(balanceImpactSnapshot),
         applicationId,
       ],
     });
@@ -2119,15 +2289,17 @@ export class BeneficiaryService {
       stage: 'approval',
       fromStatus: String(app.approval_status || 'pending'),
       toStatus: 'approved',
-      action: 'APPROVE_REQUEST',
+      action: wasApproved ? 'UPDATE_APPROVED_AMOUNT' : 'APPROVE_REQUEST',
       actor: currentActor,
       notes: `อนุมัติวงเงิน ฿${approvedAmount.toLocaleString()} บาท จาก "${fund.name}" -> กองทุน "${sf.name}" (${notes || 'อนุมัติ'}) และจองงบประมาณ (Fund Hold) ส่งต่อฝ่ายการเงิน`,
-      metadata: { 
-        approvedAmount, 
-        fundId: targetFundAccountId, 
+      metadata: {
+        approvedAmount,
+        holdDelta,
+        fundId: targetFundAccountId,
         specificFundId: sf.id,
         action: 'HOLD_FUND_BALANCE',
-        chartOfAccounts: solvency.chartOfAccountsPreview
+        balanceImpactSnapshot,
+        chartOfAccounts: solvency.chartOfAccountsPreview,
       },
     });
 
@@ -2139,6 +2311,7 @@ export class BeneficiaryService {
       fundName: String(fund.name),
       specificFundId: targetSpecificFundId,
       specificFundName: String(sf.name),
+      balanceImpactSnapshot,
     };
   }
 
@@ -2157,13 +2330,29 @@ export class BeneficiaryService {
       throw new Error(`บทบาท ${actor.role} ไม่มีสิทธิ์ปฏิเสธคำร้อง`);
     }
 
-    const appRes = await db.execute({
+    let appRes = await db.execute({
       sql: `SELECT id, application_no, assigned_officer_id, status, approval_status, completion_status,
                    approved_amount, approved_fund_id, approved_specific_fund_id, specific_fund_id,
                    primary_group_code, fiscal_year
             FROM assistance_applications WHERE id = ?`,
       args: [applicationId],
     });
+
+    if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(applicationId);
+        if (synced) {
+          appRes = await db.execute({
+            sql: `SELECT id, application_no, assigned_officer_id, status, approval_status, completion_status,
+                         approved_amount, approved_fund_id, approved_specific_fund_id, specific_fund_id,
+                         primary_group_code, fiscal_year
+                  FROM assistance_applications WHERE id = ?`,
+            args: [applicationId],
+          });
+        }
+      } catch {}
+    }
 
     if (appRes.rows.length === 0) {
       throw new Error(`ไม่พบคำร้อง ${applicationId}`);
@@ -4087,7 +4276,10 @@ export class BeneficiaryService {
     const db = getDb();
 
     let appRes = await db.execute({
-      sql: 'SELECT id, application_no, assigned_officer_id, status FROM assistance_applications WHERE id = ?',
+      sql: `SELECT id, application_no, assigned_officer_id, status, approval_status,
+                   approved_amount, disbursed_amount, approved_fund_id, approved_specific_fund_id,
+                   specific_fund_id, primary_group_code, fiscal_year
+            FROM assistance_applications WHERE id = ?`,
       args: [applicationId],
     });
 
@@ -4097,7 +4289,10 @@ export class BeneficiaryService {
         const synced = await ensureApplicationInSqlite(applicationId);
         if (synced) {
           appRes = await db.execute({
-            sql: 'SELECT id, application_no, assigned_officer_id, status FROM assistance_applications WHERE id = ?',
+            sql: `SELECT id, application_no, assigned_officer_id, status, approval_status,
+                         approved_amount, disbursed_amount, approved_fund_id, approved_specific_fund_id,
+                         specific_fund_id, primary_group_code, fiscal_year
+                  FROM assistance_applications WHERE id = ?`,
             args: [applicationId],
           });
         }
@@ -4129,11 +4324,70 @@ export class BeneficiaryService {
       }
     }
 
+    const wasApproved =
+      String(app.approval_status || '') === 'approved' ||
+      ['approved', 'wait_disbursement'].includes(String(app.status || ''));
+    const heldAmount = wasApproved
+      ? Math.max(0, Number(app.approved_amount || 0) - Number(app.disbursed_amount || 0))
+      : 0;
+    const shouldReleaseHold =
+      wasApproved &&
+      heldAmount > 0 &&
+      ['need_info', 'rejected', 'cancelled', 'assessment', 'doc_review', 'pending_approval'].includes(newStatus);
+
+    if (shouldReleaseHold) {
+      const targetFundId = app.approved_fund_id ? String(app.approved_fund_id) : 'fund-1';
+      const targetSubFundId = app.approved_specific_fund_id
+        ? String(app.approved_specific_fund_id)
+        : app.specific_fund_id
+        ? String(app.specific_fund_id)
+        : 'subf-1';
+      const primaryGroupCode = String(app.primary_group_code || 'faqir_miskin');
+      const fiscalYear = String(app.fiscal_year || '2569');
+
+      await db.execute({
+        sql: `UPDATE fund_accounts 
+              SET committed_amount = MAX(0, committed_amount - ?), 
+                  available_amount = available_amount + ?, 
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?`,
+        args: [heldAmount, heldAmount, targetFundId],
+      });
+
+      await db.execute({
+        sql: `UPDATE faqir_miskin_sub_funds
+              SET committed_amount = MAX(0, committed_amount - ?), 
+                  remaining_amount = remaining_amount + ?, 
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = ? OR code = ?`,
+        args: [heldAmount, heldAmount, targetSubFundId, targetSubFundId],
+      });
+
+      await db.execute({
+        sql: `UPDATE asnaf_allocations
+              SET committed_amount = MAX(0, committed_amount - ?), 
+                  remaining_amount = remaining_amount + ?
+              WHERE asnaf_code = ? AND fiscal_year = ?`,
+        args: [heldAmount, heldAmount, primaryGroupCode, fiscalYear],
+      });
+    }
+
     await db.execute({
       sql: `UPDATE assistance_applications 
-            SET status = ?, rejection_reason = CASE WHEN ? = 'rejected' THEN ? ELSE rejection_reason END, updated_at = CURRENT_TIMESTAMP 
+            SET status = ?,
+                approval_status = CASE
+                  WHEN ? = 'rejected' THEN 'rejected'
+                  WHEN ? IN ('need_info', 'cancelled', 'assessment', 'doc_review', 'pending_approval') THEN 'pending'
+                  ELSE approval_status
+                END,
+                approved_amount = CASE
+                  WHEN ? IN ('need_info', 'rejected', 'cancelled', 'assessment', 'doc_review') THEN NULL
+                  ELSE approved_amount
+                END,
+                rejection_reason = CASE WHEN ? = 'rejected' THEN ? ELSE rejection_reason END,
+                updated_at = CURRENT_TIMESTAMP 
             WHERE id = ?`,
-      args: [newStatus, newStatus, notes, applicationId],
+      args: [newStatus, newStatus, newStatus, newStatus, newStatus, notes, applicationId],
     });
 
     await db.execute({

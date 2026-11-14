@@ -189,8 +189,9 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Specific Funds (for background solvency guard & mapping)
+  // Specific Funds (for live sub-fund balance impact & solvency guard)
   const [specificFunds, setSpecificFunds] = useState<FaqirMiskinSubFund[]>([]);
+  const [liveBudgetStatus, setLiveBudgetStatus] = useState<any | null>(null);
   const [summaryStats, setSummaryStats] = useState<{
     pendingCount: number;
     approvedCount: number;
@@ -205,7 +206,7 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
     try {
       const [sumRes, budgetRes] = await Promise.all([
         fetch('/api/approvals/summary').catch(() => null),
-        fetch('/api/finance/allocations/faqir-miskin?fiscalYear=2569&primaryGroupCode=all').catch(() => null),
+        fetch('/api/finance/allocations/faqir-miskin?fiscalYear=2569&primaryGroupCode=all&view=summary').catch(() => null),
       ]);
 
       if (sumRes && sumRes.ok) {
@@ -348,12 +349,31 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
     return applications.find((a) => a.id === selectedAppId) || null;
   }, [selectedAppId, filteredApplications, applications]);
 
-  // Initialize selected app and default amount
+  // Initialize selected app, default amount, and fetch live 3-tier budget status
   useEffect(() => {
     if (selectedApp) {
-      setApprovalAmount(selectedApp.assessment?.recommendedAmount || selectedApp.requestedAmount || 0);
+      setApprovalAmount(
+        selectedApp.approvedAmount ||
+          selectedApp.assessment?.recommendedAmount ||
+          selectedApp.requestedAmount ||
+          0
+      );
+      let cancelled = false;
+      fetch(`/api/beneficiaries/${encodeURIComponent(selectedApp.id)}/budget-status`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          if (!cancelled && json?.success && json.data) {
+            setLiveBudgetStatus(json.data);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    } else {
+      setLiveBudgetStatus(null);
     }
-  }, [selectedApp]);
+  }, [selectedApp?.id]);
 
   // Registry details linked to selected application
   const linkedRegistry = useMemo(() => {
@@ -368,9 +388,13 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
     );
   }, [selectedApp, registries]);
 
-  // Automatic Data Resolution & Solvency Guard (Runs in background without displaying fund cards)
+  // Automatic Sub-Fund Resolution, Live Balance Impact & Solvency Guard
   const resolvedData = useMemo(() => {
     if (!selectedApp) return null;
+
+    const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+    const approvedB = Math.max(0, round2(Number(approvalAmount || 0)));
+    const requestedAmt = round2(Number(selectedApp.requestedAmount || 0));
 
     const asnafRaw = (selectedApp.asnafCategory || 'faqir_miskin').toLowerCase();
     const asnafMeta = ASNAF_DISPLAY_NAMES[asnafRaw] || {
@@ -398,42 +422,94 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
     const mainFund = resolution.mainFund as FundAccount | null;
     const subFund = resolution.subFund as FaqirMiskinSubFund | null;
 
-    // Real-time financial metrics from database & budget allocation
-    const mainAllocated = Number(
-      mainFund?.totalReceived ??
-      ((mainFund?.availableAmount || 0) + (mainFund?.disbursedAmount || 0) + (mainFund?.committedAmount || 0))
-    ) || 0;
-    const mainDisbursed = Number(mainFund?.disbursedAmount ?? 0);
-    const mainCommitted = Number(mainFund?.committedAmount ?? 0);
-    const mainAvailableBefore = Number(
-      mainFund?.availableAmount ?? (mainAllocated - mainDisbursed - mainCommitted)
-    );
-    const mainRemainingAfter = mainAvailableBefore - approvalAmount;
+    // Exclude own commitment if selectedApp is already approved/waiting disbursement
+    const wasApproved = ['approved', 'wait_disbursement'].includes(String(selectedApp.status || ''));
+    const ownCommitted = wasApproved
+      ? round2(Math.max(0, Number(selectedApp.approvedAmount || 0) - Number(selectedApp.disbursedAmount || 0)))
+      : 0;
 
-    const subAllocated = Number(
-      subFund?.adjustedBudgetAmount ?? subFund?.allocatedAmount ?? subFund?.targetAmount ?? 0
-    );
-    const subDisbursed = Number(subFund?.netDisbursedAmount ?? subFund?.disbursedAmount ?? 0);
-    const subCommitted = Number(subFund?.committedAmount ?? 0);
-    const subAvailableBefore = Number(
-      subFund?.availableAfterCommitment ?? subFund?.remainingAmount ?? (subAllocated - subDisbursed - subCommitted)
-    );
-    const subRemainingAfter = subAvailableBefore - approvalAmount;
+    // Specific Sub-Fund Balance Calculation (Display Sub-Fund only)
+    const liveMatchesSelected =
+      liveBudgetStatus && String(liveBudgetStatus.applicationId) === String(selectedApp.id);
 
-    const isMainInsufficient = mainRemainingAfter < 0;
+    const subAllocated = round2(
+      Number(subFund?.adjustedBudgetAmount ?? subFund?.allocatedAmount ?? subFund?.targetAmount ?? 0)
+    );
+    const subDisbursed = round2(Number(subFund?.netDisbursedAmount ?? subFund?.disbursedAmount ?? 0));
+    const subCommitted = round2(Math.max(0, Number(subFund?.committedAmount ?? 0) - ownCommitted));
+    const fallbackSubBefore = round2(
+      subFund?.availableAfterCommitment !== undefined
+        ? Number(subFund.availableAfterCommitment) + ownCommitted
+        : subFund?.remainingAmount !== undefined
+        ? Number(subFund.remainingAmount) - subCommitted
+        : subAllocated - subDisbursed - subCommitted
+    );
+
+    const subAvailableBefore = round2(
+      liveMatchesSelected && liveBudgetStatus.budgetStatus?.subFund?.availableBeforeApproval !== undefined
+        ? Number(liveBudgetStatus.budgetStatus.subFund.availableBeforeApproval)
+        : fallbackSubBefore
+    );
+    const subRemainingAfter = approvedB === 0 ? subAvailableBefore : round2(subAvailableBefore - approvedB);
+
+    const canonicalSubNameMap: Record<string, string> = {
+      living: 'ปัจจัยยังชีพ (กองทุนปัจจัยยังชีพ)',
+      housing: 'ซ่อมและสร้างที่อยู่อาศัย (กองทุนซ่อมแซมและสร้างที่อยู่อาศัย)',
+      rahmah_housing: 'ซ่อมและสร้างที่อยู่อาศัย (กองทุนบ้านอัน-เราะห์มัต)',
+      career: 'ต่อยอดอาชีพ (กองทุนสนับสนุนอาชีพ)',
+      education: 'ทุนการศึกษา (กองทุนทุนการศึกษา)',
+      emergency: 'ช่วยเหลือฉุกเฉิน/ภัยพิบัติ (กองทุนช่วยเหลือฉุกเฉิน)',
+    };
+    const subFundDisplayName =
+      (resolution.canonicalSubKey && canonicalSubNameMap[resolution.canonicalSubKey]) ||
+      subFund?.name ||
+      assistanceTypeName;
+
+    // Show ONLY Specific Sub-Fund (กองทุนย่อย) in Balance Impact Table
+    const impactRows: Array<{
+      key: string;
+      tierLabel: string;
+      name: string;
+      code?: string;
+      beforeApproval: number;
+      approvedThisTime: number;
+      afterApproval: number;
+      shortfall: number;
+      isSufficient: boolean;
+      statusText: 'เงินเพียงพอ' | 'เงินไม่เพียงพอ';
+    }> = subFund
+      ? [
+          {
+            key: 'specific_sub_fund',
+            tierLabel: 'กองทุนย่อย',
+            name: subFundDisplayName,
+            code: subFund.fundCode || subFund.code,
+            beforeApproval: subAvailableBefore,
+            approvedThisTime: approvedB,
+            afterApproval: subRemainingAfter,
+            shortfall: subRemainingAfter < 0 ? round2(Math.abs(subRemainingAfter)) : 0,
+            isSufficient: subRemainingAfter >= 0,
+            statusText: subRemainingAfter >= 0 ? 'เงินเพียงพอ' : 'เงินไม่เพียงพอ',
+          },
+        ]
+      : [];
+
+    const insufficientRows = impactRows.filter((r) => !r.isSufficient);
     const isSubInsufficient = subRemainingAfter < 0;
 
     const isAllSufficient = Boolean(
       resolution.isMapped &&
-      subFund &&
-      mainFund &&
-      !isMainInsufficient &&
-      !isSubInsufficient &&
-      approvalAmount > 0
+        subFund &&
+        mainFund &&
+        !isSubInsufficient &&
+        approvedB > 0
     );
+
+    const primaryTier = impactRows[0];
 
     return {
       asnafMeta,
+      subFundDisplayName,
       assistanceTypeName,
       assistanceFormatName,
       mainFund,
@@ -441,12 +517,15 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
       isMapped: resolution.isMapped,
       unmappedWarning: resolution.unmappedWarning,
       isAllSufficient,
-      isMainInsufficient,
       isSubInsufficient,
-      mainAvailableBefore,
       subAvailableBefore,
+      requestedAmount: requestedAmt,
+      approvedAmount: approvedB,
+      primaryTier,
+      impactRows,
+      insufficientRows,
     };
-  }, [selectedApp, funds, specificFunds, approvalAmount]);
+  }, [selectedApp, funds, specificFunds, liveBudgetStatus, approvalAmount]);
 
   // Execute Approval
   const handleExecuteApproval = async () => {
@@ -1553,13 +1632,221 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
               </div>
 
               {/* ===================================================================== */}
-              {/* SECTION 7: บันทึกการพิจารณาของคณะกรรมการ (Decision & Notes) */}
+              {/* SECTION 7: ตรวจสอบผลกระทบต่อยอดเงินคงเหลือ (FUND BALANCE IMPACT) */}
+              {/* ===================================================================== */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                  <h3 className="text-xs font-bold text-[#0B2545] uppercase tracking-wider flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-indigo-700" />
+                    7. ตรวจสอบผลกระทบต่อยอดเงินคงเหลือ (FUND BALANCE IMPACT)
+                  </h3>
+                  {resolvedData && (
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                        resolvedData.isAllSufficient
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          resolvedData.isAllSufficient ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`}
+                      />
+                      {resolvedData.isAllSufficient ? 'เงินเพียงพอ' : 'เงินไม่เพียงพอ'}
+                    </span>
+                  )}
+                </div>
+
+                {resolvedData && (
+                  <>
+                    {/* 7.1 ตารางสรุปข้อมูลกองทุนย่อยและวงเงินที่พิจารณา */}
+                    <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50/40">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600">
+                            <th className="py-2 px-3 text-left font-bold w-2/5">รายการ</th>
+                            <th className="py-2 px-3 text-left font-bold">รายละเอียด</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200/80 bg-white">
+                          <tr>
+                            <td className="py-2 px-3 font-medium text-slate-600">กองทุนย่อย</td>
+                            <td className="py-2 px-3 font-bold text-indigo-900">
+                              {resolvedData.subFundDisplayName}
+                              {(resolvedData.subFund?.fundCode || resolvedData.subFund?.code) && (
+                                <span className="ml-2 text-[10px] font-mono text-slate-500 font-semibold">
+                                  ({resolvedData.subFund?.fundCode || resolvedData.subFund?.code})
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                          <tr className="bg-slate-50/60">
+                            <td className="py-2 px-3 font-semibold text-slate-700">
+                              A. ยอดเงินก่อนพิจารณา (กองทุนย่อย)
+                            </td>
+                            <td className="py-2 px-3 font-bold text-slate-900 font-mono">
+                              ฿{(resolvedData.primaryTier?.beforeApproval ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 px-3 font-medium text-slate-600">วงเงินที่เสนอขอ</td>
+                            <td className="py-2 px-3 font-semibold text-slate-700 font-mono">
+                              ฿{resolvedData.requestedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                          <tr className="bg-emerald-50/40">
+                            <td className="py-2 px-3 font-semibold text-emerald-900">B. วงเงินที่อนุมัติ</td>
+                            <td className="py-2 px-3 font-extrabold text-emerald-800 font-mono">
+                              ฿{resolvedData.approvedAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                          <tr
+                            className={
+                              (resolvedData.primaryTier?.afterApproval ?? 0) >= 0
+                                ? 'bg-emerald-50/70'
+                                : 'bg-rose-50/80'
+                            }
+                          >
+                            <td className="py-2.5 px-3 font-bold text-slate-800">
+                              C. ยอดคงเหลือหลังพิจารณา (A - B)
+                            </td>
+                            <td
+                              className={`py-2.5 px-3 font-extrabold font-mono text-sm ${
+                                (resolvedData.primaryTier?.afterApproval ?? 0) >= 0
+                                  ? 'text-emerald-700'
+                                  : 'text-rose-700'
+                              }`}
+                            >
+                              ฿{(resolvedData.primaryTier?.afterApproval ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {(resolvedData.primaryTier?.afterApproval ?? 0) < 0 && (
+                                <span className="ml-2 text-xs font-bold text-rose-600">
+                                  (ขาดอีก ฿{Math.abs(resolvedData.primaryTier?.afterApproval ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* 7.2 ตารางผลกระทบยอดเงินคงเหลือเฉพาะกองทุนย่อย */}
+                    {resolvedData.impactRows.length > 0 && (
+                      <div className="overflow-x-auto rounded-lg border border-slate-200">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-[#0B2545] text-white">
+                              <th className="py-2.5 px-3 text-left font-bold">กองทุนย่อย</th>
+                              <th className="py-2.5 px-3 text-right font-bold">ก่อนพิจารณา (A)</th>
+                              <th className="py-2.5 px-3 text-right font-bold">อนุมัติครั้งนี้ (B)</th>
+                              <th className="py-2.5 px-3 text-right font-bold">หลังพิจารณา (C)</th>
+                              <th className="py-2.5 px-3 text-center font-bold">สถานะ</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 bg-white">
+                            {resolvedData.impactRows.map((row) => (
+                              <tr
+                                key={row.key}
+                                className={row.isSufficient ? 'hover:bg-slate-50/80' : 'bg-rose-50/40'}
+                              >
+                                <td className="py-2.5 px-3">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                    {row.tierLabel} {row.code ? `• ${row.code}` : ''}
+                                  </span>
+                                  <span className="font-bold text-slate-900">{row.name}</span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800">
+                                  ฿{row.beforeApproval.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-800">
+                                  ฿{row.approvedThisTime.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td
+                                  className={`py-2.5 px-3 text-right font-mono font-extrabold ${
+                                    row.isSufficient ? 'text-emerald-700' : 'text-rose-700'
+                                  }`}
+                                >
+                                  <div>
+                                    ฿{row.afterApproval.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                  {!row.isSufficient && (
+                                    <div className="text-[10px] font-bold text-rose-600">
+                                      ขาดอีก ฿{row.shortfall.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                      row.isSufficient
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : 'bg-rose-50 text-rose-800 border-rose-200'
+                                    }`}
+                                  >
+                                    {row.statusText}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* 7.3 การแจ้งเตือนและหมายเหตุการตรวจสอบความเพียงพอของกองทุนย่อย */}
+                    {!resolvedData.isMapped ? (
+                      <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>ไม่พบการกำหนดกองทุนย่อยที่สัมพันธ์กับประเภทความช่วยเหลือนี้</span>
+                      </div>
+                    ) : resolvedData.approvedAmount <= 0 ? (
+                      <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>กรุณาระบุวงเงินที่พิจารณาอนุมัติมากกว่า 0 บาท</span>
+                      </div>
+                    ) : resolvedData.insufficientRows.length > 0 ? (
+                      <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-900 space-y-1.5 animate-fadeIn">
+                        <div className="font-bold flex items-center gap-1.5 text-rose-800">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          แจ้งเตือน: เงินกองทุนย่อยไม่เพียงพอสำหรับการอนุมัติวงเงินนี้ (ระบบปิดปุ่มอนุมัติอัตโนมัติ)
+                        </div>
+                        <ul className="list-disc pl-5 space-y-0.5 text-[11px] text-rose-800">
+                          {resolvedData.insufficientRows.map((r) => (
+                            <li key={r.key}>
+                              <strong>{r.tierLabel} ({r.name}):</strong> ก่อนพิจารณา ฿
+                              {r.beforeApproval.toLocaleString('th-TH', { minimumFractionDigits: 2 })} • ขออนุมัติ ฿
+                              {r.approvedThisTime.toLocaleString('th-TH', { minimumFractionDigits: 2 })} •{' '}
+                              <strong className="underline">
+                                ขาดอีก ฿{r.shortfall.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                              </strong>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-lg bg-emerald-50/70 border border-emerald-200 text-[11px] text-emerald-900 flex items-center justify-between gap-2">
+                        <span>
+                          <strong>สถานะงบประมาณ:</strong> ยอดเงินคงเหลือในกองทุนย่อยเพียงพอสำหรับการอนุมัติ (ยอดคงเหลือหลังพิจารณาเป็นยอดจำลองก่อนเบิกจ่ายจริง)
+                        </span>
+                        <span className="font-bold text-emerald-800 shrink-0">✓ พร้อมอนุมัติ</span>
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      * หมายเหตุ: การอนุมัติคำร้องในหน้านี้เป็นการอนุมัติวงเงินและกันงบประมาณกองทุนย่อย (Reserved/Committed) เท่านั้น ยังไม่ใช่การจ่ายเงินสดจริง ระบบจะไม่ตัดเงินสดจากบัญชีธนาคาร (A), บัญชีเงินสดเหรัญญิก (B) หรือบัญชีเงินสดเจ้าหน้าที่ (C) จนกว่าจะผ่านขั้นตอนการเบิกจ่ายจริง
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* ===================================================================== */}
+              {/* SECTION 8: บันทึกการพิจารณาของคณะกรรมการ (Decision & Notes) */}
               {/* ===================================================================== */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                   <h3 className="text-xs font-bold text-[#0B2545] uppercase tracking-wider flex items-center gap-2">
                     <PenTool className="w-4 h-4 text-slate-700" />
-                    7. บันทึกการพิจารณาของคณะกรรมการ (Decision & Notes)
+                    8. บันทึกการพิจารณาของคณะกรรมการ (Decision & Notes)
                   </h3>
                   <span className="text-[11px] text-slate-400">
                     บันทึกลงใน Audit Log และประวัติคำร้อง
@@ -1716,21 +2003,31 @@ export function ApprovalsView({ onNavigate }: ApprovalsViewProps) {
                 {confirmAction === 'approve' ? (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">วงเงินที่พิจารณาอนุมัติ:</span>
-                      <strong className="text-emerald-700 text-sm font-extrabold">
-                        ฿{approvalAmount.toLocaleString()} บาท
-                      </strong>
+                      <span className="text-slate-500">กองทุนย่อย:</span>
+                      <strong className="text-indigo-900">{resolvedData?.subFundDisplayName}</strong>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">ประเภทความช่วยเหลือ:</span>
-                      <strong className="text-slate-800">{resolvedData?.assistanceTypeName}</strong>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">หมวดหมู่อัสนัฟ:</span>
-                      <strong className="text-slate-800">{resolvedData?.asnafMeta.th}</strong>
+                    <div className="border-t border-slate-200 pt-2 space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">A. ยอดเงินก่อนพิจารณา:</span>
+                        <strong className="font-mono text-slate-800">
+                          ฿{(resolvedData?.primaryTier?.beforeApproval ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">B. วงเงินที่อนุมัติครั้งนี้:</span>
+                        <strong className="text-emerald-700 text-sm font-extrabold font-mono">
+                          ฿{approvalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">C. ยอดคงเหลือหลังพิจารณา (จำลอง):</span>
+                        <strong className="text-emerald-800 font-extrabold font-mono">
+                          ฿{(resolvedData?.primaryTier?.afterApproval ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                        </strong>
+                      </div>
                     </div>
                     <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-200">
-                      * ระบบจะดำเนินการ Hold กันวงเงินงบประมาณอัตโนมัติ และส่งต่อฝ่ายการเงินเพื่อรอเบิกจ่าย
+                      * ระบบจะดำเนินการกันวงเงินงบประมาณ (Reserved/Committed) อัตโนมัติ และส่งต่อฝ่ายการเงินเพื่อรอเบิกจ่าย โดยยังไม่ตัดเงินสดจริงจากบัญชี A, B หรือ C
                     </div>
                   </>
                 ) : (

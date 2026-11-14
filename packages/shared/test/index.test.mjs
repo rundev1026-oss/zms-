@@ -5,7 +5,10 @@ import {
   APP_NAME,
   APP_VERSION,
   PERMISSION_CODES,
+  REGISTRY_STATUSES,
+  REGISTRY_STATUS_LABELS_TH,
   formatPersonName,
+  normalizeRegistryStatusCode,
   splitPersonName,
 } from '../dist/index.js';
 
@@ -15,6 +18,17 @@ describe('shared constants', () => {
     assert.equal(APP_VERSION, '0.1.0');
     assert.equal(API_SERVICE_NAME, 'zms-api');
     assert.ok(PERMISSION_CODES.length >= 14);
+    assert.deepEqual(REGISTRY_STATUSES, ['DRAFT', 'UNDER_REVIEW', 'QUALIFIED', 'NOT_QUALIFIED']);
+    assert.equal(REGISTRY_STATUS_LABELS_TH.DRAFT, 'ร่าง');
+    assert.equal(REGISTRY_STATUS_LABELS_TH.UNDER_REVIEW, 'ตรวจสอบข้อมูล');
+    assert.equal(REGISTRY_STATUS_LABELS_TH.QUALIFIED, 'มีคุณสมบัติตามเกณฑ์');
+    assert.equal(REGISTRY_STATUS_LABELS_TH.NOT_QUALIFIED, 'ไม่มีคุณสมบัติตามเกณฑ์');
+    assert.equal(normalizeRegistryStatusCode('NEEDS_CORRECTION'), 'DRAFT');
+    assert.equal(normalizeRegistryStatusCode('need_more_info'), 'DRAFT');
+    assert.equal(normalizeRegistryStatusCode('PENDING_REVIEW'), 'UNDER_REVIEW');
+    assert.equal(normalizeRegistryStatusCode('pending_verification'), 'UNDER_REVIEW');
+    assert.equal(normalizeRegistryStatusCode('ELIGIBLE'), 'QUALIFIED');
+    assert.equal(normalizeRegistryStatusCode('INELIGIBLE'), 'NOT_QUALIFIED');
   });
 
   it('formats a person name with the prefix once', () => {

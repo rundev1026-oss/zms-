@@ -857,7 +857,7 @@ export function MultiStepRegistrationView({ onNavigate, editAppId, onOpenMemberD
               comments: certifierComments,
             }
           : undefined,
-        registrationStatus: submitStatus === 'draft' ? 'draft' : 'pending_verification',
+        registrationStatus: submitStatus === 'draft' ? 'draft' : 'under_review',
       };
 
       const attachPendingDocuments = async (beneficiaryId: string) => {

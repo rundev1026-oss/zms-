@@ -7,7 +7,7 @@ import {
   AssistanceTypeItem,
   FaqirMiskinSubFund,
 } from '@/types';
-import { formatPersonName } from '@zms/shared';
+import { formatPersonName, getRegistryStatusLabelTh } from '@zms/shared';
 import { DocumentUploader, UploadedDocumentItem } from '@/components/common/DocumentUploader';
 import { SearchableSelect } from '@/components/common/SearchableSelect';
 import { ModalPortal } from '@/components/common/Modal';
@@ -1012,7 +1012,7 @@ export function AssistanceRequestFormView({
                     </span>
                     <span className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 inline" />
-                      {beneficiaryProfile.registrationStatus || 'ตรวจสอบแล้ว'}
+                      {beneficiaryProfile.registrationStatus ? getRegistryStatusLabelTh(beneficiaryProfile.registrationStatus) : 'ตรวจสอบแล้ว'}
                     </span>
                   </div>
                 </div>

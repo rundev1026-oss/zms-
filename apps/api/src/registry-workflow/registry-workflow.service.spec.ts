@@ -17,18 +17,18 @@ const actor: AuthUser = {
 
 describe('registry workflow rules', () => {
   it('does not treat a repeated submit as a new status change', () => {
-    expect(planSubmit('PENDING_REVIEW')).toEqual({ to: 'PENDING_REVIEW', recordHistory: false });
-    expect(planSubmit('ELIGIBLE')).toEqual({ error: 'ส่งตรวจได้เฉพาะร่างหรือรายการที่รอแก้ไข' });
+    expect(planSubmit('UNDER_REVIEW')).toEqual({ to: 'UNDER_REVIEW', recordHistory: false });
+    expect(planSubmit('QUALIFIED')).toEqual({ error: 'ส่งตรวจสอบข้อมูลได้เฉพาะทะเบียนสถานะร่าง' });
   });
 
   it('keeps assessment and eligibility as separate staff actions', () => {
-    const assessed = planAssess('PENDING_REVIEW');
-    expect('to' in assessed ? assessed.to : '').toBe('UNDER_ASSESSMENT');
+    const assessed = planAssess('UNDER_REVIEW');
+    expect('to' in assessed ? assessed.to : '').toBe('UNDER_REVIEW');
     expect(planApprove('DRAFT')).toEqual({
-      error: 'ยืนยันคุณสมบัติได้เมื่อทะเบียนอยู่ระหว่างประเมิน',
+      error: 'ยืนยันมีคุณสมบัติตามเกณฑ์ได้เฉพาะทะเบียนที่อยู่ระหว่างตรวจสอบข้อมูล',
     });
-    const approved = planApprove('UNDER_ASSESSMENT');
-    expect('to' in approved ? approved.to : '').toBe('ELIGIBLE');
+    const approved = planApprove('UNDER_REVIEW');
+    expect('to' in approved ? approved.to : '').toBe('QUALIFIED');
   });
 
   it('requires consent, household, and address before submit', () => {
@@ -52,10 +52,10 @@ describe('registry workflow rules', () => {
     const updates: Array<Record<string, unknown>> = [];
     const tx = {
       beneficiary: {
-        findFirst: jest.fn().mockResolvedValue(draftRow('PENDING_REVIEW')),
+        findFirst: jest.fn().mockResolvedValue(draftRow('UNDER_REVIEW')),
         update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
           updates.push(data);
-          return { ...draftRow('UNDER_ASSESSMENT'), ...data };
+          return { ...draftRow('UNDER_REVIEW'), ...data };
         }),
       },
       asnafCategory: {
@@ -86,14 +86,14 @@ describe('registry workflow rules', () => {
         data: expect.objectContaining({ decision: 'CONFIRMED', recordedById: actor.id }),
       }),
     );
-    expect(updates[0]?.status).toBe('UNDER_ASSESSMENT');
-    expect(view.status).toBe('UNDER_ASSESSMENT');
+    expect(updates).toHaveLength(0);
+    expect(view.status).toBe('UNDER_REVIEW');
     expect(tx).not.toHaveProperty('incomeExpenseProfile');
   });
 
   it('refuses approval until a staff assessment exists', async () => {
     const tx = {
-      beneficiary: { findFirst: jest.fn().mockResolvedValue(draftRow('UNDER_ASSESSMENT')) },
+      beneficiary: { findFirst: jest.fn().mockResolvedValue(draftRow('UNDER_REVIEW')) },
       beneficiaryAsnafAssessment: { count: jest.fn().mockResolvedValue(0) },
     };
     const service = new RegistryWorkflowService(
@@ -128,7 +128,7 @@ describe('registry workflow rules', () => {
     await expect(service.submit(id, submitter)).rejects.toMatchObject({
       response: { code: 'DUPLICATE_REQUEST' },
     });
-    release({ status: 'PENDING_REVIEW' });
+    release({ status: 'UNDER_REVIEW' });
     await first;
   });
 });

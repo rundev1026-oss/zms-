@@ -24,6 +24,38 @@ export class AssistanceRequestsService {
   ) {}
 
   /**
+   * Enforce strict 4-status eligibility: only active members with QUALIFIED status may apply.
+   */
+  private assertBeneficiaryEligibleForAssistance(beneficiary: {
+    status?: string | null;
+    memberStatus?: string | null;
+  }) {
+    const memberStatusUpper = String(beneficiary.memberStatus || 'ACTIVE').toUpperCase();
+    const statusUpper = String(beneficiary.status || '').toUpperCase();
+    if (memberStatusUpper === 'SUSPENDED' || memberStatusUpper === 'ARCHIVED') {
+      const statusLabel = memberStatusUpper === 'ARCHIVED' ? 'ปิดประวัติถาวร' : 'ระงับทะเบียน';
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'BENEFICIARY_INELIGIBLE',
+        `ทะเบียนนี้อยู่ในสถานะ "${statusLabel}" จึงไม่สามารถยื่นคำร้องขอความช่วยเหลือได้`,
+      );
+    }
+    if (statusUpper !== 'QUALIFIED') {
+      const statusLabel =
+        statusUpper === 'NOT_QUALIFIED'
+          ? 'ไม่มีคุณสมบัติตามเกณฑ์'
+          : statusUpper === 'UNDER_REVIEW'
+            ? 'ตรวจสอบข้อมูล'
+            : 'ร่าง';
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'BENEFICIARY_INELIGIBLE',
+        `ทะเบียนนี้อยู่ในสถานะ "${statusLabel}" จึงยังไม่สามารถยื่นคำร้องได้ (ต้องผ่านการตรวจสอบและมีสถานะ "มีคุณสมบัติตามเกณฑ์" ก่อน)`,
+      );
+    }
+  }
+
+  /**
    * Check beneficiary eligibility before creating a request
    */
   async checkBeneficiary(dto: CheckBeneficiaryDto, user?: AuthUser) {
@@ -93,27 +125,7 @@ export class AssistanceRequestsService {
       );
     }
 
-    const memberStatusUpper = String(beneficiary.memberStatus || 'ACTIVE').toUpperCase();
-    const statusUpper = String(beneficiary.status || '').toUpperCase();
-    if (
-      memberStatusUpper === 'SUSPENDED' ||
-      memberStatusUpper === 'ARCHIVED' ||
-      statusUpper === 'SUSPENDED' ||
-      statusUpper === 'INELIGIBLE' ||
-      statusUpper === 'DISQUALIFIED'
-    ) {
-      const statusLabel =
-        memberStatusUpper === 'ARCHIVED'
-          ? 'ปิดประวัติถาวร'
-          : memberStatusUpper === 'SUSPENDED' || statusUpper === 'SUSPENDED'
-            ? 'ระงับทะเบียน'
-            : 'ไม่มีคุณสมบัติตามเกณฑ์';
-      throw new AppException(
-        HttpStatus.BAD_REQUEST,
-        'BENEFICIARY_INELIGIBLE',
-        `ทะเบียนนี้อยู่ในสถานะ "${statusLabel}" จึงไม่สามารถยื่นคำร้องขอความช่วยเหลือได้`,
-      );
-    }
+    this.assertBeneficiaryEligibleForAssistance(beneficiary);
 
     const fullName = formatPersonName({
       prefix: beneficiary.title,
@@ -359,21 +371,7 @@ export class AssistanceRequestsService {
       );
     }
 
-    const memberStatusUpper = String(beneficiary.memberStatus || 'ACTIVE').toUpperCase();
-    const statusUpper = String(beneficiary.status || '').toUpperCase();
-    if (
-      memberStatusUpper === 'SUSPENDED' ||
-      memberStatusUpper === 'ARCHIVED' ||
-      statusUpper === 'SUSPENDED' ||
-      statusUpper === 'INELIGIBLE' ||
-      statusUpper === 'DISQUALIFIED'
-    ) {
-      throw new AppException(
-        HttpStatus.BAD_REQUEST,
-        'BENEFICIARY_INELIGIBLE',
-        'ผู้ขอรับความช่วยเหลืออยู่ในสถานะถูกระงับสิทธิ์หรือไม่ผ่านเกณฑ์',
-      );
-    }
+    this.assertBeneficiaryEligibleForAssistance(beneficiary);
 
     const trimmedIdempotencyKey = dto.idempotencyKey?.trim() || undefined;
     if (trimmedIdempotencyKey) {
@@ -988,7 +986,6 @@ export class AssistanceRequestsService {
 
     return {
       ...app,
-      registryDocuments,
       titlePrefix: ben?.title ?? '',
       firstName: ben?.firstName ?? '',
       lastName: ben?.lastName ?? '',

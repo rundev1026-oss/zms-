@@ -11,7 +11,12 @@ export interface TransitionError {
 }
 
 export type WorkflowAction =
-  'submit' | 'correction' | 'assess' | 'approve' | 'reject' | 'suspend' | 'archive';
+  | 'submit'
+  | 'correction'
+  | 'assess'
+  | 'approve'
+  | 'reject'
+  | 'reReview';
 
 interface WorkflowRule {
   permission: PermissionCode;
@@ -20,65 +25,52 @@ interface WorkflowRule {
 }
 
 /**
- * Registry status only. Assistance requests use a different status when that
- * module exists. ELIGIBLE and INELIGIBLE are staff decisions, not a formula
- * based on income, household, or asnaf category.
+ * Registry status workflow (strictly 4 canonical statuses: DRAFT, UNDER_REVIEW, QUALIFIED, NOT_QUALIFIED).
+ * QUALIFIED and NOT_QUALIFIED are staff decisions, not an automatic formula.
  */
 export const REGISTRY_WORKFLOW: Record<WorkflowAction, WorkflowRule> = {
   submit: {
     permission: 'beneficiaries.submit',
-    error: 'ส่งตรวจได้เฉพาะร่างหรือรายการที่รอแก้ไข',
+    error: 'ส่งตรวจสอบข้อมูลได้เฉพาะทะเบียนสถานะร่าง',
     edges: {
-      DRAFT: { to: 'PENDING_REVIEW', recordHistory: true },
-      NEEDS_CORRECTION: { to: 'PENDING_REVIEW', recordHistory: true },
-      PENDING_REVIEW: { to: 'PENDING_REVIEW', recordHistory: false },
+      DRAFT: { to: 'UNDER_REVIEW', recordHistory: true },
+      UNDER_REVIEW: { to: 'UNDER_REVIEW', recordHistory: false },
     },
   },
   correction: {
     permission: 'beneficiaries.review',
-    error: 'ขอแก้ไขได้เมื่อทะเบียนอยู่ระหว่างตรวจสอบหรือประเมิน',
+    error: 'ส่งกลับเป็นร่างเพื่อแก้ไขได้เฉพาะทะเบียนที่อยู่ระหว่างตรวจสอบข้อมูล',
     edges: {
-      PENDING_REVIEW: { to: 'NEEDS_CORRECTION', recordHistory: true },
-      UNDER_ASSESSMENT: { to: 'NEEDS_CORRECTION', recordHistory: true },
+      UNDER_REVIEW: { to: 'DRAFT', recordHistory: true },
     },
   },
   assess: {
     permission: 'beneficiaries.assess',
-    error: 'บันทึกการประเมินได้เมื่อทะเบียนรอตรวจสอบหรืออยู่ระหว่างประเมิน',
+    error: 'บันทึกการประเมินได้เฉพาะทะเบียนที่อยู่ระหว่างตรวจสอบข้อมูล',
     edges: {
-      PENDING_REVIEW: { to: 'UNDER_ASSESSMENT', recordHistory: true },
-      UNDER_ASSESSMENT: { to: 'UNDER_ASSESSMENT', recordHistory: false },
+      UNDER_REVIEW: { to: 'UNDER_REVIEW', recordHistory: false },
     },
   },
   approve: {
     permission: 'beneficiaries.decide',
-    error: 'ยืนยันคุณสมบัติได้เมื่อทะเบียนอยู่ระหว่างประเมิน',
+    error: 'ยืนยันมีคุณสมบัติตามเกณฑ์ได้เฉพาะทะเบียนที่อยู่ระหว่างตรวจสอบข้อมูล',
     edges: {
-      UNDER_ASSESSMENT: { to: 'ELIGIBLE', recordHistory: true },
+      UNDER_REVIEW: { to: 'QUALIFIED', recordHistory: true },
     },
   },
   reject: {
     permission: 'beneficiaries.decide',
-    error: 'บันทึกว่าไม่มีคุณสมบัติได้เมื่อทะเบียนรอตรวจสอบหรืออยู่ระหว่างประเมิน',
+    error: 'ยืนยันไม่มีคุณสมบัติตามเกณฑ์ได้เฉพาะทะเบียนที่อยู่ระหว่างตรวจสอบข้อมูล',
     edges: {
-      PENDING_REVIEW: { to: 'INELIGIBLE', recordHistory: true },
-      UNDER_ASSESSMENT: { to: 'INELIGIBLE', recordHistory: true },
+      UNDER_REVIEW: { to: 'NOT_QUALIFIED', recordHistory: true },
     },
   },
-  suspend: {
-    permission: 'beneficiaries.decide',
-    error: 'ระงับได้เมื่อทะเบียนมีคุณสมบัติ',
+  reReview: {
+    permission: 'beneficiaries.review',
+    error: 'ส่งตรวจสอบข้อมูลใหม่ได้เฉพาะทะเบียนที่ตัดสินคุณสมบัติแล้ว',
     edges: {
-      ELIGIBLE: { to: 'SUSPENDED', recordHistory: true },
-    },
-  },
-  archive: {
-    permission: 'beneficiaries.decide',
-    error: 'เก็บถาวรได้เมื่อทะเบียนมีผลคุณสมบัติหรือถูกระงับ',
-    edges: {
-      ELIGIBLE: { to: 'ARCHIVED', recordHistory: true },
-      INELIGIBLE: { to: 'ARCHIVED', recordHistory: true },
-      SUSPENDED: { to: 'ARCHIVED', recordHistory: true },
+      QUALIFIED: { to: 'UNDER_REVIEW', recordHistory: true },
+      NOT_QUALIFIED: { to: 'UNDER_REVIEW', recordHistory: true },
     },
   },
 };
@@ -117,31 +109,33 @@ export function planReject(status: RegistryStatusCode): TransitionPlan | Transit
   return planTransition('reject', status);
 }
 
-export function planSuspend(status: RegistryStatusCode): TransitionPlan | TransitionError {
-  return planTransition('suspend', status);
+export function planReReview(status: RegistryStatusCode): TransitionPlan | TransitionError {
+  return planTransition('reReview', status);
 }
 
-export function planArchive(status: RegistryStatusCode): TransitionPlan | TransitionError {
-  return planTransition('archive', status);
-}
+/** Allowed direct transition targets for UI & service guards */
+export const ALLOWED_NEXT_REGISTRY_STATUSES: Record<RegistryStatusCode, readonly RegistryStatusCode[]> = {
+  DRAFT: ['UNDER_REVIEW'],
+  UNDER_REVIEW: ['DRAFT', 'QUALIFIED', 'NOT_QUALIFIED'],
+  QUALIFIED: ['UNDER_REVIEW'],
+  NOT_QUALIFIED: ['UNDER_REVIEW'],
+};
 
 export function canEditRegistry(status: RegistryStatusCode): boolean {
-  return status === 'DRAFT' || status === 'NEEDS_CORRECTION';
+  return status === 'DRAFT';
 }
 
-/** Staff with write permission may revise a registry that is not archived. */
+/** Authorized staff may revise active non-deleted registries; deleted records are excluded via deletedAt. */
 export function canReviseRegistry(status: RegistryStatusCode): boolean {
-  return status !== 'ARCHIVED';
+  return isRegistryStatus(status);
 }
 
-/** Reviewed or decided registries go back to re-check when qualifying data changes. */
+/** Post-submission and decided registries require reason and re-verification on eligibility-affecting edits. */
 export function revisionRequiresReview(status: RegistryStatusCode): boolean {
   return (
-    status === 'PENDING_REVIEW' ||
-    status === 'UNDER_ASSESSMENT' ||
-    status === 'ELIGIBLE' ||
-    status === 'INELIGIBLE' ||
-    status === 'SUSPENDED'
+    status === 'UNDER_REVIEW' ||
+    status === 'QUALIFIED' ||
+    status === 'NOT_QUALIFIED'
   );
 }
 

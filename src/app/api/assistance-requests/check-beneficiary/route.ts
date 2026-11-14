@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  formatPersonName,
+  getRegistryStatusLabelTh,
+  normalizeRegistryStatusCode,
+} from '@zms/shared';
 import { proxyToNest } from '@/lib/apiProxy';
 import { getDb, initDb } from '@/lib/db';
 import { LEVEL_1_ASNAFS, resolveAsnafGroupCode } from '@/lib/constants/asnafRelationshipCatalog';
+import { mapStatusToFrontend } from '@/lib/registrySurvey';
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,6 +48,23 @@ export async function POST(request: NextRequest) {
         const json = await res.json();
         if (json.beneficiary) {
           beneficiaryData = json.beneficiary;
+        }
+      } else if (res.status === 400 || res.status === 404 || res.status === 422) {
+        const errJson = await res.json().catch(() => ({}));
+        const errMessage = Array.isArray(errJson?.message)
+          ? errJson.message[0]
+          : errJson?.message || errJson?.error;
+        if (errMessage) {
+          return NextResponse.json(
+            {
+              success: false,
+              found: errJson?.code === 'BENEFICIARY_INELIGIBLE',
+              canApply: false,
+              code: errJson?.code,
+              error: errMessage,
+            },
+            { status: res.status },
+          );
         }
       }
     } catch {
@@ -99,7 +122,22 @@ export async function POST(request: NextRequest) {
 
       const row = dbRes.rows[0];
       const memberCode = String(row.member_id || row.registration_no || `MB-${row.id}`);
-      const regStatus = String(row.registration_status || 'active').toLowerCase();
+      const canonicalStatus = normalizeRegistryStatusCode(String(row.registration_status || 'under_review'));
+      const regStatus = mapStatusToFrontend(canonicalStatus || 'under_review');
+
+      if (canonicalStatus !== 'QUALIFIED') {
+        const label = getRegistryStatusLabelTh(canonicalStatus || 'UNDER_REVIEW');
+        return NextResponse.json(
+          {
+            success: false,
+            found: true,
+            canApply: false,
+            code: 'BENEFICIARY_INELIGIBLE',
+            error: `ไม่สามารถยื่นคำร้องขอความช่วยเหลือได้ เนื่องจากสถานะสมาชิกปัจจุบันคือ "${label}" (ต้องมีคุณสมบัติตามเกณฑ์เท่านั้น)`,
+          },
+          { status: 400 },
+        );
+      }
 
       beneficiaryData = {
         id: String(row.id),
@@ -296,6 +334,8 @@ export async function POST(request: NextRequest) {
       canApply: true,
       beneficiary: {
         ...beneficiaryData,
+        registrationStatus: mapStatusToFrontend(beneficiaryData.registrationStatus || beneficiaryData.status || 'qualified'),
+        status: 'qualified',
         asnafCategory: primaryAsnaf.asnafCode,
         asnafNameTh: primaryAsnaf.asnafNameTh,
         selectedAsnafId: primaryAsnaf.id,
@@ -322,6 +362,64 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const q = (searchParams.get('q') || searchParams.get('search') || '').trim();
+
+    // 1. Try NestJS first: only QUALIFIED and active members are eligible candidates
+    try {
+      const nestQuery = new URLSearchParams();
+      nestQuery.set('status', 'QUALIFIED');
+      nestQuery.set('pageSize', '20');
+      if (q) nestQuery.set('q', q);
+
+      const nestRes = await proxyToNest(`/beneficiaries?${nestQuery.toString()}`, request, {
+        method: 'GET',
+      });
+      if (nestRes.ok) {
+        const data = await nestRes.json();
+        const candidates = (data.items || [])
+          .filter((item: any) => {
+            const memberStatusUpper = String(item.memberStatus || 'ACTIVE').toUpperCase();
+            const canonical = normalizeRegistryStatusCode(item.status || item.registrationStatus);
+            return (
+              canonical === 'QUALIFIED' &&
+              memberStatusUpper !== 'SUSPENDED' &&
+              memberStatusUpper !== 'ARCHIVED'
+            );
+          })
+          .map((item: any) => {
+            const rawAsnaf = String(
+              item.asnaf?.code || item.asnafCategory || 'faqir_miskin',
+            );
+            const resolvedCode = resolveAsnafGroupCode(rawAsnaf);
+            const meta = LEVEL_1_ASNAFS.find((a) => a.code === resolvedCode) || {
+              nameTh: rawAsnaf,
+            };
+            const fullName =
+              item.fullName ||
+              formatPersonName({
+                prefix: item.titlePrefix || item.title,
+                firstName: item.firstName,
+                lastName: item.lastName,
+              }) ||
+              '-';
+            return {
+              id: String(item.id),
+              fullName: String(fullName).trim(),
+              nationalId: String(item.identityNumberNormalized || item.nationalId || ''),
+              memberId: String(item.memberId || item.registryNumber || item.id),
+              phone: String(item.phone || ''),
+              asnafCode: resolvedCode,
+              asnafNameTh: meta.nameTh,
+              asnafCount: Number(item.assessmentCount || 1),
+              registrationStatus: 'qualified',
+              status: 'qualified',
+            };
+          });
+        return NextResponse.json({ success: true, candidates });
+      }
+    } catch {
+      // Fallback to SQLite below when NestJS is unavailable or unauthenticated
+    }
+
     await initDb();
     const db = getDb();
 
@@ -330,7 +428,7 @@ export async function GET(request: NextRequest) {
              b.phone, b.asnaf_category, b.registration_status,
              (SELECT COUNT(*) FROM beneficiary_asnaf ba WHERE ba.beneficiary_id = b.id AND ba.is_active = 1) as asnaf_count
       FROM beneficiaries b
-      WHERE 1=1
+      WHERE LOWER(TRIM(COALESCE(b.registration_status, ''))) IN ('qualified', 'eligible', 'approved')
     `;
     const args: any[] = [];
     if (q) {
@@ -364,7 +462,8 @@ export async function GET(request: NextRequest) {
           asnafCode: resolvedCode,
           asnafNameTh: meta.nameTh,
           asnafCount: Number(r.asnaf_count || 1),
-          status: String(r.registration_status || 'active'),
+          registrationStatus: mapStatusToFrontend(String(r.registration_status || 'qualified')),
+          status: mapStatusToFrontend(String(r.registration_status || 'qualified')),
         };
       }),
     });

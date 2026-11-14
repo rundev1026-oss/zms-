@@ -195,23 +195,12 @@ export class RegistryWorkflowService {
     );
   }
 
-  async suspend(id: string, reason: string, actor: AuthUser) {
-    this.assertPermission('suspend', actor);
-    return this.lock.run(`suspend:${id}`, () =>
+  async reReview(id: string, reason: string, actor: AuthUser) {
+    this.assertPermission('reReview', actor);
+    return this.lock.run(`reReview:${id}`, () =>
       this.prisma.$transaction(async (tx) => {
         const row = await this.load(tx, id);
-        const plan = this.plan(planTransition('suspend', row.status as RegistryStatusCode));
-        return this.changeStatus(tx, row, plan.to, reason, actor);
-      }),
-    );
-  }
-
-  async archive(id: string, reason: string, actor: AuthUser) {
-    this.assertPermission('archive', actor);
-    return this.lock.run(`archive:${id}`, () =>
-      this.prisma.$transaction(async (tx) => {
-        const row = await this.load(tx, id);
-        const plan = this.plan(planTransition('archive', row.status as RegistryStatusCode));
+        const plan = this.plan(planTransition('reReview', row.status as RegistryStatusCode));
         return this.changeStatus(tx, row, plan.to, reason, actor);
       }),
     );

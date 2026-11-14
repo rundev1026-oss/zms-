@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.splitPersonName = exports.normalizePersonPrefix = exports.formatPersonName = exports.PERSON_TITLE_OPTIONS = exports.REGISTRY_STATUSES = exports.MODULE_PERMISSION_CATALOG = exports.PERMISSION_CODES = exports.API_SERVICE_NAME = exports.APP_VERSION = exports.APP_NAME = void 0;
+exports.splitPersonName = exports.normalizePersonPrefix = exports.formatPersonName = exports.PERSON_TITLE_OPTIONS = exports.REGISTRY_STATUS_LABELS_TH = exports.REGISTRY_STATUSES = exports.MODULE_PERMISSION_CATALOG = exports.PERMISSION_CODES = exports.API_SERVICE_NAME = exports.APP_VERSION = exports.APP_NAME = void 0;
+exports.normalizeRegistryStatusCode = normalizeRegistryStatusCode;
+exports.getRegistryStatusLabelTh = getRegistryStatusLabelTh;
 exports.APP_NAME = 'ระบบจัดการซะกาต (ZMS)';
 exports.APP_VERSION = '0.1.0';
 exports.API_SERVICE_NAME = 'zms-api';
@@ -328,14 +330,46 @@ exports.MODULE_PERMISSION_CATALOG = [
 ];
 exports.REGISTRY_STATUSES = [
     'DRAFT',
-    'PENDING_REVIEW',
-    'NEEDS_CORRECTION',
-    'UNDER_ASSESSMENT',
-    'ELIGIBLE',
-    'INELIGIBLE',
-    'SUSPENDED',
-    'ARCHIVED',
+    'UNDER_REVIEW',
+    'QUALIFIED',
+    'NOT_QUALIFIED',
 ];
+exports.REGISTRY_STATUS_LABELS_TH = {
+    DRAFT: 'ร่าง',
+    UNDER_REVIEW: 'ตรวจสอบข้อมูล',
+    QUALIFIED: 'มีคุณสมบัติตามเกณฑ์',
+    NOT_QUALIFIED: 'ไม่มีคุณสมบัติตามเกณฑ์',
+};
+const LEGACY_TO_CANONICAL_REGISTRY_STATUS = {
+    DRAFT: 'DRAFT',
+    NEEDS_CORRECTION: 'DRAFT',
+    NEED_MORE_INFO: 'DRAFT',
+    NEED_INFO: 'DRAFT',
+    UNDER_REVIEW: 'UNDER_REVIEW',
+    PENDING_REVIEW: 'UNDER_REVIEW',
+    UNDER_ASSESSMENT: 'UNDER_REVIEW',
+    SUBMITTED: 'UNDER_REVIEW',
+    PENDING_VERIFICATION: 'UNDER_REVIEW',
+    PENDING_SURVEY: 'UNDER_REVIEW',
+    PENDING_QUALIFICATION: 'UNDER_REVIEW',
+    QUALIFIED: 'QUALIFIED',
+    ELIGIBLE: 'QUALIFIED',
+    APPROVED: 'QUALIFIED',
+    NOT_QUALIFIED: 'NOT_QUALIFIED',
+    INELIGIBLE: 'NOT_QUALIFIED',
+    DISQUALIFIED: 'NOT_QUALIFIED',
+    REJECTED: 'NOT_QUALIFIED',
+    SUSPENDED: 'NOT_QUALIFIED',
+    ARCHIVED: 'NOT_QUALIFIED',
+};
+function normalizeRegistryStatusCode(input) {
+    const key = String(input ?? '').trim().toUpperCase();
+    return LEGACY_TO_CANONICAL_REGISTRY_STATUS[key] ?? null;
+}
+function getRegistryStatusLabelTh(input) {
+    const code = normalizeRegistryStatusCode(input);
+    return code ? exports.REGISTRY_STATUS_LABELS_TH[code] : 'ตรวจสอบข้อมูล';
+}
 var person_name_1 = require("./person-name");
 Object.defineProperty(exports, "PERSON_TITLE_OPTIONS", { enumerable: true, get: function () { return person_name_1.PERSON_TITLE_OPTIONS; } });
 Object.defineProperty(exports, "formatPersonName", { enumerable: true, get: function () { return person_name_1.formatPersonName; } });

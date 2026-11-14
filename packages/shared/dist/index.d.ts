@@ -30,8 +30,11 @@ export interface ModuleCatalogItem {
     actions: ModulePermissionAction[];
 }
 export declare const MODULE_PERMISSION_CATALOG: ModuleCatalogItem[];
-export declare const REGISTRY_STATUSES: readonly ["DRAFT", "PENDING_REVIEW", "NEEDS_CORRECTION", "UNDER_ASSESSMENT", "ELIGIBLE", "INELIGIBLE", "SUSPENDED", "ARCHIVED"];
+export declare const REGISTRY_STATUSES: readonly ["DRAFT", "UNDER_REVIEW", "QUALIFIED", "NOT_QUALIFIED"];
 export type RegistryStatusCode = (typeof REGISTRY_STATUSES)[number];
+export declare const REGISTRY_STATUS_LABELS_TH: Record<RegistryStatusCode, string>;
+export declare function normalizeRegistryStatusCode(input: unknown): RegistryStatusCode | null;
+export declare function getRegistryStatusLabelTh(input: unknown): string;
 export interface ApiErrorDetail {
     field: string;
     message: string;

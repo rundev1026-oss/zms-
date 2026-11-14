@@ -75,22 +75,26 @@ export function registryAssessmentMeta(reg: BeneficiaryRegistryItem): { key: str
   const latest = reg.latestAssessment;
   const status = String(latest?.status || '').toUpperCase();
   const eligibility = String(latest?.eligibilityResult || (latest as { resultCode?: string } | null | undefined)?.resultCode || '').toUpperCase();
-  if (status === 'NOT_ELIGIBLE' || eligibility === 'NOT_ELIGIBLE' || (!latest && reg.registrationStatus === 'disqualified')) {
+  if (status === 'NOT_ELIGIBLE' || eligibility === 'NOT_ELIGIBLE' || (!latest && reg.registrationStatus === 'not_qualified')) {
     return { key: 'ineligible', label: 'ไม่มีคุณสมบัติตามเกณฑ์', cls: 'bg-rose-50 text-rose-800 border-rose-200' };
   }
   if (status === 'ELIGIBLE' || status === 'APPROVED' || eligibility === 'ELIGIBLE' || (!latest && reg.registrationStatus === 'qualified')) {
     return { key: 'eligible', label: 'มีคุณสมบัติตามเกณฑ์', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
   }
-  if (status === 'RETURNED_FOR_CORRECTION' || status === 'NEEDS_CORRECTION' || (!latest && reg.registrationStatus === 'need_more_info')) {
-    return { key: 'reassess', label: 'ต้องประเมินใหม่', cls: 'bg-orange-50 text-orange-800 border-orange-200' };
+  if (status === 'RETURNED_FOR_CORRECTION' || status === 'NEEDS_CORRECTION' || (!latest && reg.registrationStatus === 'draft')) {
+    return {
+      key: reg.registrationStatus === 'draft' && !latest ? 'draft' : 'reassess',
+      label: reg.registrationStatus === 'draft' && !latest ? 'ร่าง' : 'ต้องประเมินใหม่',
+      cls: reg.registrationStatus === 'draft' && !latest ? 'bg-slate-100 text-slate-700 border-slate-300' : 'bg-orange-50 text-orange-800 border-orange-200',
+    };
   }
   if (
     status === 'UNDER_REVIEW' ||
     status === 'DRAFT' ||
     status === 'PENDING_REVIEW' ||
-    (!latest && ['pending_verification', 'pending_survey', 'pending_qualification'].includes(reg.registrationStatus))
+    (!latest && reg.registrationStatus === 'under_review')
   ) {
-    return { key: 'review', label: 'รอตรวจสอบ', cls: 'bg-sky-50 text-sky-800 border-sky-200' };
+    return { key: 'review', label: 'ตรวจสอบข้อมูล', cls: 'bg-amber-50 text-amber-800 border-amber-200' };
   }
   return { key: 'pending_assessment', label: 'รอประเมิน', cls: 'bg-amber-50 text-amber-800 border-amber-200' };
 }

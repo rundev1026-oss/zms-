@@ -35,10 +35,18 @@ const registrar: AuthUser = {
   permissions: ['beneficiaries.read', 'beneficiaries.write', 'beneficiaries.submit'],
 };
 
+const reviewer: AuthUser = {
+  id: '55555555-5555-4555-8555-555555555555',
+  email: 'reviewer@zms.local',
+  displayName: 'เจ้าหน้าที่ตรวจสอบข้อมูล (ข้อมูลสมมติ)',
+  roles: [{ code: 'REVIEWER', name: 'เจ้าหน้าที่ตรวจสอบข้อมูล' }],
+  permissions: ['beneficiaries.read', 'beneficiaries.read.sensitive', 'beneficiaries.review'],
+};
+
 describe('registry transition matrix', () => {
   it('covers every status for every action and stays inside registry statuses', () => {
     const assistanceStatuses = ['SUBMITTED', 'APPROVED', 'PAID', 'CLOSED', 'FOLLOW_UP'];
-    expect(WORKFLOW_ACTIONS).toHaveLength(7);
+    expect(WORKFLOW_ACTIONS).toHaveLength(6);
 
     for (const action of WORKFLOW_ACTIONS) {
       for (const status of REGISTRY_STATUSES) {
@@ -55,52 +63,58 @@ describe('registry transition matrix', () => {
     }
   });
 
-  it('follows the approved path and does not invent a religious eligibility rule', () => {
+  it('follows the 4-status workflow path and does not allow skipping review', () => {
     expect(planTransition('submit', 'DRAFT')).toEqual({
-      to: 'PENDING_REVIEW',
+      to: 'UNDER_REVIEW',
       recordHistory: true,
     });
-    expect(planTransition('assess', 'PENDING_REVIEW')).toEqual({
-      to: 'UNDER_ASSESSMENT',
+    expect(planTransition('assess', 'UNDER_REVIEW')).toEqual({
+      to: 'UNDER_REVIEW',
+      recordHistory: false,
+    });
+    expect(planTransition('approve', 'UNDER_REVIEW')).toEqual({
+      to: 'QUALIFIED',
       recordHistory: true,
     });
-    expect(planTransition('approve', 'UNDER_ASSESSMENT')).toEqual({
-      to: 'ELIGIBLE',
+    expect(planTransition('reject', 'UNDER_REVIEW')).toEqual({
+      to: 'NOT_QUALIFIED',
       recordHistory: true,
     });
-    expect(planTransition('reject', 'UNDER_ASSESSMENT')).toEqual({
-      to: 'INELIGIBLE',
+    expect(planTransition('correction', 'UNDER_REVIEW')).toEqual({
+      to: 'DRAFT',
       recordHistory: true,
     });
-    expect(planTransition('correction', 'PENDING_REVIEW')).toEqual({
-      to: 'NEEDS_CORRECTION',
+    expect(planTransition('reReview', 'QUALIFIED')).toEqual({
+      to: 'UNDER_REVIEW',
       recordHistory: true,
     });
-    expect(planTransition('suspend', 'ELIGIBLE')).toEqual({
-      to: 'SUSPENDED',
-      recordHistory: true,
-    });
-    expect(planTransition('archive', 'SUSPENDED')).toEqual({
-      to: 'ARCHIVED',
+    expect(planTransition('reReview', 'NOT_QUALIFIED')).toEqual({
+      to: 'UNDER_REVIEW',
       recordHistory: true,
     });
     expect(planTransition('approve', 'DRAFT')).toEqual({
-      error: 'ยืนยันคุณสมบัติได้เมื่อทะเบียนอยู่ระหว่างประเมิน',
+      error: 'ยืนยันมีคุณสมบัติตามเกณฑ์ได้เฉพาะทะเบียนที่อยู่ระหว่างตรวจสอบข้อมูล',
     });
-    expect(planTransition('archive', 'ARCHIVED')).toEqual({
-      error: 'เก็บถาวรได้เมื่อทะเบียนมีผลคุณสมบัติหรือถูกระงับ',
+    expect(planTransition('reject', 'DRAFT')).toEqual({
+      error: 'ยืนยันไม่มีคุณสมบัติตามเกณฑ์ได้เฉพาะทะเบียนที่อยู่ระหว่างตรวจสอบข้อมูล',
     });
-    expect(canEditRegistry('SUSPENDED')).toBe(false);
-    expect(canEditRegistry('ARCHIVED')).toBe(false);
-    expect(canReviseRegistry('ELIGIBLE')).toBe(true);
-    expect(canReviseRegistry('ARCHIVED')).toBe(false);
-    expect(revisionRequiresReview('ELIGIBLE')).toBe(true);
+    expect(planTransition('reReview', 'DRAFT')).toEqual({
+      error: 'ส่งตรวจสอบข้อมูลใหม่ได้เฉพาะทะเบียนที่ตัดสินคุณสมบัติแล้ว',
+    });
+    expect(canEditRegistry('DRAFT')).toBe(true);
+    expect(canEditRegistry('UNDER_REVIEW')).toBe(false);
+    expect(canReviseRegistry('QUALIFIED')).toBe(true);
+    expect(canReviseRegistry('NOT_QUALIFIED')).toBe(true);
+    expect(revisionRequiresReview('QUALIFIED')).toBe(true);
+    expect(revisionRequiresReview('NOT_QUALIFIED')).toBe(true);
+    expect(revisionRequiresReview('UNDER_REVIEW')).toBe(true);
     expect(revisionRequiresReview('DRAFT')).toBe(false);
     expect(REGISTRY_WORKFLOW.approve.edges).not.toHaveProperty('DRAFT');
+    expect(REGISTRY_WORKFLOW.reject.edges).not.toHaveProperty('DRAFT');
   });
 
   it('rejects a client-supplied target status', async () => {
-    const dto = plainToInstance(ReasonDto, { reason: 'เจ้าหน้าที่บันทึก', status: 'ELIGIBLE' });
+    const dto = plainToInstance(ReasonDto, { reason: 'เจ้าหน้าที่บันทึก', status: 'QUALIFIED' });
     const errors = await validate(dto, { whitelist: true, forbidNonWhitelisted: true });
     expect(errors.some((error) => error.property === 'status')).toBe(true);
   });
@@ -117,16 +131,16 @@ describe('registry workflow enforcement', () => {
   });
 
   it('records actor, time, reason, and the statuses around an approval', async () => {
-    const harness = harnessFor('UNDER_ASSESSMENT');
+    const harness = harnessFor('UNDER_REVIEW');
     const service = serviceWith(harness.prisma, harness.audit);
     const view = await service.approve(id, 'เจ้าหน้าที่ยืนยันจากข้อมูลที่ตรวจแล้ว', approver);
 
-    expect(view.status).toBe('ELIGIBLE');
-    expect(harness.updates[0]).toEqual({ status: 'ELIGIBLE', updatedById: approver.id });
+    expect(view.status).toBe('QUALIFIED');
+    expect(harness.updates[0]).toEqual({ status: 'QUALIFIED', updatedById: approver.id });
     expect(harness.history[0]).toMatchObject({
       beneficiaryId: id,
-      fromStatus: 'UNDER_ASSESSMENT',
-      toStatus: 'ELIGIBLE',
+      fromStatus: 'UNDER_REVIEW',
+      toStatus: 'QUALIFIED',
       reason: 'เจ้าหน้าที่ยืนยันจากข้อมูลที่ตรวจแล้ว',
       actedById: approver.id,
     });
@@ -137,8 +151,8 @@ describe('registry workflow enforcement', () => {
       resourceType: 'beneficiary',
       resourceId: id,
       metadata: {
-        from: 'UNDER_ASSESSMENT',
-        to: 'ELIGIBLE',
+        from: 'UNDER_REVIEW',
+        to: 'QUALIFIED',
         reason: 'เจ้าหน้าที่ยืนยันจากข้อมูลที่ตรวจแล้ว',
       },
     });
@@ -146,29 +160,32 @@ describe('registry workflow enforcement', () => {
     expect(harness.tx).not.toHaveProperty('incomeExpenseProfile');
   });
 
-  it('suspends only an eligible registry and archives that suspension', async () => {
-    const suspended = harnessFor('ELIGIBLE');
-    const suspendService = serviceWith(suspended.prisma, suspended.audit);
-    const suspendedView = await suspendService.suspend(id, 'ระงับชั่วคราว', approver);
-    expect(suspendedView.status).toBe('SUSPENDED');
-    expect(suspended.history[0]).toMatchObject({
-      fromStatus: 'ELIGIBLE',
-      toStatus: 'SUSPENDED',
-      reason: 'ระงับชั่วคราว',
-      actedById: approver.id,
+  it('allows re-review from QUALIFIED or NOT_QUALIFIED back to UNDER_REVIEW', async () => {
+    const qualified = harnessFor('QUALIFIED');
+    const reReviewService = serviceWith(qualified.prisma, qualified.audit);
+    const reReviewedView = await reReviewService.reReview(id, 'ขอทบทวนคุณสมบัติใหม่', reviewer);
+    expect(reReviewedView.status).toBe('UNDER_REVIEW');
+    expect(qualified.history[0]).toMatchObject({
+      fromStatus: 'QUALIFIED',
+      toStatus: 'UNDER_REVIEW',
+      reason: 'ขอทบทวนคุณสมบัติใหม่',
+      actedById: reviewer.id,
     });
 
-    const archived = harnessFor('SUSPENDED');
-    const archiveService = serviceWith(archived.prisma, archived.audit);
-    const archivedView = await archiveService.archive(id, 'ปิดแฟ้ม', approver);
-    expect(archivedView.status).toBe('ARCHIVED');
-    expect(archived.history[0]).toMatchObject({ fromStatus: 'SUSPENDED', toStatus: 'ARCHIVED' });
+    const notQualified = harnessFor('NOT_QUALIFIED');
+    const notQualifiedService = serviceWith(notQualified.prisma, notQualified.audit);
+    const notQualifiedView = await notQualifiedService.reReview(id, 'ส่งตรวจใหม่', reviewer);
+    expect(notQualifiedView.status).toBe('UNDER_REVIEW');
+    expect(notQualified.history[0]).toMatchObject({
+      fromStatus: 'NOT_QUALIFIED',
+      toStatus: 'UNDER_REVIEW',
+    });
   });
 
-  it('rejects a forbidden archive and a repeated command', async () => {
+  it('rejects a forbidden re-review from DRAFT and a repeated command', async () => {
     const draft = harnessFor('DRAFT');
     const service = serviceWith(draft.prisma, draft.audit);
-    await expect(service.archive(id, 'ปิดแฟ้ม', approver)).rejects.toBeInstanceOf(AppException);
+    await expect(service.reReview(id, 'ขอทบทวนใหม่', reviewer)).rejects.toBeInstanceOf(AppException);
     expect(draft.updates).toHaveLength(0);
 
     let release: (value: unknown) => void = () => undefined;
@@ -176,11 +193,11 @@ describe('registry workflow enforcement', () => {
       release = resolve;
     });
     const locked = serviceWith({ $transaction: () => gate });
-    const first = locked.suspend(id, 'ระงับชั่วคราว', approver);
-    await expect(locked.suspend(id, 'ระงับชั่วคราว', approver)).rejects.toMatchObject({
+    const first = locked.reReview(id, 'ขอทบทวนใหม่', reviewer);
+    await expect(locked.reReview(id, 'ขอทบทวนใหม่', reviewer)).rejects.toMatchObject({
       response: { code: 'DUPLICATE_REQUEST' },
     });
-    release({ status: 'SUSPENDED' });
+    release({ status: 'UNDER_REVIEW' });
     await first;
   });
 });

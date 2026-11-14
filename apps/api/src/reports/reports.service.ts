@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RegistryStatus } from '@prisma/client';
-import { formatPersonName, type RegistryStatusCode } from '@zms/shared';
+import { formatPersonName, REGISTRY_STATUS_LABELS_TH, type RegistryStatusCode } from '@zms/shared';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,16 +13,7 @@ import {
 import { buildXlsx } from './xlsx-workbook';
 import type { ExportBeneficiariesQueryDto } from './export.dto';
 
-const STATUS_LABELS: Record<RegistryStatusCode, string> = {
-  DRAFT: 'ร่าง',
-  PENDING_REVIEW: 'รอตรวจสอบ',
-  NEEDS_CORRECTION: 'รอแก้ไข',
-  UNDER_ASSESSMENT: 'อยู่ระหว่างประเมิน',
-  ELIGIBLE: 'มีคุณสมบัติ',
-  INELIGIBLE: 'ไม่มีคุณสมบัติ',
-  SUSPENDED: 'ระงับ',
-  ARCHIVED: 'เก็บถาวร',
-};
+const STATUS_LABELS: Record<RegistryStatusCode, string> = REGISTRY_STATUS_LABELS_TH;
 
 @Injectable()
 export class ReportsService {

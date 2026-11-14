@@ -55,7 +55,7 @@ describe('beneficiary rules', () => {
   it('counts every registry status from database groups and ignores the selected status tab', () => {
     const filters = summaryFilters({
       q: 'สมมติ',
-      status: 'ELIGIBLE',
+      status: 'QUALIFIED',
       province: 'ยะลา',
       asnafCategoryId: '11111111-1111-4111-8111-111111111111',
       sort: 'status:asc',
@@ -67,11 +67,11 @@ describe('beneficiary rules', () => {
 
     const summary = toStatusSummary([
       { status: 'DRAFT', count: 4 },
-      { status: 'ELIGIBLE', count: 2 },
+      { status: 'QUALIFIED', count: 2 },
     ]);
     expect(summary.counts.DRAFT).toBe(4);
-    expect(summary.counts.ELIGIBLE).toBe(2);
-    expect(summary.counts.ARCHIVED).toBe(0);
+    expect(summary.counts.QUALIFIED).toBe(2);
+    expect(summary.counts.NOT_QUALIFIED).toBe(0);
     expect(summary.total).toBe(6);
   });
 
@@ -80,7 +80,7 @@ describe('beneficiary rules', () => {
       firstName: 'สมมติ',
       lastName: 'ทดสอบ',
       identityType: 'THAI_NATIONAL_ID',
-      status: 'ELIGIBLE',
+      status: 'QUALIFIED',
       userId: 'attacker',
     });
     const errors = await validate(dto, { whitelist: true, forbidNonWhitelisted: true });

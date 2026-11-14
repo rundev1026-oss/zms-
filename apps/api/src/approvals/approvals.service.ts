@@ -193,8 +193,18 @@ export class ApprovalsService {
       );
     }
 
-    // Check valid pre-approval state
-    const validStates = ['pending_approval', 'submitted', 'doc_review', 'assessment'];
+    // Check valid pre-approval state (or revising approvedAmount while waiting disbursement)
+    const wasApproved = ['wait_disbursement', 'approved'].includes(app.status);
+    const prevApproved = wasApproved && app.approvedAmount ? Number(app.approvedAmount) : 0;
+    if (wasApproved && Math.abs(prevApproved - dto.approvedAmount) < 0.005) {
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'ALREADY_APPROVED',
+        'คำร้องนี้ได้รับการอนุมัติเรียบร้อยแล้ว ห้ามอนุมัติซ้ำ',
+      );
+    }
+
+    const validStates = ['pending_approval', 'submitted', 'doc_review', 'assessment', 'wait_disbursement', 'approved'];
     if (!validStates.includes(app.status)) {
       throw new AppException(
         HttpStatus.BAD_REQUEST,
@@ -406,6 +416,8 @@ export class ApprovalsService {
     }
 
     const approvedDecimal = new Prisma.Decimal(dto.approvedAmount);
+    const holdDelta = Math.round((dto.approvedAmount - prevApproved) * 100) / 100;
+    const holdDeltaDecimal = new Prisma.Decimal(holdDelta);
     const nowIso = new Date().toISOString();
     const approvedDateStr = new Date().toLocaleDateString('th-TH');
 
@@ -417,8 +429,9 @@ export class ApprovalsService {
       if (!freshFund || !freshFund.isActive) {
         throw new AppException(HttpStatus.BAD_REQUEST, 'FUND_UNAVAILABLE', `บัญชีกองทุน "${fund.name}" ไม่พร้อมใช้งาน`);
       }
-      const liveAvailableFund = Number(freshFund.availableAmount);
-      if (liveAvailableFund < dto.approvedAmount) {
+      const liveTotalReceived = Number(freshFund.totalReceived || 0);
+      const liveAvailableFund = Number(freshFund.availableAmount || 0) + prevApproved;
+      if (liveTotalReceived > 0 && liveAvailableFund < dto.approvedAmount) {
         const shortage = dto.approvedAmount - liveAvailableFund;
         throw new AppException(
           HttpStatus.BAD_REQUEST,
@@ -432,8 +445,9 @@ export class ApprovalsService {
           where: { id: subFund.id },
         });
         if (freshSubFund) {
-          const liveRemainingSubFund = Number(freshSubFund.remainingAmount || 0);
-          if (liveRemainingSubFund < dto.approvedAmount) {
+          const liveSubAllocated = Number(freshSubFund.allocatedAmount || 0);
+          const liveRemainingSubFund = Number(freshSubFund.remainingAmount || 0) + prevApproved;
+          if (liveSubAllocated > 0 && liveRemainingSubFund < dto.approvedAmount) {
             const shortage = dto.approvedAmount - liveRemainingSubFund;
             throw new AppException(
               HttpStatus.BAD_REQUEST,
@@ -447,8 +461,8 @@ export class ApprovalsService {
       await tx.fundAccount.update({
         where: { id: fund.id },
         data: {
-          committedAmount: { increment: approvedDecimal },
-          availableAmount: { decrement: approvedDecimal },
+          committedAmount: { increment: holdDeltaDecimal },
+          ...(liveTotalReceived > 0 ? { availableAmount: { decrement: holdDeltaDecimal } } : {}),
           updatedAt: new Date(),
         },
       });
@@ -458,8 +472,8 @@ export class ApprovalsService {
         await tx.faqirMiskinSubFund.update({
           where: { id: subFund.id },
           data: {
-            committedAmount: { increment: approvedDecimal },
-            remainingAmount: { decrement: approvedDecimal },
+            committedAmount: { increment: holdDeltaDecimal },
+            ...(Number(subFund.allocatedAmount || 0) > 0 ? { remainingAmount: { decrement: holdDeltaDecimal } } : {}),
             updatedAt: new Date(),
           },
         });
@@ -474,8 +488,8 @@ export class ApprovalsService {
         await tx.asnafAllocation.update({
           where: { id: asnafAlloc.id },
           data: {
-            committedAmount: { increment: approvedDecimal },
-            remainingAmount: { decrement: approvedDecimal },
+            committedAmount: { increment: holdDeltaDecimal },
+            ...(Number(asnafAlloc.allocatedAmount || 0) > 0 ? { remainingAmount: { decrement: holdDeltaDecimal } } : {}),
             updatedAt: new Date(),
           },
         });

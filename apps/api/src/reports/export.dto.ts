@@ -12,7 +12,7 @@ export class ExportBeneficiariesQueryDto {
   @IsOptional()
   @IsString()
   @Matches(
-    /^(DRAFT|PENDING_REVIEW|NEEDS_CORRECTION|UNDER_ASSESSMENT|ELIGIBLE|INELIGIBLE|SUSPENDED|ARCHIVED)$/,
+    /^(DRAFT|UNDER_REVIEW|QUALIFIED|NOT_QUALIFIED)$/,
     { message: 'สถานะทะเบียนไม่ถูกต้อง' },
   )
   status?: string;

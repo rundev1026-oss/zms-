@@ -376,16 +376,52 @@ export const MODULE_PERMISSION_CATALOG: ModuleCatalogItem[] = [
 
 export const REGISTRY_STATUSES = [
   'DRAFT',
-  'PENDING_REVIEW',
-  'NEEDS_CORRECTION',
-  'UNDER_ASSESSMENT',
-  'ELIGIBLE',
-  'INELIGIBLE',
-  'SUSPENDED',
-  'ARCHIVED',
+  'UNDER_REVIEW',
+  'QUALIFIED',
+  'NOT_QUALIFIED',
 ] as const;
 
 export type RegistryStatusCode = (typeof REGISTRY_STATUSES)[number];
+
+export const REGISTRY_STATUS_LABELS_TH: Record<RegistryStatusCode, string> = {
+  DRAFT: 'ร่าง',
+  UNDER_REVIEW: 'ตรวจสอบข้อมูล',
+  QUALIFIED: 'มีคุณสมบัติตามเกณฑ์',
+  NOT_QUALIFIED: 'ไม่มีคุณสมบัติตามเกณฑ์',
+};
+
+const LEGACY_TO_CANONICAL_REGISTRY_STATUS: Record<string, RegistryStatusCode> = {
+  DRAFT: 'DRAFT',
+  NEEDS_CORRECTION: 'DRAFT',
+  NEED_MORE_INFO: 'DRAFT',
+  NEED_INFO: 'DRAFT',
+  UNDER_REVIEW: 'UNDER_REVIEW',
+  PENDING_REVIEW: 'UNDER_REVIEW',
+  UNDER_ASSESSMENT: 'UNDER_REVIEW',
+  SUBMITTED: 'UNDER_REVIEW',
+  PENDING_VERIFICATION: 'UNDER_REVIEW',
+  PENDING_SURVEY: 'UNDER_REVIEW',
+  PENDING_QUALIFICATION: 'UNDER_REVIEW',
+  QUALIFIED: 'QUALIFIED',
+  ELIGIBLE: 'QUALIFIED',
+  APPROVED: 'QUALIFIED',
+  NOT_QUALIFIED: 'NOT_QUALIFIED',
+  INELIGIBLE: 'NOT_QUALIFIED',
+  DISQUALIFIED: 'NOT_QUALIFIED',
+  REJECTED: 'NOT_QUALIFIED',
+  SUSPENDED: 'NOT_QUALIFIED',
+  ARCHIVED: 'NOT_QUALIFIED',
+};
+
+export function normalizeRegistryStatusCode(input: unknown): RegistryStatusCode | null {
+  const key = String(input ?? '').trim().toUpperCase();
+  return LEGACY_TO_CANONICAL_REGISTRY_STATUS[key] ?? null;
+}
+
+export function getRegistryStatusLabelTh(input: unknown): string {
+  const code = normalizeRegistryStatusCode(input);
+  return code ? REGISTRY_STATUS_LABELS_TH[code] : 'ตรวจสอบข้อมูล';
+}
 
 export interface ApiErrorDetail {
   field: string;

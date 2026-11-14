@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { getRegistryStatusLabelTh } from '@zms/shared';
 import {
   FileText,
   X,
@@ -1108,7 +1109,7 @@ export function AssistanceRequestWizardModal({
                       </span>
                       <span className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 inline" />
-                        {beneficiary.registrationStatus || beneficiary.memberStatus || 'ผ่านการตรวจสอบ'}
+                        {beneficiary.registrationStatus ? getRegistryStatusLabelTh(beneficiary.registrationStatus) : beneficiary.memberStatus || 'ผ่านการตรวจสอบ'}
                       </span>
                     </div>
                   </div>

@@ -39,6 +39,12 @@ export async function GET(request: NextRequest) {
 
     const metrics = await nestRes.json();
 
+    const sb = metrics.statusBreakdown || {};
+    const draftCount = sb.draft ?? sb.DRAFT ?? 0;
+    const underReviewCount = sb.underReview ?? sb.UNDER_REVIEW ?? metrics.pendingAssessments ?? 0;
+    const qualifiedCount = sb.qualified ?? sb.QUALIFIED ?? metrics.eligibleCount ?? 0;
+    const notQualifiedCount = sb.notQualified ?? sb.NOT_QUALIFIED ?? metrics.ineligibleCount ?? 0;
+
     // Return both the 6 strictly separated metrics (Section 9) AND backward-compatible
     // registry/applications objects so ExecutiveDashboard and BeneficiaryRegistryView stay in sync.
     return NextResponse.json({
@@ -57,9 +63,18 @@ export async function GET(request: NextRequest) {
         totalDisbursedAmount: metrics.totalDisbursedAmount ?? 0,
         // Backward-compatible flat aliases
         totalRegisteredBeneficiaries: metrics.totalMembers ?? 0,
-        pendingVerificationRegistries: metrics.pendingAssessments ?? 0,
-        qualifiedBeneficiaries: metrics.eligibleCount ?? 0,
-        disqualifiedBeneficiaries: metrics.ineligibleCount ?? 0,
+        verifiedBeneficiaries: metrics.verifiedMembers ?? (underReviewCount + qualifiedCount + notQualifiedCount),
+        draftRegistries: draftCount,
+        pendingVerificationRegistries: underReviewCount,
+        qualifiedBeneficiaries: qualifiedCount,
+        notQualifiedBeneficiaries: notQualifiedCount,
+        disqualifiedBeneficiaries: notQualifiedCount,
+        statusBreakdown: {
+          draft: draftCount,
+          underReview: underReviewCount,
+          qualified: qualifiedCount,
+          notQualified: notQualifiedCount,
+        },
         pendingAssistanceRequests: metrics.requestBreakdown?.pending ?? 0,
         approvedAssistanceRequests: metrics.requestBreakdown?.approved ?? 0,
         completedAssistanceDisbursed: metrics.assistedMembersCount ?? 0,

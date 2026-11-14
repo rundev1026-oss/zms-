@@ -53,12 +53,14 @@ export function StatusBadge({
       case 'active':
       case 'completed':
       case 'eligible':
+      case 'qualified':
       case 'approved':
       case 'disbursed':
       case 'balanced':
       case 'healthy':
       case 'published':
         displayLabel = normStatus === 'active' ? 'ใช้งานปกติ'
+          : normStatus === 'qualified' ? 'มีคุณสมบัติตามเกณฑ์'
           : normStatus === 'eligible' ? 'ผ่านเกณฑ์ได้รับสิทธิ์'
           : normStatus === 'approved' ? 'อนุมัติแล้ว'
           : normStatus === 'disbursed' ? 'จ่ายเงินแล้ว'
@@ -72,12 +74,14 @@ export function StatusBadge({
       case 'pending':
       case 'pending_approval':
       case 'pending_review':
+      case 'under_review':
       case 'submitted':
       case 'wait_disbursement':
       case 'under_assessment':
       case 'doc_review':
       case 'in_progress':
         displayLabel = normStatus === 'pending_approval' ? 'รอพิจารณาอนุมัติ'
+          : normStatus === 'under_review' ? 'ตรวจสอบข้อมูล'
           : normStatus === 'pending_review' ? 'รอตรวจสอบเอกสาร'
           : normStatus === 'submitted' ? 'ยื่นคำขอแล้ว'
           : normStatus === 'wait_disbursement' ? 'รอการเบิกจ่าย'
@@ -90,12 +94,14 @@ export function StatusBadge({
 
       case 'rejected':
       case 'ineligible':
+      case 'not_qualified':
       case 'suspended':
       case 'discrepancy':
       case 'failed':
       case 'degraded':
       case 'cancelled':
         displayLabel = normStatus === 'rejected' ? 'ปฏิเสธคำขอ'
+          : normStatus === 'not_qualified' ? 'ไม่มีคุณสมบัติตามเกณฑ์'
           : normStatus === 'ineligible' ? 'ไม่ผ่านเกณฑ์สิทธิ์'
           : normStatus === 'suspended' ? 'ระงับชั่วคราว'
           : normStatus === 'discrepancy' ? 'พบยอดต่าง / ไม่ตรง'

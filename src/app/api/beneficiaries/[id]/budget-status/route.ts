@@ -16,23 +16,14 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const requestedApprovedParam = searchParams.get('approvedAmount');
 
-    // 1. Try proxying to NestJS API
-    try {
-      const nestRes = await proxyToNest(`/approvals/${id}/budget-status`, request, {
-        method: 'GET',
-      });
-      if (nestRes.ok) {
-        const nestData = await nestRes.json();
-        return NextResponse.json({ success: true, data: nestData });
-      }
-    } catch {}
-
-    // 2. Fallback to SQLite
     await initDb();
     const db = getDb();
 
-    const appRes = await db.execute({
+    // Ensure application exists in SQLite (auto-sync from NestJS PostgreSQL if needed)
+    let appRes = await db.execute({
       sql: `SELECT a.id, a.application_no, a.asnaf_category, a.assistance_type, a.assistance_type_id,
                    a.specific_fund_id, a.primary_group_code, a.requested_amount, a.approved_amount, a.status,
                    b.full_name, b.national_id,
@@ -45,6 +36,36 @@ export async function GET(
     });
 
     if (appRes.rows.length === 0) {
+      try {
+        const { ensureApplicationInSqlite } = await import('@/lib/syncAssistanceRequest');
+        const synced = await ensureApplicationInSqlite(id);
+        if (synced) {
+          appRes = await db.execute({
+            sql: `SELECT a.id, a.application_no, a.asnaf_category, a.assistance_type, a.assistance_type_id,
+                         a.specific_fund_id, a.primary_group_code, a.requested_amount, a.approved_amount, a.status,
+                         b.full_name, b.national_id,
+                         ass.recommended_amount, ass.recommended_fund_id, ass.recommended_specific_fund_id
+                  FROM assistance_applications a
+                  LEFT JOIN beneficiaries b ON b.id = a.beneficiary_id
+                  LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
+                  WHERE a.id = ? OR a.application_no = ? LIMIT 1`,
+            args: [id, id],
+          });
+        }
+      } catch {}
+    }
+
+    if (appRes.rows.length === 0) {
+      // Fallback to NestJS if still not found
+      try {
+        const nestRes = await proxyToNest(`/approvals/${id}/budget-status`, request, {
+          method: 'GET',
+        });
+        if (nestRes.ok) {
+          const nestData = await nestRes.json();
+          return NextResponse.json({ success: true, data: nestData });
+        }
+      } catch {}
       return NextResponse.json(
         { success: false, error: `ไม่พบคำร้องรหัส ${id}` },
         { status: 404 }
@@ -52,84 +73,33 @@ export async function GET(
     }
 
     const app = appRes.rows[0];
+    const requestedAmount = Number(app.requested_amount || 0);
+    const recommendedAmount = app.recommended_amount ? Number(app.recommended_amount) : requestedAmount;
+    const targetApproveAmt =
+      requestedApprovedParam !== null && requestedApprovedParam !== ''
+        ? Number(requestedApprovedParam)
+        : Number(app.approved_amount || recommendedAmount || requestedAmount || 0);
 
-    const asnafRaw = String(app.asnaf_category || 'faqir_miskin');
-    const assistanceTypeStr = String(app.assistance_type || '');
-    const assistanceTypeIdStr = app.assistance_type_id ? String(app.assistance_type_id) : undefined;
-
-    // Strict Assistance Type-driven Sub-Fund Resolution (No random default!)
-    const subKey = matchCanonicalSubKey(assistanceTypeStr, assistanceTypeIdStr, undefined, asnafRaw);
-    let sf: any = null;
-
-    if (subKey) {
-      const canonicalSub = CANONICAL_SUB_FUNDS[subKey];
-      const sfRes = await db.execute({
-        sql: `SELECT id, code, fund_code, name, primary_group_code, fund_account_id,
-                     allocated_amount, committed_amount, disbursed_amount, remaining_amount, is_active
-              FROM faqir_miskin_sub_funds
-              WHERE id = ? OR code = ? OR fund_code = ? LIMIT 1`,
-        args: [canonicalSub.id, canonicalSub.code, canonicalSub.fundCode],
-      });
-      sf = sfRes.rows.length > 0 ? sfRes.rows[0] : canonicalSub;
-    }
-
-    // Auto-resolve main fund from Asnaf & sub-fund
-    const mainCode = matchCanonicalMainFundCode(asnafRaw, subKey);
-    let fund: any = null;
-    if (mainCode) {
-      const canonicalMain = CANONICAL_MAIN_FUNDS[mainCode];
-      const fundRes = await db.execute({
-        sql: `SELECT id, code, name, category, total_received, committed_amount, disbursed_amount, available_amount, is_active
-              FROM fund_accounts
-              WHERE id = ? OR code = ? LIMIT 1`,
-        args: [canonicalMain.id, canonicalMain.code],
-      });
-      fund = fundRes.rows.length > 0 ? fundRes.rows[0] : canonicalMain;
-    }
+    // Run authoritative 3-tier solvency check against FinancialService
+    const solvency = await BeneficiaryService.checkFundSolvencyForApproval({
+      applicationId: String(app.id),
+      approvedAmount: targetApproveAmt,
+    });
 
     const asnafLabels: Record<string, string> = {
       faqir_miskin: 'ฟากีร–มิสกิน (Faqir & Miskin)',
       faqir: 'ฟากีร (The Destitute)',
       miskin: 'มิสกิน (The Needy)',
-      amil: 'อามิลีน (Amil / Zakat Admin)',
+      amil: 'อามีลีน (Amil / Zakat Admin)',
       muallaf: 'มุอัลลัฟ (Muallaf)',
-      gharimin: 'อัล-ฆอรีมีน (Gharimin / Debtors)',
-      fisabilillah: 'ฟีสะบีลิลลาฮ์ (Fi Sabilillah)',
+      gharimin: 'อัลฆอรีมีน (Gharimin / Debtors)',
+      fisabilillah: 'ฟีสาบิลิลละฮ์ (Fi Sabilillah)',
       ibnsabil: 'อิบนุสสะบีล (Ibn Sabil / Wayfarer)',
       humanitarian: 'มนุษยธรรมและบรรเทาทุกข์',
     };
 
-    const asnafCode = String(app.asnaf_category || 'faqir_miskin');
-    const asnafDisplayName = asnafLabels[asnafCode] || asnafCode;
-    const requestedAmount = Number(app.requested_amount || 0);
-    const recommendedAmount = app.recommended_amount ? Number(app.recommended_amount) : requestedAmount;
-
-    const mainAllocated = fund ? Number(fund.total_received || 0) : 0;
-    const mainDisbursed = fund ? Number(fund.disbursed_amount || 0) : 0;
-    const mainCommitted = fund ? Number(fund.committed_amount || 0) : 0;
-    const mainAvailable = fund ? Number(fund.available_amount || 0) : 0;
-
-    let subAllocated = sf ? Number(sf.allocated_amount || 0) : 0;
-    let subDisbursed = sf ? Number(sf.disbursed_amount || 0) : 0;
-    let subCommitted = sf ? Number(sf.committed_amount || 0) : 0;
-    let subAvailable = sf ? Number(sf.remaining_amount || 0) : 0;
-
-    try {
-      const { FinancialService } = await import('@/services/financialService');
-      const sfList = await FinancialService.getSpecificFunds({
-        fiscalYear: '2569',
-        primaryGroupCode: String(sf?.primary_group_code || 'faqir_miskin'),
-        status: 'all',
-      });
-      const liveSf = sfList.find((s) => s.id === sf?.id || s.code === sf?.code || s.fundCode === sf?.fund_code);
-      if (liveSf) {
-        subAllocated = Number(liveSf.allocatedAmount ?? subAllocated);
-        subDisbursed = Number(liveSf.disbursedAmount ?? subDisbursed);
-        subCommitted = Number(liveSf.committedAmount ?? subCommitted);
-        subAvailable = Number(liveSf.remainingAmount ?? subAvailable);
-      }
-    } catch {}
-
+    const asnafCode = String(solvency.asnafAllocation?.asnafCode || app.asnaf_category || 'faqir_miskin');
+    const asnafDisplayName = asnafLabels[asnafCode] || solvency.asnafAllocation?.asnafName || asnafCode;
     const fullName = String(app.full_name || '');
 
     return NextResponse.json({
@@ -150,45 +120,80 @@ export async function GET(
           recommendedAmount,
         },
         resolvedFunds: {
-          mainFund: fund
-            ? {
-                id: String(fund.id),
-                code: String(fund.code || ''),
-                name: String(fund.name),
-                category: String(fund.category || ''),
-                isActive: Number(fund.is_active ?? 1) === 1,
-                isAutoResolved: true,
-              }
-            : null,
-          subFund: sf
-            ? {
-                id: String(sf.id),
-                code: String(sf.code || sf.fund_code || ''),
-                fundCode: sf.fund_code ? String(sf.fund_code) : undefined,
-                name: String(sf.name),
-                primaryGroupCode: String(sf.primary_group_code || 'faqir_miskin'),
-                isActive: Number(sf.is_active ?? 1) === 1,
-                isAutoResolved: true,
-              }
-            : null,
-        },
-        budgetStatus: {
+          moneyType: solvency.moneyTypePool || null,
+          asnafAllocation: solvency.asnafAllocation || null,
           mainFund: {
-            allocated: mainAllocated,
-            disbursed: mainDisbursed,
-            committed: mainCommitted,
-            availableBeforeApproval: mainAvailable,
+            id: solvency.fundAccount.id,
+            code: solvency.fundAccount.code,
+            name: solvency.fundAccount.name,
+            category: solvency.fundAccount.category || 'zakat',
+            isActive: true,
+            isAutoResolved: true,
           },
           subFund: {
-            allocated: subAllocated,
-            disbursed: subDisbursed,
-            committed: subCommitted,
-            availableBeforeApproval: subAvailable,
+            id: solvency.specificSubFund.id,
+            code: solvency.specificSubFund.code,
+            name: solvency.specificSubFund.name,
+            primaryGroupCode: asnafCode,
+            isActive: true,
+            isAutoResolved: true,
           },
         },
-        isResolvable: Boolean(fund && sf),
-        isMapped: Boolean(fund && sf),
-        unmappedWarning: (fund && sf) ? null : UNMAPPED_FUND_WARNING,
+        budgetStatus: {
+          moneyType: solvency.moneyTypePool
+            ? {
+                code: solvency.moneyTypePool.code,
+                name: solvency.moneyTypePool.name,
+                allocated: solvency.moneyTypePool.totalReceived,
+                disbursed: solvency.moneyTypePool.disbursedAmount,
+                committed: solvency.moneyTypePool.committedAmount,
+                availableBeforeApproval: solvency.moneyTypePool.availableBeforeApproval,
+                remainingAfterApproval: solvency.moneyTypePool.remainingAfterApproval,
+                isSolvent: solvency.moneyTypePool.isSolvent,
+              }
+            : null,
+          asnafAllocation: solvency.asnafAllocation
+            ? {
+                asnafCode: solvency.asnafAllocation.asnafCode,
+                asnafName: solvency.asnafAllocation.asnafName,
+                allocated: solvency.asnafAllocation.allocatedAmount ?? 0,
+                disbursed: solvency.asnafAllocation.disbursedAmount ?? 0,
+                committed: solvency.asnafAllocation.committedAmount ?? 0,
+                availableBeforeApproval:
+                  solvency.asnafAllocation.availableBeforeApproval ?? solvency.asnafAllocation.remainingAmount,
+                remainingAfterApproval:
+                  solvency.asnafAllocation.remainingAfterApproval ??
+                  (solvency.asnafAllocation.remainingAmount - targetApproveAmt),
+                isSolvent: solvency.asnafAllocation.isSolvent ?? true,
+              }
+            : null,
+          mainFund: {
+            allocated: solvency.fundAccount.totalReceived ?? 0,
+            disbursed: solvency.fundAccount.disbursedAmount ?? 0,
+            committed: solvency.fundAccount.committedAmount,
+            availableBeforeApproval:
+              solvency.fundAccount.availableBeforeApproval ?? solvency.fundAccount.availableAmount,
+            remainingAfterApproval:
+              solvency.fundAccount.remainingAfterApproval ??
+              (solvency.fundAccount.availableAmount - targetApproveAmt),
+          },
+          subFund: {
+            allocated: solvency.specificSubFund.allocatedAmount ?? 0,
+            disbursed: solvency.specificSubFund.disbursedAmount ?? 0,
+            committed: solvency.specificSubFund.committedAmount,
+            availableBeforeApproval:
+              solvency.specificSubFund.availableBeforeApproval ?? solvency.specificSubFund.remainingAmount,
+            remainingAfterApproval:
+              solvency.specificSubFund.remainingAfterApproval ??
+              (solvency.specificSubFund.remainingAmount - targetApproveAmt),
+            isSolvent: solvency.specificSubFund.isSolvent ?? true,
+          },
+        },
+        isSolvent: solvency.isSolvent,
+        reason: solvency.reason || null,
+        isResolvable: true,
+        isMapped: true,
+        unmappedWarning: null,
       },
     });
   } catch (error: any) {

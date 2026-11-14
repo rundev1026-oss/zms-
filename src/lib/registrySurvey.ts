@@ -1,4 +1,5 @@
 import { formatPersonName, splitPersonName } from '@zms/shared';
+import type { RegistrationStatus } from '@/types';
 import { computeDocumentChecklist } from './registryDocuments';
 
 export const INCOME_LINE_KEYS = [
@@ -385,29 +386,42 @@ function parseObject(value: unknown): Record<string, any> | undefined {
   return Object.keys(parsed).length > 0 ? (parsed as Record<string, any>) : undefined;
 }
 
-function mapStatusToFrontend(nestStatus: string): string {
-  const upper = String(nestStatus || '').toUpperCase();
-  if (upper === 'DRAFT') return 'draft';
-  if (upper === 'SUBMITTED') return 'pending_verification';
-  if (upper === 'PENDING_REVIEW') return 'pending_qualification';
-  if (upper === 'APPROVED') return 'qualified';
-  if (upper === 'REJECTED') return 'disqualified';
-  if (upper === 'SUSPENDED') return 'suspended';
-  if (upper === 'NEED_INFO' || upper === 'NEEDS_CORRECTION') return 'need_more_info';
-  if (upper === 'UNDER_ASSESSMENT') return 'pending_survey';
-  if (upper === 'ELIGIBLE') return 'qualified';
-  if (upper === 'INELIGIBLE') return 'disqualified';
-  if (upper === 'ARCHIVED') return 'suspended';
-  return String(nestStatus || 'pending_verification').toLowerCase();
+export function mapStatusToFrontend(nestStatus: string): RegistrationStatus {
+  const upper = String(nestStatus || '').trim().toUpperCase();
+  if (upper === 'DRAFT' || upper === 'NEED_INFO' || upper === 'NEEDS_CORRECTION' || upper === 'NEED_MORE_INFO') {
+    return 'draft';
+  }
+  if (
+    upper === 'UNDER_REVIEW' ||
+    upper === 'SUBMITTED' ||
+    upper === 'PENDING_REVIEW' ||
+    upper === 'UNDER_ASSESSMENT' ||
+    upper === 'PENDING_VERIFICATION' ||
+    upper === 'PENDING_SURVEY' ||
+    upper === 'PENDING_QUALIFICATION'
+  ) {
+    return 'under_review';
+  }
+  if (upper === 'QUALIFIED' || upper === 'ELIGIBLE' || upper === 'APPROVED') {
+    return 'qualified';
+  }
+  if (
+    upper === 'NOT_QUALIFIED' ||
+    upper === 'INELIGIBLE' ||
+    upper === 'DISQUALIFIED' ||
+    upper === 'REJECTED' ||
+    upper === 'SUSPENDED' ||
+    upper === 'ARCHIVED'
+  ) {
+    return 'not_qualified';
+  }
+  return 'under_review';
 }
 
 const REVIEWED_FRONTEND_STATUSES = new Set([
-  'pending_verification',
-  'pending_survey',
-  'pending_qualification',
+  'under_review',
   'qualified',
-  'disqualified',
-  'suspended',
+  'not_qualified',
 ]);
 
 function displayValue(value: unknown): string {

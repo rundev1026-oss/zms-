@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { formatPersonName, splitPersonName } from '@zms/shared';
+import { formatPersonName, getRegistryStatusLabelTh, splitPersonName } from '@zms/shared';
 import { breakdownsEqual, diffRegistryFields, registryNeedsReReview, sumFilled, valuesEqual, INCOME_LINE_KEYS, EXPENSE_LINE_KEYS } from '@/lib/registrySurvey';
 import { useApp } from '@/context/AppContext';
 import { 
@@ -150,13 +150,16 @@ interface BeneficiaryRegistryViewProps {
 
 const REGISTRATION_STATUS_LABELS: Record<RegistrationStatus, { label: string; color: string; bg: string; border: string }> = {
   draft: { label: 'ร่าง', color: 'text-slate-700', bg: 'bg-slate-100', border: 'border-slate-300' },
-  pending_verification: { label: 'รอตรวจสอบข้อมูล', color: 'text-amber-800', bg: 'bg-amber-50', border: 'border-amber-200' },
-  pending_survey: { label: 'รอลงพื้นที่สำรวจ', color: 'text-sky-800', bg: 'bg-sky-50', border: 'border-sky-200' },
-  pending_qualification: { label: 'รอพิจารณาคุณสมบัติ', color: 'text-purple-800', bg: 'bg-purple-50', border: 'border-purple-200' },
+  under_review: { label: 'ตรวจสอบข้อมูล', color: 'text-amber-800', bg: 'bg-amber-50', border: 'border-amber-200' },
   qualified: { label: 'มีคุณสมบัติตามเกณฑ์', color: 'text-emerald-800', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  disqualified: { label: 'ไม่มีคุณสมบัติตามเกณฑ์', color: 'text-rose-800', bg: 'bg-rose-50', border: 'border-rose-200' },
-  need_more_info: { label: 'รอตรวจสอบใหม่', color: 'text-orange-800', bg: 'bg-orange-50', border: 'border-orange-200' },
-  suspended: { label: 'ระงับหรือยกเลิกทะเบียน', color: 'text-slate-800', bg: 'bg-slate-200', border: 'border-slate-400' },
+  not_qualified: { label: 'ไม่มีคุณสมบัติตามเกณฑ์', color: 'text-rose-800', bg: 'bg-rose-50', border: 'border-rose-200' },
+};
+
+const ALLOWED_NEXT_REGISTRATION_STATUSES: Record<RegistrationStatus, RegistrationStatus[]> = {
+  draft: ['under_review'],
+  under_review: ['qualified', 'not_qualified', 'draft'],
+  qualified: ['under_review'],
+  not_qualified: ['under_review'],
 };
 
 const ASNAF_LABELS: Record<string, string> = {
@@ -289,7 +292,7 @@ export function BeneficiaryRegistryView({
 
   // Status transition dialog state
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState<boolean>(false);
-  const [newStatus, setNewStatus] = useState<RegistrationStatus>('pending_verification');
+  const [newStatus, setNewStatus] = useState<RegistrationStatus>('under_review');
   const [statusNotes, setStatusNotes] = useState<string>('');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
   // 3-Step Assistance Request Wizard Modal state (Overlay directly over Beneficiary Registry)
@@ -297,6 +300,16 @@ export function BeneficiaryRegistryView({
   const [activeAssistanceBeneficiaryId, setActiveAssistanceBeneficiaryId] = useState<string | null>(null);
 
   const handleStartAssistanceRequest = (beneficiaryId: string) => {
+    const target =
+      registries.find((r) => r.id === beneficiaryId) ||
+      (selectedRegistry?.id === beneficiaryId ? selectedRegistry : null);
+    if (target && target.registrationStatus !== 'qualified') {
+      showToast(
+        `ไม่สามารถยื่นคำร้องได้ เนื่องจากสมาชิกอยู่ในสถานะ "${getRegistryStatusLabelTh(target.registrationStatus)}" (ต้องมีสถานะ "มีคุณสมบัติตามเกณฑ์" เท่านั้น)`,
+        'error',
+      );
+      return;
+    }
     setActiveAssistanceBeneficiaryId(beneficiaryId);
     setIsAssistanceWizardOpen(true);
   };
@@ -391,7 +404,7 @@ export function BeneficiaryRegistryView({
       pendingAssessments:
         activeStatsSource?.pendingAssessments ??
         activeStatsSource?.separated?.pendingAssessments ??
-        registries.filter((r) => ['draft', 'pending_verification', 'pending_survey', 'pending_qualification', 'need_more_info'].includes(r.registrationStatus)).length,
+        registries.filter((r) => r.registrationStatus === 'under_review').length,
       eligibleCount:
         activeStatsSource?.eligibleCount ??
         activeStatsSource?.separated?.eligibleCount ??
@@ -399,7 +412,7 @@ export function BeneficiaryRegistryView({
       ineligibleCount:
         activeStatsSource?.ineligibleCount ??
         activeStatsSource?.separated?.ineligibleCount ??
-        registries.filter((r) => r.registrationStatus === 'disqualified').length,
+        registries.filter((r) => r.registrationStatus === 'not_qualified').length,
       totalAssistanceRequests:
         activeStatsSource?.totalAssistanceRequests ??
         activeStatsSource?.separated?.totalAssistanceRequests ??
@@ -962,8 +975,9 @@ export function BeneficiaryRegistryView({
 
   // Open status change dialog
   const handleOpenStatusDialog = (reg: BeneficiaryRegistryItem) => {
+    const allowedNext = ALLOWED_NEXT_REGISTRATION_STATUSES[reg.registrationStatus] || ['under_review'];
     setSelectedRegistry(reg);
-    setNewStatus(reg.registrationStatus);
+    setNewStatus(allowedNext[0]);
     setStatusNotes('');
     setIsStatusDialogOpen(true);
   };
@@ -1100,29 +1114,29 @@ export function BeneficiaryRegistryView({
 
           <div className="p-3.5 rounded-2xl bg-white border border-amber-200/80 shadow-2xs">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">2. รอประเมิน</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">2. ตรวจสอบข้อมูล</span>
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
             <div className="text-2xl font-extrabold text-amber-800 mt-1.5 font-mono">{summaryMetrics.pendingAssessments}</div>
-            <div className="text-[11px] text-slate-500">รอประเมิน/ตรวจสอบสิทธิ์</div>
+            <div className="text-[11px] text-slate-500">อยู่ระหว่างตรวจสอบและประเมินสิทธิ์</div>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-white border border-emerald-200/80 shadow-2xs">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">3. ผ่านเกณฑ์</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">3. มีคุณสมบัติตามเกณฑ์</span>
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="text-2xl font-extrabold text-emerald-800 mt-1.5 font-mono">{summaryMetrics.eligibleCount}</div>
-            <div className="text-[11px] text-slate-500">มีสิทธิ์รับซะกาตตามเกณฑ์</div>
+            <div className="text-[11px] text-slate-500">ผ่านการตรวจสอบและมีสิทธิ์รับซะกาต</div>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-white border border-rose-200/80 shadow-2xs">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">4. ไม่ผ่านเกณฑ์</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">4. ไม่มีคุณสมบัติตามเกณฑ์</span>
               <XCircle className="w-4 h-4 text-rose-600" />
             </div>
             <div className="text-2xl font-extrabold text-rose-800 mt-1.5 font-mono">{summaryMetrics.ineligibleCount}</div>
-            <div className="text-[11px] text-slate-500">ไม่ผ่านเกณฑ์ในรอบที่เลือก</div>
+            <div className="text-[11px] text-slate-500">ตรวจสอบแล้วไม่ผ่านหลักเกณฑ์</div>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-white border border-sky-200/80 shadow-2xs">
@@ -1201,6 +1215,14 @@ export function BeneficiaryRegistryView({
             const count = registries.filter((r) => r.registrationStatus === st).length;
             const meta = REGISTRATION_STATUS_LABELS[st];
             const isActive = statusFilter === st;
+            const StatusIcon =
+              st === 'draft'
+                ? FileText
+                : st === 'under_review'
+                  ? Clock
+                  : st === 'qualified'
+                    ? CheckCircle2
+                    : XCircle;
 
             return (
               <button
@@ -1212,6 +1234,7 @@ export function BeneficiaryRegistryView({
                     : `${meta.bg} ${meta.color} ${meta.border} hover:opacity-80`
                 }`}
               >
+                <StatusIcon className="w-3.5 h-3.5 shrink-0" />
                 <span>{meta.label}</span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                   isActive ? 'bg-white/20 text-white' : 'bg-white text-slate-700 border border-slate-200'
@@ -1374,8 +1397,11 @@ export function BeneficiaryRegistryView({
             layout={cardLayout}
             memberCode={getDisplayMemberCode}
             memberStatus={(reg) => {
-              const key = String(reg.memberStatus || 'ACTIVE').toUpperCase();
-              return MEMBER_STATUS_LABELS[key] || MEMBER_STATUS_LABELS.ACTIVE;
+              const regMeta = REGISTRATION_STATUS_LABELS[reg.registrationStatus] || REGISTRATION_STATUS_LABELS.under_review;
+              return {
+                label: regMeta.label,
+                cls: `${regMeta.bg} ${regMeta.color} ${regMeta.border}`,
+              };
             }}
             asnafLabel={(reg) => {
               const asnafKey = String(reg.asnafCategory || '').toLowerCase();
@@ -1493,12 +1519,24 @@ export function BeneficiaryRegistryView({
                         </span>
                       </td>
 
-                      {/* Separated Member Status */}
+                      {/* Canonical 4-State Registration Status */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${memberMeta.cls}`}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          <span>{memberMeta.label}</span>
-                        </span>
+                        {(() => {
+                          const regMeta = REGISTRATION_STATUS_LABELS[reg.registrationStatus] || REGISTRATION_STATUS_LABELS.under_review;
+                          return (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${regMeta.bg} ${regMeta.color} ${regMeta.border}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                              <span>{regMeta.label}</span>
+                            </span>
+                          );
+                        })()}
+                        {(memberStatusKey === 'SUSPENDED' || memberStatusKey === 'ARCHIVED') && (
+                          <div className="mt-1">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${memberMeta.cls}`}>
+                              {memberMeta.label}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Separated Latest Assessment Status */}
@@ -1563,9 +1601,17 @@ export function BeneficiaryRegistryView({
 
                           <button
                             onClick={() => handleStartAssistanceRequest(reg.id)}
-                            className="zms-action inline-flex items-center gap-1 px-2 py-1 bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 rounded-lg text-[10px] font-bold transition-colors"
-                            title="ยื่นคำร้องขอความช่วยเหลือ"
-                           aria-label="ยื่นคำร้อง">
+                            className={`zms-action inline-flex items-center gap-1 px-2 py-1 border rounded-lg text-[10px] font-bold transition-colors ${
+                              reg.registrationStatus === 'qualified'
+                                ? 'bg-sky-50 text-sky-800 hover:bg-sky-100 border-sky-200'
+                                : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                            }`}
+                            title={
+                              reg.registrationStatus === 'qualified'
+                                ? 'ยื่นคำร้องขอความช่วยเหลือ'
+                                : 'ยื่นคำร้องได้เฉพาะสมาชิกสถานะ "มีคุณสมบัติตามเกณฑ์" เท่านั้น'
+                            }
+                            aria-label="ยื่นคำร้อง">
                             <FilePlus2 className="w-3.5 h-3.5 text-sky-700" />
                             <span className="hidden xl:inline">ยื่นคำร้อง</span>
                           </button>
@@ -1713,12 +1759,30 @@ export function BeneficiaryRegistryView({
                       {formatPersonName(selectedRegistry)}
                     </h2>
                     {!memberHeaderCollapsed && (
-                      <div className="mt-1.5">
-                        <MemberStatusBadge status={selectedRegistry.memberStatus} />
+                      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                        {(() => {
+                          const regMeta = REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus] || REGISTRATION_STATUS_LABELS.under_review;
+                          return (
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12px] font-bold leading-5 ${regMeta.bg} ${regMeta.color} ${regMeta.border}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                              <span>{regMeta.label}</span>
+                            </span>
+                          );
+                        })()}
+                        {['SUSPENDED', 'ARCHIVED'].includes(String(selectedRegistry.memberStatus || '').toUpperCase()) && (
+                          <MemberStatusBadge status={selectedRegistry.memberStatus} />
+                        )}
                       </div>
                     )}
                   </div>
-                  {memberHeaderCollapsed && <MemberStatusBadge status={selectedRegistry.memberStatus} />}
+                  {memberHeaderCollapsed && (() => {
+                    const regMeta = REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus] || REGISTRATION_STATUS_LABELS.under_review;
+                    return (
+                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12px] font-bold leading-5 ${regMeta.bg} ${regMeta.color} ${regMeta.border}`}>
+                        {regMeta.label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="member-header-extra" aria-hidden={memberHeaderCollapsed}>
                   <div className="min-w-0 space-y-0.5 overflow-hidden pt-1.5">
@@ -2136,22 +2200,30 @@ export function BeneficiaryRegistryView({
                 <div>
                   <span className="text-slate-400 block mb-0.5">สมาชิกผู้มีสิทธิ์:</span>
                   <strong className="text-slate-900 block text-sm">{formatPersonName(selectedRegistry)}</strong>
-                  <span className="text-[11px] font-mono text-slate-500">รหัสสมาชิก: {getDisplayMemberCode(selectedRegistry)}</span>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-[11px] font-mono text-slate-500">รหัสสมาชิก: {getDisplayMemberCode(selectedRegistry)}</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus]?.bg || 'bg-slate-100'} ${REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus]?.color || 'text-slate-700'} ${REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus]?.border || 'border-slate-300'}`}>
+                      สถานะปัจจุบัน: {REGISTRATION_STATUS_LABELS[selectedRegistry.registrationStatus]?.label || selectedRegistry.registrationStatus}
+                    </span>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-800 block mb-1">เลือกสถานะ:</label>
+                  <label className="font-bold text-slate-800 block mb-1">เปลี่ยนเป็นสถานะ (ตามขั้นตอนที่กำหนด):</label>
                   <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value as RegistrationStatus)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
                   >
-                    {(Object.keys(REGISTRATION_STATUS_LABELS) as RegistrationStatus[]).map((st) => (
+                    {(ALLOWED_NEXT_REGISTRATION_STATUSES[selectedRegistry.registrationStatus] || []).map((st) => (
                       <option key={st} value={st}>
                         {REGISTRATION_STATUS_LABELS[st].label}
                       </option>
                     ))}
                   </select>
+                  <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                    ลำดับขั้นตอน: ร่าง → ตรวจสอบข้อมูล → มีคุณสมบัติตามเกณฑ์ / ไม่มีคุณสมบัติตามเกณฑ์ (หากต้องการเปลี่ยนผลการพิจารณา ให้นำกลับเข้า &ldquo;ตรวจสอบข้อมูล&rdquo; ก่อน)
+                  </p>
                 </div>
 
                 <div>
@@ -2160,7 +2232,7 @@ export function BeneficiaryRegistryView({
                     rows={3}
                     value={statusNotes}
                     onChange={(e) => setStatusNotes(e.target.value)}
-                    placeholder="ระบุเหตุผลประกอบการปรับสถานะ..."
+                    placeholder="ระบุเหตุผลประกอบการปรับสถานะอย่างน้อย 2 ตัวอักษร..."
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                   />
                 </div>
@@ -2175,7 +2247,11 @@ export function BeneficiaryRegistryView({
                 </button>
                 <button
                   onClick={handleConfirmStatusChange}
-                  disabled={isUpdatingStatus || !statusNotes.trim()}
+                  disabled={
+                    isUpdatingStatus ||
+                    statusNotes.trim().length < 2 ||
+                    !(ALLOWED_NEXT_REGISTRATION_STATUSES[selectedRegistry.registrationStatus] || []).includes(newStatus)
+                  }
                   className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold disabled:opacity-50 transition-colors shadow-xs"
                 >
                   {isUpdatingStatus ? 'กำลังบันทึก...' : 'ยืนยันเปลี่ยนสถานะ'}
@@ -2228,7 +2304,7 @@ export function BeneficiaryRegistryView({
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <p className="text-[11px] leading-relaxed">
-                      ข้อมูลนี้มีผลต่อคุณสมบัติ หลังบันทึกทะเบียนจะอยู่ในสถานะรอตรวจสอบใหม่ ทั้งนี้ประวัติการช่วยเหลือและการเงินเดิมจะไม่ถูกแก้ไข
+                      ข้อมูลนี้มีผลต่อคุณสมบัติ หลังบันทึกทะเบียนจะอยู่ในสถานะตรวจสอบข้อมูล ทั้งนี้ประวัติการช่วยเหลือและการเงินเดิมจะไม่ถูกแก้ไข
                     </p>
                   </div>
                 )}

@@ -19,13 +19,32 @@ export async function POST(
     }
 
     const actor = bodyActor || {
-      id: 'u-1',
-      name: 'เจ้าหน้าที่ผู้พิจารณาอนุมัติ',
+      id: 'u-approver-1',
+      name: 'คณะกรรมการพิจารณาอนุมัติ',
       role: 'approver',
     };
 
-    // 1. Forward to NestJS (PostgreSQL) if running — strictly enforce backend validation & SoD
-    let nestSucceeded = false;
+    // 1. Enforce Phase 10 Solvency Check, SoD & Atomic Fund Hold in SQLite BeneficiaryService FIRST
+    let localResult: any = null;
+    try {
+      localResult = await BeneficiaryService.approveApplication(
+        id,
+        Number(approvedAmount),
+        fundId,
+        notes || 'อนุมัติตามระเบียบ',
+        actor,
+        specificFundId
+      );
+    } catch (localErr: any) {
+      const msg = String(localErr?.message || 'ไม่สามารถอนุมัติตามระเบียบงบประมาณได้');
+      const status = msg.includes('Segregation of Duties') || msg.includes('ไม่มีสิทธิ์') ? 403 : 422;
+      return NextResponse.json(
+        { success: false, error: msg },
+        { status }
+      );
+    }
+
+    // 2. Sync approval status to NestJS (PostgreSQL) if running
     let nestData: any = null;
     try {
       const nestRes = await proxyToNest(`/approvals/${id}/approve`, request, {
@@ -39,43 +58,11 @@ export async function POST(
       });
 
       const nestJson = await nestRes.json().catch(() => ({}));
-
-      if (!nestRes.ok) {
-        // If Nest is active and rejected (e.g., 400 Bad Request, 403 SoD violation, 404, etc.)
-        if (nestRes.status !== 502) {
-          const errMsg = nestJson.message || nestJson.error || 'ระบบหลักปฏิเสธการอนุมัติคำร้อง';
-          return NextResponse.json(
-            { success: false, error: errMsg },
-            { status: nestRes.status }
-          );
-        }
-      } else {
-        nestSucceeded = true;
+      if (nestRes.ok) {
         nestData = nestJson.data || nestJson;
       }
     } catch (nestErr: any) {
       console.warn('Nest proxy error in approve route:', nestErr?.message);
-    }
-
-    // 2. Enforce Phase 10 Solvency Check & Fund Hold in SQLite BeneficiaryService
-    let localResult: any = null;
-    try {
-      localResult = await BeneficiaryService.approveApplication(
-        id,
-        Number(approvedAmount),
-        fundId,
-        notes || 'อนุมัติตามระเบียบ',
-        actor,
-        specificFundId
-      );
-    } catch (localErr: any) {
-      // If Nest succeeded but SQLite failed, return error
-      if (!nestSucceeded) {
-        return NextResponse.json(
-          { success: false, error: localErr.message || 'ไม่สามารถอนุมัติตามระเบียบงบประมาณได้' },
-          { status: 422 }
-        );
-      }
     }
 
     return NextResponse.json({

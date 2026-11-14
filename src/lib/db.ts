@@ -483,7 +483,7 @@ export async function initDb(): Promise<void> {
     ['branch_id', 'TEXT DEFAULT "br-hq"'],
     ['branch_name', 'TEXT DEFAULT "สำนักงานใหญ่ กรุงเทพมหานคร"'],
     ['registration_no', 'TEXT'],
-    ['registration_status', 'TEXT DEFAULT "pending_verification"'],
+    ['registration_status', 'TEXT DEFAULT "under_review"'],
     ['registered_date', 'TEXT'],
     ['surveyor_id', 'TEXT'],
     ['surveyor_name', 'TEXT'],
@@ -736,7 +736,7 @@ export async function initDb(): Promise<void> {
           args: [String(b.id)],
         });
         const hasApproved = appRes.rows.some((a) => ['approved', 'wait_disbursement', 'disbursed', 'closed'].includes(String(a.status)));
-        const defaultStatus = hasApproved ? 'qualified' : 'pending_verification';
+        const defaultStatus = hasApproved ? 'qualified' : 'under_review';
         const regDate = b.created_at ? String(b.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10);
         
         await db.execute({
@@ -809,6 +809,69 @@ export async function initDb(): Promise<void> {
   }
   if (!hmColNames.includes('notes')) {
     try { await db.execute(`ALTER TABLE household_members ADD COLUMN notes TEXT;`); } catch {}
+  }
+
+  // Idempotent normalization of SQLite beneficiary registration statuses to the 4 canonical values
+  // Preserves all beneficiary rows and beneficiary_registration_history records.
+  try {
+    await db.execute(`
+      UPDATE beneficiaries
+      SET registration_status = CASE LOWER(TRIM(COALESCE(registration_status, '')))
+        WHEN 'draft' THEN 'draft'
+        WHEN 'need_more_info' THEN 'draft'
+        WHEN 'needs_correction' THEN 'draft'
+        WHEN 'need_info' THEN 'draft'
+        WHEN 'under_review' THEN 'under_review'
+        WHEN 'pending_verification' THEN 'under_review'
+        WHEN 'pending_survey' THEN 'under_review'
+        WHEN 'pending_qualification' THEN 'under_review'
+        WHEN 'pending_review' THEN 'under_review'
+        WHEN 'under_assessment' THEN 'under_review'
+        WHEN 'submitted' THEN 'under_review'
+        WHEN 'qualified' THEN 'qualified'
+        WHEN 'eligible' THEN 'qualified'
+        WHEN 'approved' THEN 'qualified'
+        WHEN 'not_qualified' THEN 'not_qualified'
+        WHEN 'disqualified' THEN 'not_qualified'
+        WHEN 'ineligible' THEN 'not_qualified'
+        WHEN 'rejected' THEN 'not_qualified'
+        WHEN 'suspended' THEN 'not_qualified'
+        WHEN 'archived' THEN 'not_qualified'
+        WHEN '' THEN 'under_review'
+        ELSE 'under_review'
+      END
+      WHERE LOWER(TRIM(COALESCE(registration_status, ''))) NOT IN ('draft', 'under_review', 'qualified', 'not_qualified');
+    `);
+    await db.execute(`
+      UPDATE beneficiary_registration_history
+      SET status = CASE LOWER(TRIM(COALESCE(status, '')))
+        WHEN 'draft' THEN 'draft'
+        WHEN 'need_more_info' THEN 'draft'
+        WHEN 'needs_correction' THEN 'draft'
+        WHEN 'need_info' THEN 'draft'
+        WHEN 'under_review' THEN 'under_review'
+        WHEN 'pending_verification' THEN 'under_review'
+        WHEN 'pending_survey' THEN 'under_review'
+        WHEN 'pending_qualification' THEN 'under_review'
+        WHEN 'pending_review' THEN 'under_review'
+        WHEN 'under_assessment' THEN 'under_review'
+        WHEN 'submitted' THEN 'under_review'
+        WHEN 'qualified' THEN 'qualified'
+        WHEN 'eligible' THEN 'qualified'
+        WHEN 'approved' THEN 'qualified'
+        WHEN 'not_qualified' THEN 'not_qualified'
+        WHEN 'disqualified' THEN 'not_qualified'
+        WHEN 'ineligible' THEN 'not_qualified'
+        WHEN 'rejected' THEN 'not_qualified'
+        WHEN 'suspended' THEN 'not_qualified'
+        WHEN 'archived' THEN 'not_qualified'
+        WHEN '' THEN 'under_review'
+        ELSE 'under_review'
+      END
+      WHERE LOWER(TRIM(COALESCE(status, ''))) NOT IN ('draft', 'under_review', 'qualified', 'not_qualified');
+    `);
+  } catch (normErr) {
+    console.error('Warning normalizing registration statuses in SQLite:', normErr);
   }
 
   // Assistance Types Table (Admin-extensible types & 10 Standard Types)
@@ -2009,7 +2072,8 @@ export async function initDb(): Promise<void> {
     "execution_confirmed_by_id TEXT",
     "execution_confirmed_by_name TEXT",
     "installment_count INTEGER DEFAULT 1",
-    "current_installment INTEGER DEFAULT 1"
+    "current_installment INTEGER DEFAULT 1",
+    "balance_impact_snapshot TEXT"
   ];
   for (const col of appTask3Cols) {
     try {

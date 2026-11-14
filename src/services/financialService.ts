@@ -396,26 +396,49 @@ export class FinancialService {
       ORDER BY f.code ASC
     `);
 
-    // Dynamic commitment calculation from active applications waiting for disbursement
-    const commitmentsRes = await db.execute(`
-      SELECT 
-        COALESCE(ass.recommended_fund_id, 'fund-1') as fund_id,
-        SUM(COALESCE(a.approved_amount, 0)) as total_committed
-      FROM assistance_applications a
-      LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
-      WHERE a.status = 'wait_disbursement'
-      GROUP BY COALESCE(ass.recommended_fund_id, 'fund-1')
-    `);
+    // Dynamic commitment & disbursement calculation from active applications and ledger
+    const [commitmentsRes, disbursedRes] = await Promise.all([
+      db.execute(`
+        SELECT 
+          COALESCE(a.approved_fund_id, ass.recommended_fund_id, 'fund-1') as fund_id,
+          SUM(MAX(0, COALESCE(a.approved_amount, a.requested_amount, 0) - COALESCE(a.disbursed_amount, 0))) as total_committed
+        FROM assistance_applications a
+        LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
+        WHERE a.id != 'REGISTRY-DOCS'
+          AND a.status IN ('approved', 'wait_disbursement')
+        GROUP BY COALESCE(a.approved_fund_id, ass.recommended_fund_id, 'fund-1')
+      `),
+      db.execute(`
+        SELECT 
+          ft.fund_id,
+          SUM(ABS(ft.amount)) as total_disbursed
+        FROM financial_transactions ft
+        WHERE ft.status = 'completed'
+          AND ft.type IN ('disbursement', 'expense')
+          AND COALESCE(ft.category, '') NOT IN ('bank_transfer_in', 'bank_transfer_out')
+          AND COALESCE(ft.category, '') NOT LIKE '%โอนเงินภายใน%'
+          AND COALESCE(ft.category, '') NOT LIKE 'ยอดยกมา%'
+        GROUP BY ft.fund_id
+      `),
+    ]);
 
     const commitmentMap = new Map<string, number>();
     for (const row of commitmentsRes.rows) {
       commitmentMap.set(String(row.fund_id), Number(row.total_committed) || 0);
     }
 
+    const disbursedMap = new Map<string, number>();
+    for (const row of disbursedRes.rows) {
+      disbursedMap.set(String(row.fund_id), Number(row.total_disbursed) || 0);
+    }
+
     return res.rows.map((r) => {
       const fundId = String(r.id);
       const totalReceived = round2(Number(r.total_received) || 0);
-      const disbursedAmount = round2(Number(r.disbursed_amount) || 0);
+      const ledgerDisbursed = disbursedMap.get(fundId);
+      const disbursedAmount = ledgerDisbursed !== undefined
+        ? round2(Math.max(Number(r.disbursed_amount) || 0, ledgerDisbursed))
+        : round2(Number(r.disbursed_amount) || 0);
       
       const dynamicCommitted = commitmentMap.get(fundId);
       const committedAmount = dynamicCommitted !== undefined 
@@ -1405,16 +1428,19 @@ export class FinancialService {
       });
 
       const expRes = await db.execute({
-        sql: `SELECT COALESCE(SUM(amount), 0) as total FROM financial_transactions 
-              WHERE fund_id = ? AND (type = 'expense' OR type = 'disbursement') AND status = 'completed'`,
+        sql: `SELECT COALESCE(SUM(ABS(amount)), 0) as total FROM financial_transactions 
+              WHERE fund_id = ? AND (type = 'expense' OR type = 'disbursement') AND status = 'completed'
+                AND COALESCE(category, '') NOT IN ('bank_transfer_in', 'bank_transfer_out')
+                AND COALESCE(category, '') NOT LIKE '%โอนเงินภายใน%'
+                AND COALESCE(category, '') NOT LIKE 'ยอดยกมา%'`,
         args: [fundId],
       });
 
       const comRes = await db.execute({
-        sql: `SELECT COALESCE(SUM(a.approved_amount), 0) as total 
+        sql: `SELECT COALESCE(SUM(MAX(0, COALESCE(a.approved_amount, a.requested_amount, 0) - COALESCE(a.disbursed_amount, 0))), 0) as total 
               FROM assistance_applications a
               LEFT JOIN beneficiary_assessments ass ON ass.application_id = a.id
-              WHERE a.status = 'wait_disbursement' AND COALESCE(ass.recommended_fund_id, 'fund-1') = ?`,
+              WHERE a.id != 'REGISTRY-DOCS' AND a.status IN ('approved', 'wait_disbursement') AND COALESCE(a.approved_fund_id, ass.recommended_fund_id, 'fund-1') = ?`,
         args: [fundId],
       });
 
@@ -6760,7 +6786,7 @@ export class FinancialService {
         // Financial transactions disbursed directly at primary group level (when specific_fund_id & sub_fund_category are null)
         db.execute({
           sql: `SELECT ft.asnaf_category as p_code,
-                       SUM(ft.amount) as ft_sum
+                       SUM(ABS(ft.amount)) as ft_sum
                 FROM financial_transactions ft
                 LEFT JOIN assistance_applications app ON ft.application_id = app.id
                 WHERE ft.status = 'completed'
@@ -7896,7 +7922,7 @@ export class FinancialService {
       db.execute({
         sql: `SELECT COALESCE(ft.specific_fund_id, app.approved_specific_fund_id, app.specific_fund_id) as sf_id,
                      ft.sub_fund_category as sf_code,
-                     SUM(ft.amount) as ft_sum
+                     SUM(ABS(ft.amount)) as ft_sum
               FROM financial_transactions ft
               LEFT JOIN assistance_applications app ON ft.application_id = app.id
               WHERE ft.status = 'completed'

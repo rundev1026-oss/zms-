@@ -1,5 +1,11 @@
 import { getDb, initDb } from '@/lib/db';
 import {
+  getRegistryStatusLabelTh,
+  normalizeRegistryStatusCode,
+  type RegistryStatusCode,
+} from '@zms/shared';
+import { mapStatusToFrontend } from '@/lib/registrySurvey';
+import {
   RegistrationStatus,
   ApplicationStatus,
   AsnafCategory,
@@ -226,7 +232,9 @@ export class RegistryService {
     const countRes = await db.execute(`SELECT COUNT(*) as c FROM beneficiaries WHERE registration_no IS NOT NULL AND registration_no != ''`);
     const regSeq = Number(countRes.rows[0].c) + 1;
     const registrationNo = `REG-2569-${regSeq.toString().padStart(4, '0')}`;
-    const initialStatus: RegistrationStatus = input.registrationStatus || 'pending_verification';
+    const initialStatus: RegistrationStatus = mapStatusToFrontend(
+      String(input.registrationStatus || 'draft'),
+    );
 
     // Validate coordinates if provided
     let validLat: number | null = null;
@@ -490,7 +498,7 @@ export class RegistryService {
 
     if (filters?.registrationStatus && filters.registrationStatus !== 'all') {
       query += ` AND b.registration_status = ?`;
-      args.push(filters.registrationStatus);
+      args.push(mapStatusToFrontend(filters.registrationStatus));
     }
 
     if (filters?.asnafCategory && filters.asnafCategory !== 'all') {
@@ -626,7 +634,7 @@ export class RegistryService {
           fileExists: StorageService.checkPhysicalFile(d as any).exists,
         })),
         evaluatorChecklist: parsedChecklist,
-        registrationStatus: (row.registration_status ? String(row.registration_status) : 'pending_verification') as RegistrationStatus,
+        registrationStatus: mapStatusToFrontend(String(row.registration_status || 'under_review')),
         registeredDate: row.registered_date ? String(row.registered_date) : String(row.created_at).slice(0, 10),
         surveyorId: row.surveyor_id ? String(row.surveyor_id) : undefined,
         surveyorName: row.surveyor_name ? String(row.surveyor_name) : undefined,
@@ -692,7 +700,7 @@ export class RegistryService {
     });
 
     item.registrationHistory = histRes.rows.map((h) => ({
-      status: String(h.status) as RegistrationStatus,
+      status: mapStatusToFrontend(String(h.status || 'under_review')),
       timestamp: String(h.timestamp),
       changedBy: String(h.changed_by_name),
       notes: String(h.notes),
@@ -752,7 +760,7 @@ export class RegistryService {
 
   /**
    * 4. เปลี่ยนสถานะการขึ้นทะเบียน (Transition Registration Status)
-   * 8 สถานะ: draft, pending_verification, pending_survey, pending_qualification, qualified, disqualified, need_more_info, suspended
+   * รองรับเฉพาะ 4 สถานะหลัก: draft, under_review, qualified, not_qualified
    */
   static async transitionRegistryStatus(
     beneficiaryId: string,
@@ -773,28 +781,48 @@ export class RegistryService {
     }
 
     const ben = benRes.rows[0];
-    const oldStatus = String(ben.registration_status || 'pending_verification');
-    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
-    const qualificationDate = newStatus === 'qualified' ? new Date().toISOString().slice(0, 10) : null;
+    const oldCode: RegistryStatusCode =
+      normalizeRegistryStatusCode(String(ben.registration_status || 'under_review')) || 'UNDER_REVIEW';
+    const nextCode = normalizeRegistryStatusCode(String(newStatus || ''));
+    if (!nextCode) {
+      throw new Error('สถานะทะเบียนไม่ถูกต้อง ระบบรองรับเฉพาะ 4 สถานะหลัก');
+    }
 
-    // Update registration status
+    const allowedNext: Record<RegistryStatusCode, RegistryStatusCode[]> = {
+      DRAFT: ['UNDER_REVIEW'],
+      UNDER_REVIEW: ['DRAFT', 'QUALIFIED', 'NOT_QUALIFIED'],
+      QUALIFIED: ['UNDER_REVIEW'],
+      NOT_QUALIFIED: ['UNDER_REVIEW'],
+    };
+    if (oldCode !== nextCode && !allowedNext[oldCode].includes(nextCode)) {
+      throw new Error(
+        `ไม่สามารถเปลี่ยนสถานะจาก "${getRegistryStatusLabelTh(oldCode)}" เป็น "${getRegistryStatusLabelTh(nextCode)}" ได้โดยตรง`,
+      );
+    }
+
+    const oldStatus = mapStatusToFrontend(oldCode);
+    const normalizedNewStatus = mapStatusToFrontend(nextCode);
+    const timestampNow = new Date().toLocaleString('th-TH', { hour12: false });
+    const qualificationDate = normalizedNewStatus === 'qualified' ? new Date().toISOString().slice(0, 10) : null;
+
+    // Update registration status without mutating assistance requests or disbursements
     await db.execute({
       sql: `UPDATE beneficiaries SET 
         registration_status = ?,
         qualification_date = COALESCE(?, qualification_date),
-        qualification_notes = CASE WHEN ? IN ('qualified', 'disqualified', 'suspended') THEN ? ELSE qualification_notes END,
+        qualification_notes = CASE WHEN ? IN ('qualified', 'not_qualified') THEN ? ELSE qualification_notes END,
         qualified_by_id = CASE WHEN ? = 'qualified' THEN ? ELSE qualified_by_id END,
         qualified_by_name = CASE WHEN ? = 'qualified' THEN ? ELSE qualified_by_name END,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       args: [
-        newStatus,
+        normalizedNewStatus,
         qualificationDate,
-        newStatus,
+        normalizedNewStatus,
         reason || '',
-        newStatus,
+        normalizedNewStatus,
         actor.id,
-        newStatus,
+        normalizedNewStatus,
         actor.name,
         beneficiaryId,
       ],
@@ -808,11 +836,11 @@ export class RegistryService {
       args: [
         `reghist-${Date.now()}`,
         beneficiaryId,
-        newStatus,
+        normalizedNewStatus,
         timestampNow,
         actor.id,
         actor.name,
-        reason || `เปลี่ยนสถานะทะเบียนเป็น "${newStatus}"`,
+        reason || `เปลี่ยนสถานะทะเบียนเป็น "${getRegistryStatusLabelTh(nextCode)}"`,
       ],
     });
 
@@ -829,7 +857,7 @@ export class RegistryService {
         'REGISTRATION_STATUS_CHANGED',
         'application',
         String(ben.registration_no || beneficiaryId),
-        `เปลี่ยนสถานะทะเบียนของ ${ben.full_name} จาก ${oldStatus} เป็น ${newStatus} (เหตุผล: ${reason || '-'}) โดย ${actor.name}`,
+        `เปลี่ยนสถานะทะเบียนของ ${ben.full_name} จาก ${oldStatus} เป็น ${normalizedNewStatus} (เหตุผล: ${reason || '-'}) โดย ${actor.name}`,
       ],
     });
 
@@ -837,8 +865,8 @@ export class RegistryService {
       beneficiaryId,
       registrationNo: ben.registration_no,
       oldStatus,
-      newStatus,
-      registrationStatus: newStatus,
+      newStatus: normalizedNewStatus,
+      registrationStatus: normalizedNewStatus,
       reason,
     };
   }
@@ -940,12 +968,15 @@ export class RegistryService {
       if (!isOwner) {
         throw new Error('ท่านไม่มีสิทธิ์ยื่นคำร้องแทนบุคคลอื่น หรือไม่มีความเชื่อมโยงกับทะเบียนนี้');
       }
+    }
 
-      // Check registration status: suspended or disqualified cannot apply
-      if (['suspended', 'disqualified'].includes(String(ben.registration_status))) {
-        const statusLabel = ben.registration_status === 'suspended' ? 'ระงับทะเบียน' : 'ไม่มีคุณสมบัติตามเกณฑ์';
-        throw new Error(`ทะเบียนนี้อยู่ในสถานะ "${statusLabel}" จึงไม่สามารถยื่นคำร้องขอความช่วยเหลือได้`);
-      }
+    // Strict 4-status rule: only QUALIFIED beneficiaries may submit assistance requests
+    const regStatusCode = normalizeRegistryStatusCode(String(ben.registration_status || ''));
+    if (regStatusCode !== 'QUALIFIED') {
+      const statusLabel = getRegistryStatusLabelTh(regStatusCode || 'UNDER_REVIEW');
+      throw new Error(
+        `ไม่สามารถยื่นคำร้องขอความช่วยเหลือได้ เนื่องจากสถานะทะเบียนปัจจุบันคือ "${statusLabel}" (ต้องมีคุณสมบัติตามเกณฑ์เท่านั้น)`,
+      );
     }
 
     // 4. Server-side 3-Tier Fund & Assistance Type Validation
@@ -1134,19 +1165,30 @@ export class RegistryService {
     const totalRegRes = await db.execute('SELECT COUNT(*) as total FROM beneficiaries');
     const totalRegisteredBeneficiaries = Number(totalRegRes.rows[0].total || 0);
 
-    // 2. จำนวนทะเบียนที่รอตรวจสอบ (draft, pending_verification, pending_survey, pending_qualification, need_more_info)
+    // 2. จำนวนทะเบียนแยกตาม 4 สถานะหลัก
+    const draftRegRes = await db.execute(`
+      SELECT COUNT(*) as total FROM beneficiaries
+      WHERE LOWER(TRIM(COALESCE(registration_status, ''))) = 'draft'
+    `);
+    const draftRegistries = Number(draftRegRes.rows[0].total || 0);
+
     const pendingRegRes = await db.execute(`
       SELECT COUNT(*) as total FROM beneficiaries 
-      WHERE registration_status IN ('draft', 'pending_verification', 'pending_survey', 'pending_qualification', 'need_more_info')
+      WHERE LOWER(TRIM(COALESCE(registration_status, ''))) = 'under_review'
          OR registration_status IS NULL
     `);
     const pendingVerificationRegistries = Number(pendingRegRes.rows[0].total || 0);
 
     // 3. จำนวนผู้ผ่านการพิจารณาคุณสมบัติ (qualified)
     const qualifiedRegRes = await db.execute(`
-      SELECT COUNT(*) as total FROM beneficiaries WHERE registration_status = 'qualified'
+      SELECT COUNT(*) as total FROM beneficiaries WHERE LOWER(TRIM(COALESCE(registration_status, ''))) = 'qualified'
     `);
     const qualifiedBeneficiaries = Number(qualifiedRegRes.rows[0].total || 0);
+
+    const notQualifiedRegRes = await db.execute(`
+      SELECT COUNT(*) as total FROM beneficiaries WHERE LOWER(TRIM(COALESCE(registration_status, ''))) = 'not_qualified'
+    `);
+    const disqualifiedBeneficiaries = Number(notQualifiedRegRes.rows[0].total || 0);
 
     // 4. จำนวนคำร้องขอความช่วยเหลือที่รอดำเนินการ (submitted, doc_review, assessment, pending_approval)
     const pendingAppsRes = await db.execute(`
@@ -1171,11 +1213,19 @@ export class RegistryService {
 
     return {
       totalRegisteredBeneficiaries,
+      draftRegistries,
       pendingVerificationRegistries,
       qualifiedBeneficiaries,
+      disqualifiedBeneficiaries,
       pendingAssistanceRequests,
       approvedAssistanceRequests,
       completedAssistanceDisbursed,
+      statusBreakdown: {
+        draft: draftRegistries,
+        underReview: pendingVerificationRegistries,
+        qualified: qualifiedBeneficiaries,
+        notQualified: disqualifiedBeneficiaries,
+      },
 
       // Aliases
       totalRegistries: totalRegisteredBeneficiaries,

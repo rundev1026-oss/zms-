@@ -680,19 +680,22 @@ export class BeneficiariesService {
     }));
     await this.prisma.$transaction(async (tx) => {
       if (sendBack) {
+        const nextStatus: RegistryStatus = 'UNDER_REVIEW';
         await tx.beneficiary.update({
           where: { id },
-          data: { status: 'NEEDS_CORRECTION', updatedById: actor.id },
+          data: { status: nextStatus, updatedById: actor.id },
         });
-        await tx.registryStatusHistory.create({
-          data: {
-            beneficiaryId: id,
-            fromStatus: existing.status,
-            toStatus: 'NEEDS_CORRECTION',
-            reason: input.reason?.trim() || 'แก้ไขข้อมูลที่มีผลต่อคุณสมบัติ',
-            actedById: actor.id,
-          },
-        });
+        if (existing.status !== nextStatus) {
+          await tx.registryStatusHistory.create({
+            data: {
+              beneficiaryId: id,
+              fromStatus: existing.status,
+              toStatus: nextStatus,
+              reason: input.reason?.trim() || 'แก้ไขข้อมูลที่มีผลต่อคุณสมบัติ (ส่งตรวจสอบข้อมูลใหม่)',
+              actedById: actor.id,
+            },
+          });
+        }
       } else if (changes.length > 0) {
         await tx.beneficiary.update({
           where: { id },
@@ -878,36 +881,14 @@ export class BeneficiariesService {
     const nextMemberStatus = input.memberStatus.toUpperCase();
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      const nextRegistryStatus: RegistryStatus =
-        nextMemberStatus === 'SUSPENDED'
-          ? 'SUSPENDED'
-          : nextMemberStatus === 'ARCHIVED'
-            ? 'ARCHIVED'
-            : existing.status === 'SUSPENDED' || existing.status === 'ARCHIVED'
-              ? 'PENDING_REVIEW'
-              : existing.status;
-
       const row = await tx.beneficiary.update({
         where: { id },
         data: {
           memberStatus: nextMemberStatus,
-          status: nextRegistryStatus,
           updatedById: actor.id,
         },
         include: beneficiaryInclude,
       });
-
-      if (nextRegistryStatus !== existing.status) {
-        await tx.registryStatusHistory.create({
-          data: {
-            beneficiaryId: id,
-            fromStatus: existing.status,
-            toStatus: nextRegistryStatus,
-            reason: input.reason?.trim() || `ปรับสถานะสมาชิกเป็น ${nextMemberStatus}`,
-            actedById: actor.id,
-          },
-        });
-      }
 
       await this.audit.record(tx, {
         actorId: actor.id,
@@ -1007,9 +988,17 @@ export class BeneficiariesService {
     let activeMembers = 0;
     let suspendedMembers = 0;
     let archivedMembers = 0;
+    const statusCounts: Record<RegistryStatusCode, number> = {
+      DRAFT: 0,
+      UNDER_REVIEW: 0,
+      QUALIFIED: 0,
+      NOT_QUALIFIED: 0,
+    };
     const byProvince: Record<string, number> = {};
 
     for (const b of activeBeneficiaries) {
+      const st = String(b.status || '').toUpperCase() as RegistryStatusCode;
+      if (st in statusCounts) statusCounts[st] += 1;
       const ms = (b.memberStatus || 'ACTIVE').toUpperCase();
       if (ms === 'SUSPENDED') suspendedMembers += 1;
       else if (ms === 'ARCHIVED') archivedMembers += 1;
@@ -1054,15 +1043,19 @@ export class BeneficiariesService {
     } else {
       for (const b of activeBeneficiaries) {
         const latest = b.assessments[0];
-        if (!latest) {
+        if (b.status === 'DRAFT') {
+          // สมาชิกสถานะร่างต้องไม่ถูกนับเป็นสมาชิกที่ผ่านการตรวจสอบ
+          continue;
+        }
+        if (b.status === 'UNDER_REVIEW') {
           if ((b.memberStatus || 'ACTIVE').toUpperCase() === 'ACTIVE') {
             pendingAssessments += 1;
           }
-          continue;
-        }
-        if (b.status === 'NEEDS_CORRECTION') {
-          pendingAssessments += 1;
-        } else {
+        } else if (b.status === 'QUALIFIED') {
+          eligibleCount += 1;
+        } else if (b.status === 'NOT_QUALIFIED') {
+          ineligibleCount += 1;
+        } else if (latest) {
           const bucket = classifyAssessmentOutcome(
             latest.status,
             latest.eligibilityResult,
@@ -1073,8 +1066,10 @@ export class BeneficiariesService {
           else pendingAssessments += 1;
         }
 
-        const code = (latest.category?.code || 'other').toLowerCase();
-        byAsnaf[code] = (byAsnaf[code] || 0) + 1;
+        if (latest) {
+          const code = (latest.category?.code || 'other').toLowerCase();
+          byAsnaf[code] = (byAsnaf[code] || 0) + 1;
+        }
       }
     }
 
@@ -1116,11 +1111,13 @@ export class BeneficiariesService {
       availablePeriods,
       // 6 Strictly Separated Core Metrics (Section 9)
       totalMembers,
+      verifiedMembers: statusCounts.QUALIFIED,
       pendingAssessments,
       eligibleCount,
       ineligibleCount,
       totalAssistanceRequests,
       assistedMembersCount: assistedMemberSet.size,
+      statusBreakdown: statusCounts,
       // Breakdowns
       memberBreakdown: {
         active: activeMembers,
